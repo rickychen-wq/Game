@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>任務板・管理後台</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    font-family:'Noto Sans TC', sans-serif;
+    background:#f4f2ec;
+    color:#2b2b33;
+    min-height:100vh;
+    padding-bottom:40px;
+  }
+  /* ===== 密碼遮罩 ===== */
+  #lockOverlay {
+    position:fixed; inset:0; background:#f4f2ec; z-index:100;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  #lockOverlay h1 { font-size:22px; font-weight:900; }
+  #pwInput {
+    font-size:18px; padding:12px 16px; border-radius:12px;
+    border:2px solid #d8d4c8; width:240px; text-align:center; font-family:inherit;
+  }
+  #pwBtn {
+    width:240px; padding:12px; border:none; border-radius:12px;
+    background:#2b6e5f; color:#fff; font-size:17px; font-weight:900;
+    font-family:inherit; cursor:pointer;
+  }
+
+  header {
+    background:#2b6e5f; color:#fff;
+    padding:18px 16px; font-size:19px; font-weight:900;
+    position:sticky; top:0; z-index:10;
+  }
+
+  main { max-width:640px; margin:0 auto; padding:16px; }
+
+  section {
+    background:#fff; border-radius:16px; padding:16px;
+    margin-bottom:16px; border:1px solid #e5e1d5;
+  }
+  section h2 { font-size:16px; font-weight:900; margin-bottom:12px; color:#2b6e5f; }
+
+  .card {
+    border:1px solid #e5e1d5; border-radius:12px;
+    padding:12px 14px; margin-bottom:10px; background:#fbfaf6;
+  }
+  .card .title { font-size:16px; font-weight:700; }
+  .card .sub { font-size:13px; color:#8a8678; margin-top:2px; }
+  .card .row { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+
+  .btn {
+    border:none; border-radius:10px; padding:9px 16px;
+    font-size:14px; font-weight:900; font-family:inherit; cursor:pointer;
+  }
+  .btn:active { transform:scale(.96); }
+  .btn.ok { background:#2b6e5f; color:#fff; }
+  .btn.no { background:#f0e0e0; color:#a33; }
+  .btn.gray { background:#eceadf; color:#555; }
+
+  input, select {
+    font-family:inherit; font-size:15px;
+    padding:10px 12px; border-radius:10px;
+    border:1.5px solid #d8d4c8; background:#fff;
+    width:100%; margin-bottom:10px;
+  }
+  input:focus, select:focus { outline:none; border-color:#2b6e5f; }
+
+  .formRow { display:flex; gap:10px; }
+  .formRow > * { flex:1; }
+
+  .empty { color:#b0ac9e; font-size:14px; text-align:center; padding:14px 0; }
+
+  .pill {
+    display:inline-block; font-size:12px; font-weight:700;
+    padding:2px 10px; border-radius:99px; margin-left:6px; vertical-align:1px;
+  }
+  .pill.a { background:#e3edfa; color:#3568b0; }
+  .pill.grab { background:#faf0dc; color:#a07a1e; }
+  .pill.claimed { background:#eee6fa; color:#7a4fb0; }
+
+  .coin { color:#a07a1e; font-weight:900; }
+
+  #toast {
+    position:fixed; left:50%; bottom:30px; transform:translateX(-50%);
+    background:#2b6e5f; color:#fff; font-weight:900; font-size:15px;
+    padding:12px 22px; border-radius:14px; z-index:200;
+    opacity:0; pointer-events:none; transition:opacity .25s;
+  }
+  #toast.show { opacity:1; }
+</style>
+</head>
+<body>
+
+<div id="lockOverlay">
+  <h1>🔐 管理後台</h1>
+  <input type="password" id="pwInput" placeholder="輸入密碼">
+  <button id="pwBtn">進入</button>
+</div>
+
+<header>👩‍🏫 任務板・管理後台</header>
+
+<main>
+  <!-- 待審核任務 -->
+  <section>
+    <h2>⏳ 待審核的任務回報</h2>
+    <div id="reviewList"></div>
+  </section>
+
+  <!-- 待核銷購買 -->
+  <section>
+    <h2>🎁 待核銷的購買</h2>
+    <div id="buyReviewList"></div>
+  </section>
+
+  <!-- 發布任務 -->
+  <section>
+    <h2>📌 發布新任務</h2>
+    <input id="tTitle" placeholder="任務內容（例：寫數學考卷一張）">
+    <div class="formRow">
+      <input id="tReward" type="number" min="1" placeholder="金幣獎勵">
+      <select id="tAssignee"></select>
+    </div>
+    <button class="btn ok" id="addTaskBtn" style="width:100%">發布任務</button>
+  </section>
+
+  <!-- 進行中任務 -->
+  <section>
+    <h2>📋 進行中的任務</h2>
+    <div id="taskList"></div>
+  </section>
+
+  <!-- 商店管理 -->
+  <section>
+    <h2>🛒 商店管理</h2>
+    <input id="sName" placeholder="商品名稱（例：手機時間 30 分鐘）">
+    <div class="formRow">
+      <input id="sPrice" type="number" min="1" placeholder="價格（金幣）">
+      <input id="sDesc" placeholder="說明（選填）">
+    </div>
+    <button class="btn ok" id="addItemBtn" style="width:100%">上架商品</button>
+    <div id="shopList" style="margin-top:12px"></div>
+  </section>
+
+  <!-- 玩家管理 -->
+  <section>
+    <h2>👦 玩家管理</h2>
+    <div id="playerList"></div>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, collection, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc,
+  onSnapshot, runTransaction, serverTimestamp, query, orderBy, increment
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* ====== 換成你自己的 firebaseConfig（跟 index.html 同一份） ====== */
+const firebaseConfig = {
+  apiKey: "AIzaSyCMjNCwB1jC8S-wgCMQ2wnkdZxG22Gg10c",
+  authDomain: "game-b556f.firebaseapp.com",
+  projectId: "game-b556f",
+  storageBucket: "game-b556f.firebasestorage.app",
+  messagingSenderId: "162254677726",
+  appId: "1:162254677726:web:5371b0c883d8b81b99844f"
+};
+/* ====== 後台密碼（自己改） ====== */
+const ADMIN_PASSWORD = "0414";
+/* ================================================================ */
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+let players = {};
+let tasks = [];
+let shopItems = [];
+let purchases = [];
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function toast(msg){
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._tm);
+  t._tm = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* ===== 密碼 ===== */
+function unlock(){
+  if($('pwInput').value === ADMIN_PASSWORD){
+    $('lockOverlay').style.display = 'none';
+    sessionStorage.setItem('admin_ok','1');
+  } else toast('密碼錯誤');
+}
+$('pwBtn').onclick = unlock;
+$('pwInput').addEventListener('keydown', e=>{ if(e.key==='Enter') unlock(); });
+if(sessionStorage.getItem('admin_ok')==='1') $('lockOverlay').style.display='none';
+
+/* ===== 首次初始化兩個玩家 ===== */
+async function initPlayers(){
+  for(const [id, name] of [['p1','弟弟A'],['p2','弟弟B']]){
+    const s = await getDoc(doc(db,'players',id));
+    if(!s.exists()) await setDoc(doc(db,'players',id), { name, coins:0 });
+  }
+}
+initPlayers();
+
+/* ===== 即時監聽 ===== */
+onSnapshot(collection(db,'players'), snap=>{
+  players = {};
+  snap.forEach(d=> players[d.id] = d.data());
+  renderPlayers();
+  renderAssigneeSelect();
+  renderTasks();
+  renderReview();
+  renderBuyReview();
+});
+onSnapshot(query(collection(db,'tasks'), orderBy('createdAt','desc')), snap=>{
+  tasks = [];
+  snap.forEach(d=> tasks.push({id:d.id, ...d.data()}));
+  renderTasks();
+  renderReview();
+});
+onSnapshot(collection(db,'shop'), snap=>{
+  shopItems = [];
+  snap.forEach(d=> shopItems.push({id:d.id, ...d.data()}));
+  renderShop();
+});
+onSnapshot(query(collection(db,'purchases'), orderBy('createdAt','desc')), snap=>{
+  purchases = [];
+  snap.forEach(d=> purchases.push({id:d.id, ...d.data()}));
+  renderBuyReview();
+});
+
+const pName = id => id==='all' ? '大家搶' : (players[id]?.name || id);
+
+/* ===== 發布任務 ===== */
+$('addTaskBtn').onclick = async ()=>{
+  const title = $('tTitle').value.trim();
+  const reward = parseInt($('tReward').value);
+  const assignee = $('tAssignee').value;
+  if(!title) return toast('要輸入任務內容');
+  if(!reward || reward<1) return toast('金幣要大於 0');
+  await addDoc(collection(db,'tasks'), {
+    title, reward, assignee,
+    status:'open', claimedBy:null, wasRejected:false,
+    createdAt: serverTimestamp()
+  });
+  $('tTitle').value=''; $('tReward').value='';
+  toast('任務已發布 ✅');
+};
+
+function renderAssigneeSelect(){
+  const sel = $('tAssignee');
+  const cur = sel.value;
+  sel.innerHTML = Object.entries(players).map(([id,p])=>
+    `<option value="${id}">指派給 ${esc(p.name)}</option>`
+  ).join('') + '<option value="all">開放大家搶</option>';
+  if(cur) sel.value = cur;
+}
+
+/* ===== 審核任務 ===== */
+window.approveTask = async (id)=>{
+  try {
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'tasks',id);
+      const s = await tx.get(ref);
+      if(!s.exists()) throw new Error('任務不存在');
+      const t = s.data();
+      if(t.status!=='pending') throw new Error('狀態已變更');
+      const payee = t.claimedBy || t.assignee;
+      if(!payee || payee==='all') throw new Error('找不到領獎的人');
+      tx.update(ref, { status:'done' });
+      tx.update(doc(db,'players',payee), { coins: increment(t.reward) });
+    });
+    toast('已通過，金幣入帳 🪙');
+  } catch(e){ toast(e.message); }
+};
+
+window.rejectTask = async (id)=>{
+  const t = tasks.find(x=>x.id===id);
+  if(!t) return;
+  await updateDoc(doc(db,'tasks',id), {
+    status: t.claimedBy ? 'claimed' : 'open',
+    wasRejected: true
+  });
+  toast('已退回，請他重做');
+};
+
+function renderReview(){
+  const list = tasks.filter(t=>t.status==='pending');
+  $('reviewList').innerHTML = list.length ? list.map(t=>`
+    <div class="card">
+      <div class="title">${esc(t.title)}</div>
+      <div class="sub">${esc(pName(t.claimedBy || t.assignee))} 回報完成・獎勵 <span class="coin">🪙 ${t.reward}</span></div>
+      <div class="row">
+        <button class="btn ok" onclick="approveTask('${t.id}')">✅ 通過發錢</button>
+        <button class="btn no" onclick="rejectTask('${t.id}')">↩️ 退回重做</button>
+      </div>
+    </div>
+  `).join('') : '<div class="empty">目前沒有待審核的</div>';
+}
+
+/* ===== 核銷購買 ===== */
+window.redeemBuy = async (id)=>{
+  await updateDoc(doc(db,'purchases',id), { status:'redeemed' });
+  toast('已核銷 🎁');
+};
+window.refundBuy = async (id)=>{
+  try {
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'purchases',id);
+      const s = await tx.get(ref);
+      if(!s.exists()) throw new Error('紀錄不存在');
+      const b = s.data();
+      if(b.status!=='pending') throw new Error('狀態已變更');
+      tx.update(ref, { status:'refunded' });
+      tx.update(doc(db,'players',b.playerId), { coins: increment(b.price) });
+    });
+    toast('已退款 🪙');
+  } catch(e){ toast(e.message); }
+};
+
+function renderBuyReview(){
+  const list = purchases.filter(p=>p.status==='pending');
+  $('buyReviewList').innerHTML = list.length ? list.map(p=>`
+    <div class="card">
+      <div class="title">${esc(p.itemName)}</div>
+      <div class="sub">${esc(pName(p.playerId))} 購買・<span class="coin">🪙 ${p.price}</span></div>
+      <div class="row">
+        <button class="btn ok" onclick="redeemBuy('${p.id}')">✅ 核銷兌換</button>
+        <button class="btn no" onclick="refundBuy('${p.id}')">↩️ 退款</button>
+      </div>
+    </div>
+  `).join('') : '<div class="empty">目前沒有待核銷的</div>';
+}
+
+/* ===== 進行中任務列表 ===== */
+window.delTask = async (id)=>{
+  if(!confirm('確定刪除這個任務？')) return;
+  await deleteDoc(doc(db,'tasks',id));
+  toast('已刪除');
+};
+
+function renderTasks(){
+  const list = tasks.filter(t=>t.status==='open' || t.status==='claimed');
+  $('taskList').innerHTML = list.length ? list.map(t=>{
+    let pill;
+    if(t.status==='claimed') pill = `<span class="pill claimed">${esc(pName(t.claimedBy))} 搶到</span>`;
+    else if(t.assignee==='all') pill = '<span class="pill grab">開放搶</span>';
+    else pill = `<span class="pill a">${esc(pName(t.assignee))}</span>`;
+    return `<div class="card">
+      <div class="title">${esc(t.title)} ${pill}</div>
+      <div class="sub"><span class="coin">🪙 ${t.reward}</span></div>
+      <div class="row"><button class="btn gray" onclick="delTask('${t.id}')">刪除</button></div>
+    </div>`;
+  }).join('') : '<div class="empty">沒有進行中的任務</div>';
+}
+
+/* ===== 商店管理 ===== */
+$('addItemBtn').onclick = async ()=>{
+  const name = $('sName').value.trim();
+  const price = parseInt($('sPrice').value);
+  const desc = $('sDesc').value.trim();
+  if(!name) return toast('要輸入商品名稱');
+  if(!price || price<1) return toast('價格要大於 0');
+  await addDoc(collection(db,'shop'), { name, price, desc });
+  $('sName').value=''; $('sPrice').value=''; $('sDesc').value='';
+  toast('已上架 🛒');
+};
+
+window.delItem = async (id)=>{
+  if(!confirm('確定下架這個商品？')) return;
+  await deleteDoc(doc(db,'shop',id));
+  toast('已下架');
+};
+
+function renderShop(){
+  $('shopList').innerHTML = shopItems.length ? shopItems.map(i=>`
+    <div class="card">
+      <div class="title">${esc(i.name)}</div>
+      <div class="sub"><span class="coin">🪙 ${i.price}</span>${i.desc ? '・'+esc(i.desc) : ''}</div>
+      <div class="row"><button class="btn gray" onclick="delItem('${i.id}')">下架</button></div>
+    </div>
+  `).join('') : '<div class="empty">還沒有商品</div>';
+}
+
+/* ===== 玩家管理 ===== */
+window.renamePlayer = async (id)=>{
+  const name = prompt('新名字：', players[id]?.name || '');
+  if(!name || !name.trim()) return;
+  await updateDoc(doc(db,'players',id), { name: name.trim() });
+  toast('已改名');
+};
+window.adjustCoins = async (id)=>{
+  const v = prompt(`調整 ${players[id]?.name} 的金幣（正數加、負數扣）：`, '');
+  const n = parseInt(v);
+  if(!n) return;
+  await updateDoc(doc(db,'players',id), { coins: increment(n) });
+  toast(n>0 ? `已加 ${n} 🪙` : `已扣 ${-n} 🪙`);
+};
+
+function renderPlayers(){
+  $('playerList').innerHTML = Object.entries(players).map(([id,p])=>`
+    <div class="card">
+      <div class="title">${esc(p.name)}</div>
+      <div class="sub">持有 <span class="coin">🪙 ${p.coins ?? 0}</span></div>
+      <div class="row">
+        <button class="btn gray" onclick="renamePlayer('${id}')">改名</button>
+        <button class="btn gray" onclick="adjustCoins('${id}')">調整金幣</button>
+      </div>
+    </div>
+  `).join('');
+}
+</script>
+</body>
+</html>
