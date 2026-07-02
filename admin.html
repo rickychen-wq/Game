@@ -2,155 +2,299 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>任務板・管理後台</title>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
+  :root{
+    --bg:#07080d;
+    --panel-1:#10121c;
+    --panel-2:#0b0d14;
+    --line:rgba(233,196,106,.16);
+    --line-soft:rgba(233,196,106,.10);
+    --gold:#e9c46a;
+    --gold-hi:#f7e3a1;
+    --gold-deep:#c9a227;
+    --gold-dim:#8a7a4a;
+    --cyan:#5ff0dc;
+    --cyan-deep:#173a37;
+    --pink:#ff6b81;
+    --text:#e8eaf2;
+    --muted:#757b90;
+    --dim:#454a5e;
+    --mono:'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  }
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ overscroll-behavior-y:none; }
   body {
     font-family:'Noto Sans TC', sans-serif;
-    background:#f4f2ec;
-    color:#2b2b33;
+    background:var(--bg);
+    color:var(--text);
     min-height:100vh;
-    padding-bottom:40px;
+    padding-bottom:86px;
+    position:relative;
+    overflow-x:hidden;
   }
+  body::after{
+    content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(120% 55% at 50% -8%, rgba(233,196,106,.10), transparent 55%),
+      linear-gradient(rgba(233,196,106,.030) 1px, transparent 1px) 0 0/100% 36px,
+      linear-gradient(90deg, rgba(233,196,106,.030) 1px, transparent 1px) 0 0/36px 100%;
+  }
+  body::before{
+    content:''; position:fixed; inset:0; z-index:9999; pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,0) 0 2px, rgba(0,0,0,.16) 2px 4px);
+    opacity:.5; animation:flick 7s steps(40) infinite;
+  }
+  @keyframes flick{ 0%,97%,100%{opacity:.5;} 98%{opacity:.4;} 99%{opacity:.58;} }
+
+  main, header, nav { position:relative; z-index:1; }
+
   /* ===== 密碼遮罩 ===== */
   #lockOverlay {
-    position:fixed; inset:0; background:#f4f2ec; z-index:100;
-    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    position:fixed; inset:0; background:var(--bg); z-index:100;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:24px;
   }
-  #lockOverlay h1 { font-size:22px; font-weight:900; }
+  #lockOverlay .lockIcon{ font-size:46px; filter:drop-shadow(0 4px 18px rgba(233,196,106,.35)); }
+  #lockOverlay h1 { font-family:var(--mono); font-size:22px; font-weight:800; letter-spacing:5px; color:var(--gold); }
+  #lockOverlay .hint{ font-family:var(--mono); color:var(--muted); font-size:12px; letter-spacing:2px; margin-top:-8px; }
   #pwInput {
-    font-size:18px; padding:12px 16px; border-radius:12px;
-    border:2px solid #d8d4c8; width:240px; text-align:center; font-family:inherit;
+    font-family:var(--mono); font-size:18px; letter-spacing:3px; padding:13px 16px; border-radius:10px;
+    border:1px solid var(--line); width:min(280px,82vw); text-align:center; background:#0c0e15; color:var(--text);
+    transition:border-color .2s, box-shadow .2s;
   }
+  #pwInput:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(233,196,106,.12), 0 0 20px rgba(233,196,106,.1); }
   #pwBtn {
-    width:240px; padding:12px; border:none; border-radius:12px;
-    background:#2b6e5f; color:#fff; font-size:17px; font-weight:900;
-    font-family:inherit; cursor:pointer;
+    width:min(280px,82vw); padding:13px; border:none; border-radius:10px;
+    background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206; font-size:16px; font-weight:800;
+    font-family:var(--mono); letter-spacing:3px; cursor:pointer;
+    box-shadow:0 0 0 1px rgba(233,196,106,.4), 0 8px 24px rgba(233,196,106,.18); transition:transform .12s;
   }
+  #pwBtn:active{ transform:translateY(2px) scale(.98); }
 
+  /* ===== header ===== */
   header {
-    background:#2b6e5f; color:#fff;
-    padding:18px 16px; font-size:19px; font-weight:900;
-    position:sticky; top:0; z-index:10;
+    padding:14px 16px 12px; position:sticky; top:0; z-index:10;
+    background:linear-gradient(180deg, #0a0b12 40%, rgba(7,8,13,.82));
+    backdrop-filter:blur(10px); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:10px;
   }
+  header::after{
+    content:''; position:absolute; left:0; right:0; bottom:-1px; height:1px;
+    background:linear-gradient(90deg, transparent, rgba(233,196,106,.5), transparent);
+  }
+  header .dot{ font-size:20px; }
+  header .htxt{ font-family:var(--mono); font-size:15px; font-weight:800; letter-spacing:1.5px; color:var(--gold); }
+  header .htag{ font-family:var(--mono); font-size:10px; letter-spacing:2px; color:var(--gold-dim); margin-left:auto; border:1px solid var(--line); padding:2px 8px; border-radius:5px; }
 
   main { max-width:640px; margin:0 auto; padding:16px; }
+  .page{ display:none; animation:pagein .3s ease; }
+  .page.on{ display:block; }
+  @keyframes pagein{ from{ opacity:0; transform:translateY(8px);} }
 
   section {
-    background:#fff; border-radius:16px; padding:16px;
-    margin-bottom:16px; border:1px solid #e5e1d5;
+    position:relative;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
+    border-radius:12px; padding:18px; margin-bottom:16px; border:1px solid var(--line);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.03), 0 6px 20px rgba(0,0,0,.45);
   }
-  section h2 { font-size:16px; font-weight:900; margin-bottom:12px; color:#2b6e5f; }
+  section::before, section::after{
+    content:''; position:absolute; width:12px; height:12px; pointer-events:none;
+    border:1.5px solid rgba(233,196,106,.5);
+  }
+  section::before{ top:-1px; left:-1px; border-right:0; border-bottom:0; border-top-left-radius:12px; }
+  section::after{ bottom:-1px; right:-1px; border-left:0; border-top:0; border-bottom-right-radius:12px; }
+  section h2 {
+    font-family:var(--mono); font-size:12px; font-weight:700; margin-bottom:14px; color:var(--gold);
+    display:flex; align-items:center; gap:8px; letter-spacing:1.5px;
+    padding-bottom:11px; border-bottom:1px dashed var(--line);
+  }
+  section h2::before{ content:'▍'; color:var(--gold); }
+  .count{ margin-left:auto; font-family:var(--mono); font-size:11px; font-weight:800; color:#1a1206;
+    background:var(--gold); border-radius:99px; padding:2px 9px; min-width:22px; text-align:center; }
+  .count.zero{ background:#2a2c38; color:var(--dim); }
 
   .card {
-    border:1px solid #e5e1d5; border-radius:12px;
-    padding:12px 14px; margin-bottom:10px; background:#fbfaf6;
+    position:relative; border:1px solid var(--line-soft); border-radius:10px;
+    padding:14px; margin-bottom:11px; background:linear-gradient(160deg,#12141d,#0c0e15);
   }
-  .card .title { font-size:16px; font-weight:700; }
-  .card .sub { font-size:13px; color:#8a8678; margin-top:2px; }
-  .card .row { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .card .title { font-size:15.5px; font-weight:900; line-height:1.4; letter-spacing:.2px; }
+  .card .sub { font-family:var(--mono); font-size:12px; color:var(--muted); margin-top:4px; letter-spacing:.3px; }
+  .card .row { display:flex; gap:8px; margin-top:13px; flex-wrap:wrap; }
 
   .btn {
-    border:none; border-radius:10px; padding:9px 16px;
-    font-size:14px; font-weight:900; font-family:inherit; cursor:pointer;
+    border:none; border-radius:8px; padding:10px 16px;
+    font-size:14px; font-weight:800; font-family:var(--mono); letter-spacing:.8px; cursor:pointer;
+    transition:transform .12s, box-shadow .12s;
   }
-  .btn:active { transform:scale(.96); }
-  .btn.ok { background:#2b6e5f; color:#fff; }
-  .btn.no { background:#f0e0e0; color:#a33; }
-  .btn.gray { background:#eceadf; color:#555; }
+  .btn:active { transform:translateY(2px) scale(.97); }
+  .btn.ok { background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206;
+    box-shadow:0 0 0 1px rgba(233,196,106,.4), 0 6px 16px rgba(233,196,106,.16); }
+  .btn.no { background:rgba(255,107,129,.12); color:var(--pink); border:1px solid rgba(255,107,129,.35); }
+  .btn.gray { background:#181a24; color:var(--muted); border:1px solid var(--line-soft); }
 
   input, select {
-    font-family:inherit; font-size:15px;
-    padding:10px 12px; border-radius:10px;
-    border:1.5px solid #d8d4c8; background:#fff;
-    width:100%; margin-bottom:10px;
+    font-family:var(--mono); font-size:14px; letter-spacing:.3px;
+    padding:12px 13px; border-radius:9px; border:1px solid var(--line);
+    background:#0c0e15; color:var(--text); width:100%; margin-bottom:10px;
+    transition:border-color .2s, box-shadow .2s;
   }
-  input:focus, select:focus { outline:none; border-color:#2b6e5f; }
+  input::placeholder{ color:var(--dim); }
+  input:focus, select:focus { outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(233,196,106,.1); }
+  select option{ background:#0c0e15; }
 
   .formRow { display:flex; gap:10px; }
   .formRow > * { flex:1; }
 
-  .empty { color:#b0ac9e; font-size:14px; text-align:center; padding:14px 0; }
+  .empty { font-family:var(--mono); color:var(--dim); font-size:13px; text-align:center; padding:16px 0; letter-spacing:1px; }
 
   .pill {
-    display:inline-block; font-size:12px; font-weight:700;
-    padding:2px 10px; border-radius:99px; margin-left:6px; vertical-align:1px;
+    display:inline-block; font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:.4px;
+    padding:2px 9px; border-radius:5px; margin-left:6px; vertical-align:1px;
   }
-  .pill.a { background:#e3edfa; color:#3568b0; }
-  .pill.grab { background:#faf0dc; color:#a07a1e; }
-  .pill.claimed { background:#eee6fa; color:#7a4fb0; }
+  .pill.a { background:rgba(233,196,106,.12); color:var(--gold); border:1px solid rgba(233,196,106,.25); }
+  .pill.grab { background:rgba(233,196,106,.08); color:var(--gold-dim); border:1px solid rgba(233,196,106,.2); }
+  .pill.claimed { background:rgba(95,240,220,.12); color:var(--cyan); border:1px solid rgba(95,240,220,.3); }
 
-  .coin { color:#a07a1e; font-weight:900; }
+  .coin { color:var(--gold); font-weight:800; font-family:var(--mono); }
+
+  /* 玩家卡 */
+  .pHead{ display:flex; align-items:center; gap:10px; }
+  .pAv{ width:38px; height:38px; border-radius:9px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:16px; font-weight:800; color:var(--gold);
+    background:linear-gradient(145deg,#14161f,#0c0e15); border:1px solid var(--line); }
+  .pLv{ font-family:var(--mono); font-size:11px; font-weight:800; letter-spacing:.5px; color:#1a1206;
+    background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); border-radius:5px; padding:2px 8px;
+    box-shadow:0 0 10px rgba(233,196,106,.25); }
+  .pStats{ display:flex; gap:16px; margin-top:10px; flex-wrap:wrap; }
+  .pStat{ font-family:var(--mono); font-size:12px; color:var(--muted); font-weight:600; }
+  .pStat b{ color:var(--text); font-weight:800; }
+
+  /* ===== 底部分頁 nav ===== */
+  nav {
+    position:fixed; bottom:0; left:0; right:0; z-index:20;
+    display:flex; gap:2px; padding:6px 8px calc(6px + env(safe-area-inset-bottom));
+    background:linear-gradient(180deg, #090a11, #07080d); border-top:1px solid var(--line);
+  }
+  nav::before{
+    content:''; position:absolute; left:0; right:0; top:-1px; height:1px;
+    background:linear-gradient(90deg, transparent, rgba(233,196,106,.45), transparent);
+  }
+  nav button {
+    position:relative; flex:1; padding:9px 0 7px; background:none; border:none; border-radius:8px;
+    color:var(--dim); font-size:11px; font-weight:700; font-family:var(--mono); letter-spacing:1px; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:3px; transition:color .2s;
+  }
+  nav button .ic{ font-size:18px; transition:transform .2s, filter .2s; filter:grayscale(.5) opacity(.7); }
+  nav button.on { color:var(--gold); }
+  nav button.on .ic{ transform:translateY(-1px); filter:none drop-shadow(0 0 8px rgba(233,196,106,.6)); }
+  nav button.on::before{
+    content:''; position:absolute; top:1px; left:50%; transform:translateX(-50%);
+    width:22px; height:2px; border-radius:2px; background:var(--gold); box-shadow:0 0 8px var(--gold);
+  }
+  nav button:active{ transform:scale(.94); }
+  /* 審核紅點 */
+  .navBadge{
+    position:absolute; top:2px; right:calc(50% - 26px); min-width:17px; height:17px; padding:0 4px;
+    display:none; align-items:center; justify-content:center;
+    font-family:var(--mono); font-size:10px; font-weight:800; color:#fff;
+    background:var(--pink); border-radius:99px; box-shadow:0 0 10px rgba(255,107,129,.5);
+  }
+  .navBadge.show{ display:flex; }
 
   #toast {
-    position:fixed; left:50%; bottom:30px; transform:translateX(-50%);
-    background:#2b6e5f; color:#fff; font-weight:900; font-size:15px;
-    padding:12px 22px; border-radius:14px; z-index:200;
-    opacity:0; pointer-events:none; transition:opacity .25s;
+    position:fixed; left:50%; bottom:98px; transform:translateX(-50%) translateY(8px);
+    background:linear-gradient(180deg,#141620,#0c0e15); color:var(--gold); font-weight:700; font-family:var(--mono); font-size:14px; letter-spacing:.5px;
+    padding:12px 22px; border-radius:9px; z-index:200; border:1px solid rgba(233,196,106,.5);
+    opacity:0; pointer-events:none; transition:opacity .25s, transform .25s;
+    box-shadow:0 0 26px rgba(233,196,106,.14), 0 8px 24px rgba(0,0,0,.6); max-width:85vw; text-align:center;
   }
-  #toast.show { opacity:1; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:.001s !important; transition-duration:.05s !important; }
+    body::before{ display:none; }
+  }
 </style>
 </head>
 <body>
 
 <div id="lockOverlay">
-  <h1>🔐 管理後台</h1>
+  <div class="lockIcon">🔐</div>
+  <h1>ADMIN</h1>
+  <div class="hint">請輸入密碼</div>
   <input type="password" id="pwInput" placeholder="輸入密碼">
   <button id="pwBtn">進入</button>
 </div>
 
-<header>👩‍🏫 任務板・管理後台</header>
+<header>
+  <span class="dot">👩‍🏫</span>
+  <span class="htxt">TASKBOARD</span>
+  <span class="htag">ADMIN</span>
+</header>
 
 <main>
-  <!-- 待審核任務 -->
-  <section>
-    <h2>⏳ 待審核的任務回報</h2>
-    <div id="reviewList"></div>
-  </section>
+  <!-- 審核頁 -->
+  <div class="page on" id="page-review">
+    <section>
+      <h2>待審核的任務回報 <span class="count zero" id="cReview">0</span></h2>
+      <div id="reviewList"></div>
+    </section>
+    <section>
+      <h2>待核銷的購買 <span class="count zero" id="cBuy">0</span></h2>
+      <div id="buyReviewList"></div>
+    </section>
+  </div>
 
-  <!-- 待核銷購買 -->
-  <section>
-    <h2>🎁 待核銷的購買</h2>
-    <div id="buyReviewList"></div>
-  </section>
+  <!-- 任務頁 -->
+  <div class="page" id="page-tasks">
+    <section>
+      <h2>發布新任務</h2>
+      <input id="tTitle" placeholder="任務內容（例：寫數學考卷一張）">
+      <div class="formRow">
+        <input id="tReward" type="number" min="1" placeholder="金幣獎勵">
+        <select id="tAssignee"></select>
+      </div>
+      <button class="btn ok" id="addTaskBtn" style="width:100%">發布任務</button>
+    </section>
+    <section>
+      <h2>進行中的任務 <span class="count zero" id="cTask">0</span></h2>
+      <div id="taskList"></div>
+    </section>
+  </div>
 
-  <!-- 發布任務 -->
-  <section>
-    <h2>📌 發布新任務</h2>
-    <input id="tTitle" placeholder="任務內容（例：寫數學考卷一張）">
-    <div class="formRow">
-      <input id="tReward" type="number" min="1" placeholder="金幣獎勵">
-      <select id="tAssignee"></select>
-    </div>
-    <button class="btn ok" id="addTaskBtn" style="width:100%">發布任務</button>
-  </section>
+  <!-- 商店頁 -->
+  <div class="page" id="page-shop">
+    <section>
+      <h2>商店管理 <span class="count zero" id="cShop">0</span></h2>
+      <input id="sName" placeholder="商品名稱（例：手機時間 30 分鐘）">
+      <div class="formRow">
+        <input id="sPrice" type="number" min="1" placeholder="價格（金幣）">
+        <input id="sDesc" placeholder="說明（選填）">
+      </div>
+      <button class="btn ok" id="addItemBtn" style="width:100%">上架商品</button>
+      <div id="shopList" style="margin-top:14px"></div>
+    </section>
+  </div>
 
-  <!-- 進行中任務 -->
-  <section>
-    <h2>📋 進行中的任務</h2>
-    <div id="taskList"></div>
-  </section>
-
-  <!-- 商店管理 -->
-  <section>
-    <h2>🛒 商店管理</h2>
-    <input id="sName" placeholder="商品名稱（例：手機時間 30 分鐘）">
-    <div class="formRow">
-      <input id="sPrice" type="number" min="1" placeholder="價格（金幣）">
-      <input id="sDesc" placeholder="說明（選填）">
-    </div>
-    <button class="btn ok" id="addItemBtn" style="width:100%">上架商品</button>
-    <div id="shopList" style="margin-top:12px"></div>
-  </section>
-
-  <!-- 玩家管理 -->
-  <section>
-    <h2>👦 玩家管理</h2>
-    <div id="playerList"></div>
-  </section>
+  <!-- 玩家頁 -->
+  <div class="page" id="page-players">
+    <section>
+      <h2>玩家管理 <span class="count zero" id="cPlayer">0</span></h2>
+      <div id="playerList"></div>
+    </section>
+  </div>
 </main>
+
+<nav>
+  <button class="on" data-p="review"><span class="ic">⏳</span>審核<span class="navBadge" id="navReview">0</span></button>
+  <button data-p="tasks"><span class="ic">📌</span>任務</button>
+  <button data-p="shop"><span class="ic">🛒</span>商店</button>
+  <button data-p="players"><span class="ic">👦</span>玩家</button>
+</nav>
 
 <div id="toast"></div>
 
@@ -161,7 +305,7 @@ import {
   onSnapshot, runTransaction, serverTimestamp, query, orderBy, increment
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* ====== 換成你自己的 firebaseConfig（跟 index.html 同一份） ====== */
+/* ====== firebaseConfig（跟 index.html 同一份，不動） ====== */
 const firebaseConfig = {
   apiKey: "AIzaSyCMjNCwB1jC8S-wgCMQ2wnkdZxG22Gg10c",
   authDomain: "game-b556f.firebaseapp.com",
@@ -170,7 +314,7 @@ const firebaseConfig = {
   messagingSenderId: "162254677726",
   appId: "1:162254677726:web:5371b0c883d8b81b99844f"
 };
-/* ====== 後台密碼（自己改） ====== */
+/* ====== 後台密碼 ====== */
 const ADMIN_PASSWORD = "0414";
 /* ================================================================ */
 
@@ -192,6 +336,31 @@ function toast(msg){
   clearTimeout(t._tm);
   t._tm = setTimeout(()=>t.classList.remove('show'), 2200);
 }
+
+/* 等級（跟前台同公式，只用來顯示） */
+function xpThreshold(lv){ return 50 * (lv - 1) * (lv + 2); }
+function levelFromXp(xp){ let lv=1; while(xp >= xpThreshold(lv+1)) lv++; return lv; }
+
+function setCount(el, n){
+  const e = $(el); e.textContent = n; e.classList.toggle('zero', n===0);
+}
+/* nav 審核紅點 = 待審核任務 + 待核銷購買 */
+function updateNavBadge(){
+  const n = tasks.filter(t=>t.status==='pending').length + purchases.filter(p=>p.status==='pending').length;
+  const b = $('navReview');
+  b.textContent = n;
+  b.classList.toggle('show', n>0);
+}
+
+/* ===== 分頁切換 ===== */
+document.querySelectorAll('nav button').forEach(b=>{
+  b.onclick = ()=>{
+    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    $('page-'+b.dataset.p).classList.add('on');
+  };
+});
 
 /* ===== 密碼 ===== */
 function unlock(){
@@ -221,6 +390,7 @@ onSnapshot(query(collection(db,'tasks'), orderBy('createdAt','desc')), snap=>{
   snap.forEach(d=> tasks.push({id:d.id, ...d.data()}));
   renderTasks();
   renderReview();
+  updateNavBadge();
 });
 onSnapshot(collection(db,'shop'), snap=>{
   shopItems = [];
@@ -231,6 +401,7 @@ onSnapshot(query(collection(db,'purchases'), orderBy('createdAt','desc')), snap=
   purchases = [];
   snap.forEach(d=> purchases.push({id:d.id, ...d.data()}));
   renderBuyReview();
+  updateNavBadge();
 });
 
 const pName = id => id==='all' ? '大家搶' : (players[id]?.name || id);
@@ -260,7 +431,7 @@ function renderAssigneeSelect(){
   if(cur) sel.value = cur;
 }
 
-/* ===== 審核任務 ===== */
+/* ===== 審核任務（★ 通過時同步累加 coins / totalEarned / xp / tasksDone）===== */
 window.approveTask = async (id)=>{
   try {
     await runTransaction(db, async tx=>{
@@ -272,7 +443,12 @@ window.approveTask = async (id)=>{
       const payee = t.claimedBy || t.assignee;
       if(!payee || payee==='all') throw new Error('找不到領獎的人');
       tx.update(ref, { status:'done' });
-      tx.update(doc(db,'players',payee), { coins: increment(t.reward) });
+      tx.update(doc(db,'players',payee), {
+        coins:       increment(t.reward),
+        totalEarned: increment(t.reward),
+        xp:          increment(t.reward),   // 1 金幣 = 1 XP
+        tasksDone:   increment(1)
+      });
     });
     toast('已通過，金幣入帳 🪙');
   } catch(e){ toast(e.message); }
@@ -290,6 +466,7 @@ window.rejectTask = async (id)=>{
 
 function renderReview(){
   const list = tasks.filter(t=>t.status==='pending');
+  setCount('cReview', list.length);
   $('reviewList').innerHTML = list.length ? list.map(t=>`
     <div class="card">
       <div class="title">${esc(t.title)}</div>
@@ -324,6 +501,7 @@ window.refundBuy = async (id)=>{
 
 function renderBuyReview(){
   const list = purchases.filter(p=>p.status==='pending');
+  setCount('cBuy', list.length);
   $('buyReviewList').innerHTML = list.length ? list.map(p=>`
     <div class="card">
       <div class="title">${esc(p.itemName)}</div>
@@ -345,6 +523,7 @@ window.delTask = async (id)=>{
 
 function renderTasks(){
   const list = tasks.filter(t=>t.status==='open' || t.status==='claimed');
+  setCount('cTask', list.length);
   $('taskList').innerHTML = list.length ? list.map(t=>{
     let pill;
     if(t.status==='claimed') pill = `<span class="pill claimed">${esc(pName(t.claimedBy))} 搶到</span>`;
@@ -377,6 +556,7 @@ window.delItem = async (id)=>{
 };
 
 function renderShop(){
+  setCount('cShop', shopItems.length);
   $('shopList').innerHTML = shopItems.length ? shopItems.map(i=>`
     <div class="card">
       <div class="title">${esc(i.name)}</div>
@@ -413,18 +593,34 @@ window.delPlayer = async (id)=>{
 
 function renderPlayers(){
   const list = Object.entries(players);
-  $('playerList').innerHTML = list.length ? list.map(([id,p])=>`
+  setCount('cPlayer', list.length);
+  $('playerList').innerHTML = list.length ? list.map(([id,p])=>{
+    const lv = levelFromXp(p.xp ?? 0);
+    const av = esc((p.name||id).trim()[0] || '?');
+    return `
     <div class="card">
-      <div class="title">${esc(p.name)}</div>
-      <div class="sub">ID：${esc(id)}・持有 <span class="coin">🪙 ${p.coins ?? 0}</span></div>
+      <div class="pHead">
+        <div class="pAv">${av}</div>
+        <div style="flex:1;min-width:0">
+          <div class="title" style="display:flex;align-items:center;gap:8px">
+            ${esc(p.name)} <span class="pLv">Lv.${lv}</span>
+          </div>
+          <div class="sub">ID：${esc(id)}</div>
+        </div>
+      </div>
+      <div class="pStats">
+        <div class="pStat">持有 <b class="coin">🪙 ${p.coins ?? 0}</b></div>
+        <div class="pStat">累計賺 <b>${p.totalEarned ?? 0}</b></div>
+        <div class="pStat">完成 <b>${p.tasksDone ?? 0}</b> 個</div>
+      </div>
       <div class="row">
         <button class="btn gray" onclick="renamePlayer('${esc(id)}')">改名</button>
         <button class="btn gray" onclick="adjustCoins('${esc(id)}')">調整金幣</button>
         <button class="btn gray" onclick="resetPw('${esc(id)}')">重設密碼</button>
         <button class="btn no" onclick="delPlayer('${esc(id)}')">刪除</button>
       </div>
-    </div>
-  `).join('') : '<div class="empty">還沒有人註冊。叫弟弟打開前台輸入 ID + 密碼註冊。</div>';
+    </div>`;
+  }).join('') : '<div class="empty">還沒有人註冊。叫弟弟打開前台輸入 ID + 密碼註冊。</div>';
 }
 </script>
 </body>
