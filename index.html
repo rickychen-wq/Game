@@ -21,11 +21,17 @@
   }
   #pickOverlay h1 { font-size:26px; font-weight:900; }
   .pickBtn {
-    width:240px; padding:22px; border:none; border-radius:20px;
-    background:#1c2340; color:#f2f4ff; font-size:22px; font-weight:900;
-    font-family:inherit; cursor:pointer; border:2px solid #2e3a66;
+    width:240px; padding:16px; border:none; border-radius:16px;
+    background:#ffd166; color:#22243a; font-size:19px; font-weight:900;
+    font-family:inherit; cursor:pointer;
   }
   .pickBtn:active { transform:scale(.96); }
+  .loginInput {
+    width:240px; padding:14px 16px; border-radius:14px;
+    border:2px solid #2e3a66; background:#1c2340; color:#f2f4ff;
+    font-size:17px; font-family:inherit; text-align:center;
+  }
+  .loginInput:focus { outline:none; border-color:#ffd166; }
 
   /* ===== header ===== */
   header {
@@ -108,8 +114,11 @@
 <body>
 
 <div id="pickOverlay">
-  <h1>你是誰？</h1>
-  <div id="pickList"></div>
+  <h1>🎮 登入</h1>
+  <input class="loginInput" id="idInput" placeholder="你的 ID" autocomplete="off">
+  <input class="loginInput" id="loginPw" type="password" placeholder="密碼">
+  <button class="pickBtn" id="loginBtn">進入</button>
+  <div id="loginMsg" style="color:#ff8fa3;font-size:14px;font-weight:700;min-height:20px"></div>
 </div>
 
 <header>
@@ -156,7 +165,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, collection, doc, onSnapshot, updateDoc,
+  getFirestore, collection, doc, getDoc, setDoc, onSnapshot, updateDoc,
   runTransaction, serverTimestamp, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -191,30 +200,60 @@ function toast(msg){
   t._tm = setTimeout(()=>t.classList.remove('show'), 2200);
 }
 
-/* ===== 選角色 ===== */
-function renderPick(){
-  const box = $('pickList');
-  box.innerHTML = '';
-  Object.entries(players).forEach(([id, p])=>{
-    const b = document.createElement('button');
-    b.className = 'pickBtn';
-    b.style.display = 'block';
-    b.style.marginBottom = '14px';
-    b.textContent = p.name;
-    b.onclick = ()=>{
-      me = id;
-      localStorage.setItem('taskboard_me', id);
-      $('pickOverlay').style.display = 'none';
-      renderAll();
-    };
-    box.appendChild(b);
-  });
+/* ===== 登入（ID + 密碼） ===== */
+async function hashPw(s){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
+const loginMsg = m => $('loginMsg').textContent = m;
+
+$('loginBtn').onclick = async ()=>{
+  const id = $('idInput').value.trim();
+  const pw = $('loginPw').value;
+  if(!id) return loginMsg('要輸入 ID');
+  if(!pw) return loginMsg('要輸入密碼');
+  $('loginBtn').disabled = true;
+  try {
+    const ref = doc(db,'players',id);
+    const s = await getDoc(ref);
+    if(!s.exists()){
+      // 新帳號 → 綁定密碼
+      if(!confirm(`「${id}」是新帳號，要建立並綁定這組密碼嗎？\n以後登入都要用它，忘記要找管理員。`)){
+        $('loginBtn').disabled = false;
+        return;
+      }
+      await setDoc(ref, { name:id, coins:0, pw: await hashPw(pw), createdAt: serverTimestamp() });
+    } else if(!s.data().pw){
+      // 舊資料沒密碼 → 第一次登入綁定
+      if(!confirm(`「${id}」還沒設密碼，要綁定這組密碼嗎？`)){
+        $('loginBtn').disabled = false;
+        return;
+      }
+      await updateDoc(ref, { pw: await hashPw(pw) });
+    } else if(s.data().pw !== await hashPw(pw)){
+      $('loginBtn').disabled = false;
+      return loginMsg('密碼錯誤 ❌');
+    }
+    me = id;
+    localStorage.setItem('taskboard_me', id);
+    $('loginPw').value = '';
+    loginMsg('');
+    $('pickOverlay').style.display = 'none';
+    renderAll();
+  } catch(e){
+    loginMsg('出錯了：'+e.message);
+  }
+  $('loginBtn').disabled = false;
+};
+$('loginPw').addEventListener('keydown', e=>{ if(e.key==='Enter') $('loginBtn').click(); });
+
 $('switchBtn').onclick = ()=>{
   localStorage.removeItem('taskboard_me');
   me = null;
+  $('idInput').value = '';
+  $('loginPw').value = '';
+  loginMsg('');
   $('pickOverlay').style.display = 'flex';
-  renderPick();
 };
 
 /* ===== tabs ===== */
@@ -232,8 +271,10 @@ onSnapshot(collection(db,'players'), snap=>{
   players = {};
   snap.forEach(d=> players[d.id] = d.data());
   if(!me || !players[me]){
+    me = null;
     $('pickOverlay').style.display = 'flex';
-    renderPick();
+  } else {
+    $('pickOverlay').style.display = 'none';
   }
   renderAll();
 });
