@@ -170,7 +170,7 @@
   }
   nav button .ic{ font-size:18px; transition:transform .2s, filter .2s; filter:grayscale(.5) opacity(.7); }
   nav button.on { color:var(--gold); }
-  nav button.on .ic{ transform:translateY(-1px); filter:none drop-shadow(0 0 8px rgba(233,196,106,.6)); }
+  nav button.on .ic{ transform:translateY(-1px); filter:drop-shadow(0 0 8px rgba(233,196,106,.6)); }
   nav button.on::before{
     content:''; position:absolute; top:1px; left:50%; transform:translateX(-50%);
     width:22px; height:2px; border-radius:2px; background:var(--gold); box-shadow:0 0 8px var(--gold);
@@ -276,7 +276,7 @@
   .achCell:active{ transform:scale(.92); }
   .achCell .aic{ font-size:22px; filter:grayscale(1) opacity(.3); }
   .achCell.got{ border-color:rgba(233,196,106,.5); box-shadow:0 0 14px rgba(233,196,106,.12), inset 0 0 12px rgba(233,196,106,.05); }
-  .achCell.got .aic{ filter:none drop-shadow(0 0 6px rgba(233,196,106,.5)); }
+  .achCell.got .aic{ filter:drop-shadow(0 0 6px rgba(233,196,106,.5)); }
   .achCell .aname{ font-family:var(--mono); font-size:8px; font-weight:700; color:var(--dim); text-align:center; line-height:1.1; padding:0 2px; letter-spacing:.3px; }
   .achCell.got .aname{ color:var(--gold); }
 
@@ -404,7 +404,7 @@
 
   <!-- 紀錄頁 -->
   <div class="page" id="page-log">
-    <h2>成就牆</h2>
+    <h2 id="achTitle">成就牆</h2>
     <div class="achGrid" id="achWall"></div>
     <h2>待兌換（拿給媽媽核銷）</h2>
     <div id="pendingBuys"></div>
@@ -700,6 +700,7 @@ $('loginBtn').onclick = async ()=>{
     me = id;
     localStorage.setItem('taskboard_me', id);
     localUnlocked = null; lastLevel = null; lastCoins = null;
+    Object.keys(seen).forEach(k => seen[k].clear());
     $('loginPw').value = ''; loginMsg('');
     $('pickOverlay').style.display = 'none';
     renderAll();
@@ -713,6 +714,7 @@ $('loginPw').addEventListener('keydown', e=>{ if(e.key==='Enter') $('loginBtn').
 $('switchBtn').onclick = ()=>{
   localStorage.removeItem('taskboard_me');
   me = null; localUnlocked = null; lastLevel = null; lastCoins = null;
+  Object.keys(seen).forEach(k => seen[k].clear());
   $('idInput').value = ''; $('loginPw').value = ''; loginMsg('');
   $('pickOverlay').style.display = 'flex';
 };
@@ -915,8 +917,8 @@ function renderShop(){
 
 function renderRank(){
   const rows = Object.entries(players)
-    .map(([id,p])=>({ id, name:p.name||id, val:p[rankMode] ?? 0, lv:levelFromXp(p.xp ?? 0) }))
-    .sort((a,b)=> b.val - a.val);
+    .map(([id,p])=>({ id, name:p.name||id, val:p[rankMode] ?? 0, tasksDone:p.tasksDone ?? 0, lv:levelFromXp(p.xp ?? 0) }))
+    .sort((a,b)=> b.val - a.val || (b.tasksDone ?? 0) - (a.tasksDone ?? 0) || a.name.localeCompare(b.name));
 
   $('rankList').innerHTML = rows.length ? rows.map((r,i)=>{
     const cls = 'rankRow' + (i===0 ? ' first' : '') + (r.id===me ? ' me' : '');
@@ -935,6 +937,7 @@ function renderRank(){
 
 function renderAchWall(){
   const got = localUnlocked || new Set();
+  $('achTitle').innerHTML = `成就牆 <span style="color:var(--gold)">${got.size}/${ACHIEVEMENTS.length}</span>`;
   $('achWall').innerHTML = ACHIEVEMENTS.map(a=>{
     const has = got.has(a.id);
     return `<div class="achCell ${has?'got':''}" onclick="showAch('${a.id}')">
