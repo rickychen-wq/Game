@@ -190,7 +190,7 @@
   }
   nav button .ic{ font-size:18px; transition:transform .2s, filter .2s; filter:grayscale(.5) opacity(.7); }
   nav button.on { color:var(--gold); }
-  nav button.on .ic{ transform:translateY(-1px); filter:none drop-shadow(0 0 8px rgba(233,196,106,.6)); }
+  nav button.on .ic{ transform:translateY(-1px); filter:drop-shadow(0 0 8px rgba(233,196,106,.6)); }
   nav button.on::before{
     content:''; position:absolute; top:1px; left:50%; transform:translateX(-50%);
     width:22px; height:2px; border-radius:2px; background:var(--gold); box-shadow:0 0 8px var(--gold);
@@ -433,6 +433,11 @@ function renderAssigneeSelect(){
 
 /* ===== 審核任務（★ 通過時同步累加 coins / totalEarned / xp / tasksDone）===== */
 window.approveTask = async (id)=>{
+  const t = tasks.find(x=>x.id===id);
+  if(t){
+    const who = pName(t.claimedBy || t.assignee);
+    if(!confirm(`確定通過「${t.title}」？\n將發給 ${who} 🪙 ${t.reward}`)) return;
+  }
   try {
     await runTransaction(db, async tx=>{
       const ref = doc(db,'tasks',id);
@@ -485,6 +490,11 @@ window.redeemBuy = async (id)=>{
   toast('已核銷 🎁');
 };
 window.refundBuy = async (id)=>{
+  const b = purchases.find(x=>x.id===id);
+  if(b){
+    const who = pName(b.playerId);
+    if(!confirm(`確定退款「${b.itemName}」？\n將退還 ${who} 🪙 ${b.price}`)) return;
+  }
   try {
     await runTransaction(db, async tx=>{
       const ref = doc(db,'purchases',id);
