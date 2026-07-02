@@ -27,15 +27,16 @@
     --mono:'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
   }
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body{ overscroll-behavior-y:none; }
+  html,body{ height:100%; overscroll-behavior-y:none; }
   body {
     font-family:'Noto Sans TC', sans-serif;
     background:var(--bg);
     color:var(--text);
-    min-height:100vh;
-    padding-bottom:86px;
+    height:100dvh;
+    min-height:-webkit-fill-available;
+    overflow:hidden;
     position:relative;
-    overflow-x:hidden;
+    display:flex; flex-direction:column;
   }
   body::after{
     content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
@@ -77,9 +78,9 @@
 
   /* ===== header ===== */
   header {
-    padding:14px 16px 12px; position:sticky; top:0; z-index:10;
+    padding:14px 16px 12px; position:relative; flex-shrink:0;
     background:linear-gradient(180deg, #0a0b12 40%, rgba(7,8,13,.82));
-    backdrop-filter:blur(10px); border-bottom:1px solid var(--line);
+    border-bottom:1px solid var(--line);
     display:flex; align-items:center; gap:10px;
   }
   header::after{
@@ -90,7 +91,11 @@
   header .htxt{ font-family:var(--mono); font-size:15px; font-weight:800; letter-spacing:1.5px; color:var(--gold); }
   header .htag{ font-family:var(--mono); font-size:10px; letter-spacing:2px; color:var(--gold-dim); margin-left:auto; border:1px solid var(--line); padding:2px 8px; border-radius:5px; }
 
-  main { max-width:640px; margin:0 auto; padding:16px; }
+  main {
+    flex:1; min-height:0; width:100%; max-width:640px; margin:0 auto;
+    overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior-y:contain;
+    padding:16px 16px 24px;
+  }
   .page{ display:none; animation:pagein .3s ease; }
   .page.on{ display:block; }
   @keyframes pagein{ from{ opacity:0; transform:translateY(8px);} }
@@ -175,7 +180,7 @@
 
   /* ===== 底部分頁 nav ===== */
   nav {
-    position:fixed; bottom:0; left:0; right:0; z-index:20;
+    position:relative; flex-shrink:0;
     display:flex; gap:2px; padding:6px 8px calc(6px + env(safe-area-inset-bottom));
     background:linear-gradient(180deg, #090a11, #07080d); border-top:1px solid var(--line);
   }
@@ -206,7 +211,7 @@
   .navBadge.show{ display:flex; }
 
   #toast {
-    position:fixed; left:50%; bottom:98px; transform:translateX(-50%) translateY(8px);
+    position:fixed; left:50%; bottom:84px; transform:translateX(-50%) translateY(8px);
     background:linear-gradient(180deg,#141620,#0c0e15); color:var(--gold); font-weight:700; font-family:var(--mono); font-size:14px; letter-spacing:.5px;
     padding:12px 22px; border-radius:9px; z-index:200; border:1px solid rgba(233,196,106,.5);
     opacity:0; pointer-events:none; transition:opacity .25s, transform .25s;
@@ -244,7 +249,7 @@
       <div id="reviewList"></div>
     </section>
     <section>
-      <h2>待核銷的購買 <span class="count zero" id="cBuy">0</span></h2>
+      <h2>待核銷（玩家已按使用） <span class="count zero" id="cBuy">0</span></h2>
       <div id="buyReviewList"></div>
     </section>
   </div>
@@ -271,6 +276,8 @@
     <section>
       <h2>商店管理 <span class="count zero" id="cShop">0</span></h2>
       <input id="sName" placeholder="商品名稱（例：手機時間 30 分鐘）">
+      <input id="sCat" list="catList" placeholder="分類（選填，例：手機時間）">
+      <datalist id="catList"></datalist>
       <div class="formRow">
         <input id="sPrice" type="number" min="1" placeholder="價格（金幣）">
         <input id="sDesc" placeholder="說明（選填）">
@@ -401,6 +408,7 @@ onSnapshot(query(collection(db,'purchases'), orderBy('createdAt','desc')), snap=
   purchases = [];
   snap.forEach(d=> purchases.push({id:d.id, ...d.data()}));
   renderBuyReview();
+  renderPlayers();
   updateNavBadge();
 });
 
@@ -552,10 +560,11 @@ $('addItemBtn').onclick = async ()=>{
   const name = $('sName').value.trim();
   const price = parseInt($('sPrice').value);
   const desc = $('sDesc').value.trim();
+  const category = $('sCat').value.trim();
   if(!name) return toast('要輸入商品名稱');
   if(!price || price<1) return toast('價格要大於 0');
-  await addDoc(collection(db,'shop'), { name, price, desc });
-  $('sName').value=''; $('sPrice').value=''; $('sDesc').value='';
+  await addDoc(collection(db,'shop'), { name, price, desc, category });
+  $('sName').value=''; $('sPrice').value=''; $('sDesc').value=''; $('sCat').value='';
   toast('已上架 🛒');
 };
 
@@ -565,15 +574,39 @@ window.delItem = async (id)=>{
   toast('已下架');
 };
 
+// 依分類分組（組間最低價、其他最後；組內價格低到高）
+function groupByCategory(items){
+  const groups = {};
+  items.forEach(i=>{
+    const c = (i.category && i.category.trim()) || '其他';
+    (groups[c] || (groups[c] = [])).push(i);
+  });
+  Object.values(groups).forEach(arr => arr.sort((a,b)=> (a.price||0) - (b.price||0)));
+  return Object.entries(groups).sort((a,b)=>{
+    if(a[0]==='其他') return 1;
+    if(b[0]==='其他') return -1;
+    const minA = Math.min(...a[1].map(x=>x.price||0));
+    const minB = Math.min(...b[1].map(x=>x.price||0));
+    return minA - minB;
+  });
+}
+
 function renderShop(){
   setCount('cShop', shopItems.length);
-  $('shopList').innerHTML = shopItems.length ? shopItems.map(i=>`
+
+  // datalist：現有分類去重，讓上架時可直接選舊分類避免分裂
+  const cats = [...new Set(shopItems.map(i => (i.category||'').trim()).filter(Boolean))].sort();
+  $('catList').innerHTML = cats.map(c=>`<option value="${esc(c)}">`).join('');
+
+  if(!shopItems.length){ $('shopList').innerHTML = '<div class="empty">還沒有商品</div>'; return; }
+  $('shopList').innerHTML = groupByCategory(shopItems).map(([cat, items])=>
+    `<h2 style="margin:16px 0 10px">${esc(cat)}</h2>` + items.map(i=>`
     <div class="card">
       <div class="title">${esc(i.name)}</div>
-      <div class="sub"><span class="coin">🪙 ${i.price}</span>${i.desc ? '・'+esc(i.desc) : ''}</div>
+      <div class="sub"><span class="coin">🪙 ${i.price}</span>・${esc(cat)}${i.desc ? '・'+esc(i.desc) : ''}</div>
       <div class="row"><button class="btn gray" onclick="delItem('${i.id}')">下架</button></div>
-    </div>
-  `).join('') : '<div class="empty">還沒有商品</div>';
+    </div>`).join('')
+  ).join('');
 }
 
 /* ===== 玩家管理 ===== */
@@ -607,6 +640,7 @@ function renderPlayers(){
   $('playerList').innerHTML = list.length ? list.map(([id,p])=>{
     const lv = levelFromXp(p.xp ?? 0);
     const av = esc((p.name||id).trim()[0] || '?');
+    const bag = purchases.filter(x => x.playerId===id && x.status==='owned').length;
     return `
     <div class="card">
       <div class="pHead">
@@ -622,6 +656,7 @@ function renderPlayers(){
         <div class="pStat">持有 <b class="coin">🪙 ${p.coins ?? 0}</b></div>
         <div class="pStat">累計賺 <b>${p.totalEarned ?? 0}</b></div>
         <div class="pStat">完成 <b>${p.tasksDone ?? 0}</b> 個</div>
+        <div class="pStat">背包 <b>${bag}</b> 件</div>
       </div>
       <div class="row">
         <button class="btn gray" onclick="renamePlayer('${esc(id)}')">改名</button>
