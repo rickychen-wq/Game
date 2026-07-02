@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>任務板</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    font-family:'Noto Sans TC', sans-serif;
+    background:#101426;
+    color:#f2f4ff;
+    min-height:100vh;
+    padding-bottom:80px;
+  }
+  /* ===== 選角色遮罩 ===== */
+  #pickOverlay {
+    position:fixed; inset:0; background:#101426; z-index:100;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:24px;
+  }
+  #pickOverlay h1 { font-size:26px; font-weight:900; }
+  .pickBtn {
+    width:240px; padding:22px; border:none; border-radius:20px;
+    background:#1c2340; color:#f2f4ff; font-size:22px; font-weight:900;
+    font-family:inherit; cursor:pointer; border:2px solid #2e3a66;
+  }
+  .pickBtn:active { transform:scale(.96); }
+
+  /* ===== header ===== */
+  header {
+    padding:20px 16px 14px;
+    display:flex; align-items:center; justify-content:space-between;
+    position:sticky; top:0; background:#101426; z-index:10;
+    border-bottom:1px solid #1e2542;
+  }
+  #whoami { font-size:17px; font-weight:700; display:flex; align-items:center; gap:8px; }
+  #switchBtn {
+    background:none; border:1px solid #2e3a66; color:#8f9bc9;
+    border-radius:10px; padding:4px 10px; font-size:12px; font-family:inherit; cursor:pointer;
+  }
+  #coinBox {
+    display:flex; align-items:center; gap:6px;
+    background:#1c2340; border:1.5px solid #ffd166;
+    border-radius:14px; padding:8px 14px;
+  }
+  #coinBox .amt { font-size:20px; font-weight:900; color:#ffd166; }
+
+  /* ===== tabs ===== */
+  nav {
+    position:fixed; bottom:0; left:0; right:0; z-index:20;
+    display:flex; background:#161c33; border-top:1px solid #232c52;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  nav button {
+    flex:1; padding:14px 0; background:none; border:none;
+    color:#5f6a94; font-size:14px; font-weight:700; font-family:inherit; cursor:pointer;
+  }
+  nav button.on { color:#ffd166; }
+
+  main { padding:16px; }
+  .page { display:none; }
+  .page.on { display:block; }
+
+  h2 { font-size:15px; color:#8f9bc9; font-weight:700; margin:18px 0 10px; }
+  h2:first-child { margin-top:4px; }
+
+  .card {
+    background:#1c2340; border-radius:16px; padding:16px;
+    margin-bottom:10px; border:1px solid #262f57;
+  }
+  .card .title { font-size:17px; font-weight:900; margin-bottom:4px; }
+  .card .sub { font-size:13px; color:#8f9bc9; }
+  .card .row { display:flex; align-items:center; justify-content:space-between; margin-top:12px; }
+  .reward { font-size:16px; font-weight:900; color:#ffd166; }
+
+  .btn {
+    border:none; border-radius:12px; padding:10px 18px;
+    font-size:15px; font-weight:900; font-family:inherit; cursor:pointer;
+  }
+  .btn:active { transform:scale(.95); }
+  .btn.gold { background:#ffd166; color:#22243a; }
+  .btn.blue { background:#4f7cff; color:#fff; }
+  .btn:disabled { opacity:.4; }
+
+  .badge {
+    display:inline-block; font-size:12px; font-weight:700;
+    padding:3px 10px; border-radius:99px; margin-left:8px; vertical-align:2px;
+  }
+  .badge.wait { background:#3a3417; color:#ffd166; }
+  .badge.back { background:#4a1d2a; color:#ff8fa3; }
+  .badge.mine { background:#1d3a4a; color:#7fd4ff; }
+  .badge.done { background:#1d4a2e; color:#8fffb0; }
+  .badge.redeem { background:#3a3417; color:#ffd166; }
+
+  .empty { text-align:center; color:#5f6a94; font-size:14px; padding:24px 0; }
+
+  #toast {
+    position:fixed; left:50%; bottom:96px; transform:translateX(-50%);
+    background:#ffd166; color:#22243a; font-weight:900; font-size:15px;
+    padding:12px 22px; border-radius:14px; z-index:200;
+    opacity:0; pointer-events:none; transition:opacity .25s;
+    max-width:85vw; text-align:center;
+  }
+  #toast.show { opacity:1; }
+</style>
+</head>
+<body>
+
+<div id="pickOverlay">
+  <h1>你是誰？</h1>
+  <div id="pickList"></div>
+</div>
+
+<header>
+  <div>
+    <div id="whoami"><span id="myName">—</span><button id="switchBtn">換人</button></div>
+  </div>
+  <div id="coinBox">🪙 <span class="amt" id="myCoins">0</span></div>
+</header>
+
+<main>
+  <!-- 任務頁 -->
+  <div class="page on" id="page-tasks">
+    <h2>📌 我的任務</h2>
+    <div id="myTasks"></div>
+    <h2>⚡ 開放搶的任務</h2>
+    <div id="openTasks"></div>
+    <h2>⏳ 等媽媽審核</h2>
+    <div id="pendingTasks"></div>
+  </div>
+
+  <!-- 商店頁 -->
+  <div class="page" id="page-shop">
+    <h2>🛒 商店</h2>
+    <div id="shopList"></div>
+  </div>
+
+  <!-- 紀錄頁 -->
+  <div class="page" id="page-log">
+    <h2>🎁 待兌換（拿給媽媽核銷）</h2>
+    <div id="pendingBuys"></div>
+    <h2>✅ 已完成的任務</h2>
+    <div id="doneTasks"></div>
+  </div>
+</main>
+
+<nav>
+  <button class="on" data-p="tasks">任務</button>
+  <button data-p="shop">商店</button>
+  <button data-p="log">紀錄</button>
+</nav>
+
+<div id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, collection, doc, onSnapshot, updateDoc,
+  runTransaction, serverTimestamp, query, orderBy
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* ====== 換成你自己的 firebaseConfig ====== */
+const firebaseConfig = {
+  apiKey: "AIzaSyCMjNCwB1jC8S-wgCMQ2wnkdZxG22Gg10c",
+  authDomain: "game-b556f.firebaseapp.com",
+  projectId: "game-b556f",
+  storageBucket: "game-b556f.firebasestorage.app",
+  messagingSenderId: "162254677726",
+  appId: "1:162254677726:web:5371b0c883d8b81b99844f"
+};
+/* ======================================= */
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+let me = localStorage.getItem('taskboard_me') || null;
+let players = {};   // {p1:{name,coins}, p2:{...}}
+let tasks = [];
+let shopItems = [];
+let purchases = [];
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function toast(msg){
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._tm);
+  t._tm = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* ===== 選角色 ===== */
+function renderPick(){
+  const box = $('pickList');
+  box.innerHTML = '';
+  Object.entries(players).forEach(([id, p])=>{
+    const b = document.createElement('button');
+    b.className = 'pickBtn';
+    b.style.display = 'block';
+    b.style.marginBottom = '14px';
+    b.textContent = p.name;
+    b.onclick = ()=>{
+      me = id;
+      localStorage.setItem('taskboard_me', id);
+      $('pickOverlay').style.display = 'none';
+      renderAll();
+    };
+    box.appendChild(b);
+  });
+}
+$('switchBtn').onclick = ()=>{
+  localStorage.removeItem('taskboard_me');
+  me = null;
+  $('pickOverlay').style.display = 'flex';
+  renderPick();
+};
+
+/* ===== tabs ===== */
+document.querySelectorAll('nav button').forEach(b=>{
+  b.onclick = ()=>{
+    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    $('page-'+b.dataset.p).classList.add('on');
+  };
+});
+
+/* ===== 即時監聽 ===== */
+onSnapshot(collection(db,'players'), snap=>{
+  players = {};
+  snap.forEach(d=> players[d.id] = d.data());
+  if(!me || !players[me]){
+    $('pickOverlay').style.display = 'flex';
+    renderPick();
+  }
+  renderAll();
+});
+
+onSnapshot(query(collection(db,'tasks'), orderBy('createdAt','desc')), snap=>{
+  tasks = [];
+  snap.forEach(d=> tasks.push({id:d.id, ...d.data()}));
+  renderAll();
+});
+
+onSnapshot(collection(db,'shop'), snap=>{
+  shopItems = [];
+  snap.forEach(d=> shopItems.push({id:d.id, ...d.data()}));
+  renderShop();
+});
+
+onSnapshot(query(collection(db,'purchases'), orderBy('createdAt','desc')), snap=>{
+  purchases = [];
+  snap.forEach(d=> purchases.push({id:d.id, ...d.data()}));
+  renderLog();
+});
+
+/* ===== 任務動作 ===== */
+window.grabTask = async (id)=>{
+  try {
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'tasks',id);
+      const s = await tx.get(ref);
+      if(!s.exists()) throw new Error('任務不見了');
+      const t = s.data();
+      if(t.status !== 'open' || t.claimedBy) throw new Error('慢了一步，被搶走了 😭');
+      tx.update(ref, { status:'claimed', claimedBy: me });
+    });
+    toast('搶到了！🔥');
+  } catch(e){ toast(e.message); }
+};
+
+window.reportDone = async (id)=>{
+  try {
+    await updateDoc(doc(db,'tasks',id), { status:'pending', wasRejected:false, completedAt: serverTimestamp() });
+    toast('已回報，等媽媽審核 ⏳');
+  } catch(e){ toast('回報失敗：'+e.message); }
+};
+
+/* ===== 購買 ===== */
+window.buyItem = async (itemId)=>{
+  const item = shopItems.find(i=>i.id===itemId);
+  if(!item) return;
+  if(!confirm(`要用 ${item.price} 金幣買「${item.name}」嗎？`)) return;
+  try {
+    await runTransaction(db, async tx=>{
+      const pRef = doc(db,'players',me);
+      const s = await tx.get(pRef);
+      const coins = s.data().coins || 0;
+      if(coins < item.price) throw new Error('金幣不夠，先去做任務吧 💪');
+      tx.update(pRef, { coins: coins - item.price });
+      const buyRef = doc(collection(db,'purchases'));
+      tx.set(buyRef, {
+        playerId: me, itemName: item.name, price: item.price,
+        status: 'pending', createdAt: serverTimestamp()
+      });
+    });
+    toast('購買成功！找媽媽兌換 🎁');
+  } catch(e){ toast(e.message); }
+};
+
+/* ===== 畫面 ===== */
+function taskCard(t, btnHtml, badge=''){
+  return `<div class="card">
+    <div class="title">${esc(t.title)}${badge}</div>
+    <div class="row">
+      <div class="reward">🪙 ${t.reward}</div>
+      ${btnHtml}
+    </div>
+  </div>`;
+}
+
+function renderAll(){
+  if(!me || !players[me]) return;
+  $('myName').textContent = players[me].name;
+  $('myCoins').textContent = players[me].coins ?? 0;
+
+  // 我的任務：指派給我(open) 或 我搶到的(claimed)
+  const mine = tasks.filter(t =>
+    (t.status==='open' && t.assignee===me) ||
+    (t.status==='claimed' && t.claimedBy===me)
+  );
+  $('myTasks').innerHTML = mine.length ? mine.map(t=>{
+    const badge = t.wasRejected ? '<span class="badge back">被退回，再做一次</span>'
+                : (t.status==='claimed' ? '<span class="badge mine">我搶到的</span>' : '');
+    return taskCard(t, `<button class="btn gold" onclick="reportDone('${t.id}')">完成回報</button>`, badge);
+  }).join('') : '<div class="empty">目前沒有任務，爽 😎</div>';
+
+  // 開放搶的
+  const open = tasks.filter(t => t.status==='open' && t.assignee==='all');
+  $('openTasks').innerHTML = open.length ? open.map(t=>
+    taskCard(t, `<button class="btn blue" onclick="grabTask('${t.id}')">搶任務 ⚡</button>`)
+  ).join('') : '<div class="empty">沒有可以搶的</div>';
+
+  // 待審核（我的）
+  const pending = tasks.filter(t => t.status==='pending' && (t.claimedBy===me || t.assignee===me));
+  $('pendingTasks').innerHTML = pending.length ? pending.map(t=>
+    taskCard(t, '<span class="badge wait">審核中</span>')
+  ).join('') : '<div class="empty">沒有等審核的</div>';
+
+  renderLog();
+}
+
+function renderShop(){
+  $('shopList').innerHTML = shopItems.length ? shopItems.map(i=>`
+    <div class="card">
+      <div class="title">${esc(i.name)}</div>
+      ${i.desc ? `<div class="sub">${esc(i.desc)}</div>` : ''}
+      <div class="row">
+        <div class="reward">🪙 ${i.price}</div>
+        <button class="btn gold" onclick="buyItem('${i.id}')">購買</button>
+      </div>
+    </div>
+  `).join('') : '<div class="empty">商店還沒上架東西</div>';
+}
+
+function renderLog(){
+  if(!me) return;
+  const myBuys = purchases.filter(p=>p.playerId===me && p.status==='pending');
+  $('pendingBuys').innerHTML = myBuys.length ? myBuys.map(p=>`
+    <div class="card">
+      <div class="title">${esc(p.itemName)}<span class="badge redeem">待兌換</span></div>
+      <div class="sub">🪙 ${p.price}</div>
+    </div>
+  `).join('') : '<div class="empty">沒有待兌換的東西</div>';
+
+  const done = tasks.filter(t => t.status==='done' && (t.claimedBy===me || t.assignee===me)).slice(0,20);
+  $('doneTasks').innerHTML = done.length ? done.map(t=>`
+    <div class="card">
+      <div class="title">${esc(t.title)}<span class="badge done">已入帳</span></div>
+      <div class="sub">🪙 +${t.reward}</div>
+    </div>
+  `).join('') : '<div class="empty">還沒有完成紀錄</div>';
+}
+</script>
+</body>
+</html>
