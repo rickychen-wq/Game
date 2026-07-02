@@ -4,172 +4,448 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>任務板</title>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
+  :root{
+    --bg:#07080d;
+    --panel-1:#10121c;
+    --panel-2:#0b0d14;
+    --line:rgba(233,196,106,.16);
+    --line-soft:rgba(233,196,106,.10);
+    --gold:#e9c46a;
+    --gold-hi:#f7e3a1;
+    --gold-deep:#c9a227;
+    --gold-dim:#8a7a4a;
+    --cyan:#5ff0dc;
+    --cyan-deep:#173a37;
+    --pink:#ff6b81;
+    --text:#e8eaf2;
+    --muted:#757b90;
+    --dim:#454a5e;
+    --mono:'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  }
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ overscroll-behavior-y:none; }
   body {
     font-family:'Noto Sans TC', sans-serif;
-    background:#101426;
-    color:#f2f4ff;
+    background:var(--bg);
+    color:var(--text);
     min-height:100vh;
-    padding-bottom:80px;
+    padding-bottom:86px;
+    position:relative;
+    overflow-x:hidden;
   }
-  /* ===== 選角色遮罩 ===== */
-  #pickOverlay {
-    position:fixed; inset:0; background:#101426; z-index:100;
-    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:24px;
+  /* 網格 + 頂部金光暈（背景層） */
+  body::after{
+    content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(120% 55% at 50% -8%, rgba(233,196,106,.10), transparent 55%),
+      linear-gradient(rgba(233,196,106,.030) 1px, transparent 1px) 0 0/100% 36px,
+      linear-gradient(90deg, rgba(233,196,106,.030) 1px, transparent 1px) 0 0/36px 100%;
   }
-  #pickOverlay h1 { font-size:26px; font-weight:900; }
-  .pickBtn {
-    width:240px; padding:16px; border:none; border-radius:16px;
-    background:#ffd166; color:#22243a; font-size:19px; font-weight:900;
-    font-family:inherit; cursor:pointer;
+  /* CRT 掃描線（最上層薄薄一片，不擋點擊） */
+  body::before{
+    content:''; position:fixed; inset:0; z-index:9999; pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,0) 0 2px, rgba(0,0,0,.16) 2px 4px);
+    opacity:.55; animation:flick 7s steps(40) infinite;
   }
-  .pickBtn:active { transform:scale(.96); }
-  .loginInput {
-    width:240px; padding:14px 16px; border-radius:14px;
-    border:2px solid #2e3a66; background:#1c2340; color:#f2f4ff;
-    font-size:17px; font-family:inherit; text-align:center;
-  }
-  .loginInput:focus { outline:none; border-color:#ffd166; }
+  @keyframes flick{ 0%,97%,100%{opacity:.55;} 98%{opacity:.42;} 99%{opacity:.6;} }
 
-  /* ===== header ===== */
+  main, header, nav, #pickOverlay { position:relative; z-index:1; }
+
+  /* ===== 登入遮罩 ===== */
+  #pickOverlay {
+    position:fixed; inset:0; background:var(--bg); z-index:100;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:24px;
+  }
+  #pickOverlay .logo{ font-size:50px; filter:drop-shadow(0 4px 20px rgba(233,196,106,.4)); animation:bob 3s ease-in-out infinite; }
+  @keyframes bob{ 50%{ transform:translateY(-8px);} }
+  #pickOverlay h1 { font-family:var(--mono); font-size:26px; font-weight:800; letter-spacing:6px; color:var(--gold); }
+  #pickOverlay .sub{ font-family:var(--mono); color:var(--muted); font-size:12px; letter-spacing:2px; margin-top:-10px; }
+  .loginInput {
+    width:min(300px,82vw); padding:15px 18px; border-radius:10px;
+    border:1px solid var(--line); background:#0c0e15; color:var(--text);
+    font-size:16px; font-family:var(--mono); text-align:center; letter-spacing:1px;
+    transition:border-color .2s, box-shadow .2s;
+  }
+  .loginInput:focus { outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(233,196,106,.12), 0 0 20px rgba(233,196,106,.1); }
+  .pickBtn {
+    width:min(300px,82vw); padding:15px; border:none; border-radius:10px;
+    background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206;
+    font-size:16px; font-weight:800; font-family:var(--mono); letter-spacing:3px; cursor:pointer;
+    box-shadow:0 0 0 1px rgba(233,196,106,.4), 0 8px 24px rgba(233,196,106,.18); transition:transform .12s, box-shadow .12s;
+  }
+  .pickBtn:active { transform:translateY(2px) scale(.98); }
+  #loginMsg{ color:var(--pink); font-size:13px; font-weight:700; font-family:var(--mono); min-height:20px; }
+
+  /* ===== header：HUD 狀態列 ===== */
   header {
-    padding:20px 16px 14px;
-    display:flex; align-items:center; justify-content:space-between;
-    position:sticky; top:0; background:#101426; z-index:10;
-    border-bottom:1px solid #1e2542;
+    padding:13px 14px 11px;
+    display:flex; align-items:center; gap:12px;
+    position:sticky; top:0; z-index:10;
+    background:linear-gradient(180deg, #0a0b12 40%, rgba(7,8,13,.82));
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
   }
-  #whoami { font-size:17px; font-weight:700; display:flex; align-items:center; gap:8px; }
-  #switchBtn {
-    background:none; border:1px solid #2e3a66; color:#8f9bc9;
-    border-radius:10px; padding:4px 10px; font-size:12px; font-family:inherit; cursor:pointer;
+  header::after{
+    content:''; position:absolute; left:0; right:0; bottom:-1px; height:1px;
+    background:linear-gradient(90deg, transparent, rgba(233,196,106,.5), transparent);
   }
+  .avatar{
+    width:46px; height:46px; border-radius:10px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; font-family:var(--mono);
+    color:var(--gold);
+    background:linear-gradient(145deg,#14161f,#0c0e15);
+    border:1px solid rgba(233,196,106,.5);
+    box-shadow:inset 0 0 14px rgba(233,196,106,.14), 0 4px 14px rgba(0,0,0,.5);
+  }
+  .idblock{ flex:1; min-width:0; }
+  .nameRow{ display:flex; align-items:center; gap:8px; }
+  #myName{ font-size:16px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:118px; }
+  .lvPill{
+    flex-shrink:0; font-family:var(--mono); font-size:11px; font-weight:800; letter-spacing:.5px;
+    padding:3px 9px; border-radius:5px; color:#1a1206;
+    background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep));
+    box-shadow:0 0 12px rgba(233,196,106,.3);
+  }
+  #switchBtn{
+    flex-shrink:0; background:none; border:1px solid var(--line); color:var(--muted);
+    border-radius:6px; padding:2px 8px; font-size:11px; font-family:var(--mono); cursor:pointer;
+  }
+  .xpWrap{ display:flex; align-items:center; gap:8px; margin-top:7px; }
+  .xpBar{ flex:1; height:8px; border-radius:3px; background:#12141d; overflow:hidden; position:relative;
+    border:1px solid var(--line-soft); }
+  .xpFill{
+    height:100%; width:0%;
+    background:linear-gradient(90deg,var(--gold-deep),var(--gold-hi));
+    box-shadow:0 0 10px rgba(233,196,106,.55);
+    transition:width .6s cubic-bezier(.22,1,.36,1); position:relative;
+  }
+  .xpFill::after{
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);
+    transform:translateX(-100%); animation:shine 2.6s ease-in-out infinite;
+  }
+  @keyframes shine{ 55%,100%{ transform:translateX(240%);} }
+  /* 分段格線疊在條上 */
+  .xpBar::after{
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background:repeating-linear-gradient(90deg, transparent 0 11px, rgba(7,8,13,.85) 11px 12px);
+  }
+  .xpTxt{ font-family:var(--mono); font-size:10px; color:var(--muted); font-weight:700; flex-shrink:0; }
+
+  .hdr-right{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
   #coinBox {
     display:flex; align-items:center; gap:6px;
-    background:#1c2340; border:1.5px solid #ffd166;
-    border-radius:14px; padding:8px 14px;
+    background:linear-gradient(145deg,#12141d,#0c0e15);
+    border:1px solid rgba(233,196,106,.5);
+    border-radius:9px; padding:7px 12px;
+    box-shadow:inset 0 0 12px rgba(233,196,106,.08), 0 3px 12px rgba(0,0,0,.4);
   }
-  #coinBox .amt { font-size:20px; font-weight:900; color:#ffd166; }
+  #coinBox.pulse{ animation:coinpulse .5s ease; }
+  @keyframes coinpulse{ 30%{ transform:scale(1.14); box-shadow:inset 0 0 12px rgba(233,196,106,.2), 0 0 20px rgba(233,196,106,.4);} }
+  #coinBox .amt { font-family:var(--mono); font-size:18px; font-weight:800; color:var(--gold); font-variant-numeric:tabular-nums; }
+  .iconBtn{
+    background:none; border:1px solid var(--line); color:var(--muted);
+    border-radius:6px; padding:3px 8px; font-size:13px; font-family:inherit; cursor:pointer; line-height:1;
+  }
 
   /* ===== tabs ===== */
   nav {
     position:fixed; bottom:0; left:0; right:0; z-index:20;
-    display:flex; background:#161c33; border-top:1px solid #232c52;
-    padding-bottom:env(safe-area-inset-bottom);
+    display:flex; gap:2px; padding:6px 8px calc(6px + env(safe-area-inset-bottom));
+    background:linear-gradient(180deg, #090a11, #07080d);
+    border-top:1px solid var(--line);
+  }
+  nav::before{
+    content:''; position:absolute; left:0; right:0; top:-1px; height:1px;
+    background:linear-gradient(90deg, transparent, rgba(233,196,106,.45), transparent);
   }
   nav button {
-    flex:1; padding:14px 0; background:none; border:none;
-    color:#5f6a94; font-size:14px; font-weight:700; font-family:inherit; cursor:pointer;
+    position:relative; flex:1; padding:9px 0 7px; background:none; border:none; border-radius:8px;
+    color:var(--dim); font-size:11px; font-weight:700; font-family:var(--mono); letter-spacing:1px; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:3px; transition:color .2s;
   }
-  nav button.on { color:#ffd166; }
+  nav button .ic{ font-size:18px; transition:transform .2s, filter .2s; filter:grayscale(.5) opacity(.7); }
+  nav button.on { color:var(--gold); }
+  nav button.on .ic{ transform:translateY(-1px); filter:none drop-shadow(0 0 8px rgba(233,196,106,.6)); }
+  nav button.on::before{
+    content:''; position:absolute; top:1px; left:50%; transform:translateX(-50%);
+    width:22px; height:2px; border-radius:2px; background:var(--gold); box-shadow:0 0 8px var(--gold);
+  }
+  nav button:active{ transform:scale(.94); }
 
-  main { padding:16px; }
-  .page { display:none; }
+  main { padding:16px 16px 8px; }
+  .page { display:none; animation:pagein .32s ease; }
   .page.on { display:block; }
+  @keyframes pagein{ from{ opacity:0; transform:translateY(8px);} }
 
-  h2 { font-size:15px; color:#8f9bc9; font-weight:700; margin:18px 0 10px; }
-  h2:first-child { margin-top:4px; }
+  h2 {
+    font-family:var(--mono); font-size:11px; color:var(--gold-dim); font-weight:700;
+    margin:22px 2px 11px; letter-spacing:2px; display:flex; align-items:center; gap:8px;
+  }
+  h2::before{ content:'▍'; color:var(--gold); font-size:13px; }
+  h2:first-child { margin-top:2px; }
 
   .card {
-    background:#1c2340; border-radius:16px; padding:16px;
-    margin-bottom:10px; border:1px solid #262f57;
+    position:relative;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
+    border-radius:10px; padding:15px 16px; margin-bottom:11px;
+    border:1px solid var(--line);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.03), 0 6px 20px rgba(0,0,0,.45);
   }
-  .card .title { font-size:17px; font-weight:900; margin-bottom:4px; }
-  .card .sub { font-size:13px; color:#8f9bc9; }
-  .card .row { display:flex; align-items:center; justify-content:space-between; margin-top:12px; }
-  .reward { font-size:16px; font-weight:900; color:#ffd166; }
+  /* HUD 角標 */
+  .card::before, .card::after{
+    content:''; position:absolute; width:11px; height:11px; pointer-events:none;
+    border:1.5px solid rgba(233,196,106,.55);
+  }
+  .card::before{ top:-1px; left:-1px; border-right:0; border-bottom:0; border-top-left-radius:10px; }
+  .card::after{ bottom:-1px; right:-1px; border-left:0; border-top:0; border-bottom-right-radius:10px; }
+  .card.pop{ animation:pop .42s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes pop{ from{ opacity:0; transform:scale(.92) translateY(10px);} }
+  .card .title { font-size:15.5px; font-weight:900; margin-bottom:2px; line-height:1.4; letter-spacing:.2px; }
+  .card .sub { font-family:var(--mono); font-size:12px; color:var(--muted); letter-spacing:.3px; }
+  .card .row { display:flex; align-items:center; justify-content:space-between; margin-top:14px; }
+  .reward { font-family:var(--mono); font-size:15px; font-weight:800; color:var(--gold); letter-spacing:.5px;
+    display:inline-flex; align-items:center; gap:5px; }
 
   .btn {
-    border:none; border-radius:12px; padding:10px 18px;
-    font-size:15px; font-weight:900; font-family:inherit; cursor:pointer;
+    border:none; border-radius:8px; padding:10px 18px;
+    font-size:14px; font-weight:800; font-family:var(--mono); letter-spacing:1px; cursor:pointer;
+    transition:transform .12s, box-shadow .12s, opacity .2s;
   }
-  .btn:active { transform:scale(.95); }
-  .btn.gold { background:#ffd166; color:#22243a; }
-  .btn.blue { background:#4f7cff; color:#fff; }
-  .btn:disabled { opacity:.4; }
+  .btn:active { transform:translateY(2px) scale(.97); }
+  .btn.gold { background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206;
+    box-shadow:0 0 0 1px rgba(233,196,106,.4), 0 6px 16px rgba(233,196,106,.18); }
+  .btn.blue { background:linear-gradient(180deg,#1a413d,var(--cyan-deep)); color:var(--cyan);
+    border:1px solid rgba(95,240,220,.45); box-shadow:0 0 14px rgba(95,240,220,.16); }
+  .btn:disabled { opacity:.35; box-shadow:none; }
 
   .badge {
-    display:inline-block; font-size:12px; font-weight:700;
-    padding:3px 10px; border-radius:99px; margin-left:8px; vertical-align:2px;
+    display:inline-block; font-family:var(--mono); font-size:10.5px; font-weight:700; letter-spacing:.5px;
+    padding:3px 9px; border-radius:5px; margin-left:8px; vertical-align:2px;
   }
-  .badge.wait { background:#3a3417; color:#ffd166; }
-  .badge.back { background:#4a1d2a; color:#ff8fa3; }
-  .badge.mine { background:#1d3a4a; color:#7fd4ff; }
-  .badge.done { background:#1d4a2e; color:#8fffb0; }
-  .badge.redeem { background:#3a3417; color:#ffd166; }
+  .badge.wait { background:rgba(233,196,106,.12); color:var(--gold); border:1px solid rgba(233,196,106,.25); }
+  .badge.back { background:rgba(255,107,129,.13); color:var(--pink); border:1px solid rgba(255,107,129,.3); }
+  .badge.mine { background:rgba(95,240,220,.12); color:var(--cyan); border:1px solid rgba(95,240,220,.3); }
+  .badge.done { background:rgba(95,240,220,.12); color:var(--cyan); border:1px solid rgba(95,240,220,.28); }
+  .badge.redeem { background:rgba(233,196,106,.12); color:var(--gold); border:1px solid rgba(233,196,106,.25); }
 
-  .empty { text-align:center; color:#5f6a94; font-size:14px; padding:24px 0; }
+  .empty { font-family:var(--mono); text-align:center; color:var(--dim); font-size:13px; letter-spacing:1px; padding:26px 0; }
 
+  /* ===== 排行榜 ===== */
+  .rankTabs{ display:flex; gap:7px; margin:2px 0 16px; }
+  .rankTabs button{
+    flex:1; padding:9px 0; border:1px solid var(--line); border-radius:8px;
+    background:#0d0f17; color:var(--muted); font-size:12px; font-weight:700; font-family:var(--mono); letter-spacing:.5px;
+    cursor:pointer; transition:.2s;
+  }
+  .rankTabs button.on{ background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206; border-color:transparent;
+    box-shadow:0 0 16px rgba(233,196,106,.22); }
+  .rankRow{
+    display:flex; align-items:center; gap:12px; padding:12px 14px; margin-bottom:9px;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
+    border-radius:8px; border:1px solid var(--line); box-shadow:0 5px 16px rgba(0,0,0,.4);
+  }
+  .rankRow.first{ border-color:rgba(233,196,106,.6);
+    box-shadow:0 0 24px rgba(233,196,106,.16), inset 0 0 20px rgba(233,196,106,.05);
+    background:linear-gradient(160deg,#181523,#0f0c17); }
+  .rankRow.me{ border-color:rgba(95,240,220,.6); box-shadow:0 0 18px rgba(95,240,220,.14); }
+  .rankNo{ width:30px; text-align:center; font-family:var(--mono); font-size:16px; font-weight:800; color:var(--gold-dim); flex-shrink:0; }
+  .rankRow.first .rankNo{ font-size:22px; }
+  .rankAv{ width:38px; height:38px; border-radius:9px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:16px; font-weight:800; color:var(--gold);
+    background:linear-gradient(145deg,#14161f,#0c0e15); border:1px solid var(--line); }
+  .rankInfo{ flex:1; min-width:0; }
+  .rankName{ font-size:15px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rankSubLv{ font-family:var(--mono); font-size:10.5px; color:var(--muted); font-weight:700; letter-spacing:.5px; }
+  .meTag{ font-family:var(--mono); font-size:10px; font-weight:800; color:var(--cyan); background:rgba(95,240,220,.12);
+    border:1px solid rgba(95,240,220,.3); padding:1px 6px; border-radius:4px; margin-left:6px; }
+  .rankVal{ font-family:var(--mono); font-size:18px; font-weight:800; color:var(--gold); flex-shrink:0; font-variant-numeric:tabular-nums; }
+
+  /* ===== 成就牆 ===== */
+  .achGrid{ display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin:2px 0 4px; }
+  .achCell{
+    aspect-ratio:1; border-radius:9px; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
+    border:1px solid var(--line-soft); position:relative; transition:transform .12s;
+  }
+  .achCell:active{ transform:scale(.92); }
+  .achCell .aic{ font-size:22px; filter:grayscale(1) opacity(.3); }
+  .achCell.got{ border-color:rgba(233,196,106,.5); box-shadow:0 0 14px rgba(233,196,106,.12), inset 0 0 12px rgba(233,196,106,.05); }
+  .achCell.got .aic{ filter:none drop-shadow(0 0 6px rgba(233,196,106,.5)); }
+  .achCell .aname{ font-family:var(--mono); font-size:8px; font-weight:700; color:var(--dim); text-align:center; line-height:1.1; padding:0 2px; letter-spacing:.3px; }
+  .achCell.got .aname{ color:var(--gold); }
+
+  /* ===== toast ===== */
   #toast {
-    position:fixed; left:50%; bottom:96px; transform:translateX(-50%);
-    background:#ffd166; color:#22243a; font-weight:900; font-size:15px;
-    padding:12px 22px; border-radius:14px; z-index:200;
-    opacity:0; pointer-events:none; transition:opacity .25s;
-    max-width:85vw; text-align:center;
+    position:fixed; left:50%; bottom:104px; transform:translateX(-50%) translateY(10px);
+    background:linear-gradient(180deg,#141620,#0c0e15); color:var(--gold); font-weight:700; font-family:var(--mono); font-size:14px; letter-spacing:.5px;
+    padding:12px 22px; border-radius:9px; z-index:200;
+    border:1px solid rgba(233,196,106,.5);
+    opacity:0; pointer-events:none; transition:opacity .25s, transform .25s;
+    max-width:85vw; text-align:center; box-shadow:0 0 26px rgba(233,196,106,.14), 0 8px 24px rgba(0,0,0,.6);
   }
-  #toast.show { opacity:1; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* ===== 飛幣 ===== */
+  .flycoin{ position:fixed; z-index:250; font-size:24px; pointer-events:none;
+    filter:drop-shadow(0 2px 8px rgba(233,196,106,.7)); will-change:transform,opacity; }
+
+  /* ===== LEVEL UP ===== */
+  #levelup{
+    position:fixed; inset:0; z-index:400; display:none;
+    align-items:center; justify-content:center; flex-direction:column; gap:8px;
+    background:radial-gradient(circle at center, rgba(12,12,20,.9), rgba(3,3,6,.97));
+    overflow:hidden;
+  }
+  #levelup.show{ display:flex; animation:lufade .3s ease; }
+  @keyframes lufade{ from{ opacity:0; } }
+  #levelup .luLabel{ font-family:var(--mono); font-size:14px; font-weight:800; letter-spacing:10px; color:var(--gold); opacity:.9; padding-left:10px; }
+  #levelup .luBig{
+    font-family:var(--mono); font-size:62px; font-weight:800; color:transparent;
+    background:linear-gradient(180deg,#fff6d8,var(--gold) 55%,var(--gold-deep));
+    -webkit-background-clip:text; background-clip:text; letter-spacing:2px;
+    text-shadow:0 8px 44px rgba(233,196,106,.5);
+    animation:lupop .6s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  @keyframes lupop{ 0%{ transform:scale(.3) rotate(-6deg); opacity:0;} 60%{ transform:scale(1.12);} 100%{ transform:scale(1); opacity:1;} }
+  #levelup .luTitle{ font-family:var(--mono); font-size:16px; font-weight:700; color:var(--text); letter-spacing:2px; }
+  .luRay{ position:absolute; width:200%; height:200%; z-index:-1;
+    background:conic-gradient(from 0deg, transparent 0 8deg, rgba(233,196,106,.12) 8deg 15deg, transparent 15deg 23deg,
+      rgba(95,240,220,.07) 23deg 30deg, transparent 30deg 38deg);
+    animation:rayspin 14s linear infinite; }
+  @keyframes rayspin{ to{ transform:rotate(360deg);} }
+
+  /* ===== 成就解鎖彈窗 ===== */
+  #achPop{
+    position:fixed; left:50%; top:22%; transform:translateX(-50%);
+    z-index:420; display:none; flex-direction:column; align-items:center; gap:8px;
+    padding:20px 26px; border-radius:14px; min-width:220px; max-width:80vw;
+    background:linear-gradient(160deg,#16161f,#0b0c13);
+    border:1px solid rgba(233,196,106,.55);
+    box-shadow:0 20px 50px rgba(0,0,0,.6), 0 0 44px rgba(233,196,106,.2);
+    text-align:center;
+  }
+  #achPop.show{ display:flex; animation:achslide .45s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes achslide{ from{ opacity:0; transform:translateX(-50%) translateY(-30px);} }
+  #achPop .apLabel{ font-family:var(--mono); font-size:11px; font-weight:800; letter-spacing:3px; color:var(--gold); }
+  #achPop .apIcon{ font-size:46px; animation:achdrop .6s cubic-bezier(.34,1.7,.5,1) .05s both; filter:drop-shadow(0 0 10px rgba(233,196,106,.4)); }
+  @keyframes achdrop{ 0%{ transform:translateY(-40px) scale(.4); opacity:0;} 60%{ transform:translateY(6px) scale(1.15);} 100%{ transform:translateY(0) scale(1);} }
+  #achPop .apName{ font-size:18px; font-weight:900; color:#fff; }
+  #achPop .apDesc{ font-family:var(--mono); font-size:11.5px; color:var(--muted); font-weight:600; letter-spacing:.3px; }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:.001s !important; transition-duration:.05s !important; }
+    body::before{ display:none; }
+  }
 </style>
 </head>
 <body>
 
 <div id="pickOverlay">
-  <h1>🎮 登入</h1>
+  <div class="logo">🎮</div>
+  <h1>TASKBOARD</h1>
+  <div class="sub">做任務 · 賺金幣 · 換獎勵</div>
   <input class="loginInput" id="idInput" placeholder="你的 ID" autocomplete="off">
   <input class="loginInput" id="loginPw" type="password" placeholder="密碼">
   <button class="pickBtn" id="loginBtn">進入</button>
-  <div id="loginMsg" style="color:#ff8fa3;font-size:14px;font-weight:700;min-height:20px"></div>
+  <div id="loginMsg"></div>
 </div>
 
 <header>
-  <div>
-    <div id="whoami"><span id="myName">—</span><button id="switchBtn">換人</button></div>
+  <div class="avatar" id="avatar">🎮</div>
+  <div class="idblock">
+    <div class="nameRow">
+      <span id="myName">—</span>
+      <span class="lvPill" id="lvPill">Lv.1</span>
+      <button id="switchBtn">換人</button>
+    </div>
+    <div class="xpWrap">
+      <div class="xpBar"><div class="xpFill" id="xpFill"></div></div>
+      <span class="xpTxt" id="xpTxt">0 / 200</span>
+    </div>
   </div>
-  <div id="coinBox">🪙 <span class="amt" id="myCoins">0</span></div>
+  <div class="hdr-right">
+    <button id="muteBtn" class="iconBtn">🔊</button>
+    <div id="coinBox">🪙 <span class="amt" id="myCoins">0</span></div>
+  </div>
 </header>
 
 <main>
   <!-- 任務頁 -->
   <div class="page on" id="page-tasks">
-    <h2>📌 我的任務</h2>
+    <h2>我的任務</h2>
     <div id="myTasks"></div>
-    <h2>⚡ 開放搶的任務</h2>
+    <h2>開放搶的任務</h2>
     <div id="openTasks"></div>
-    <h2>⏳ 等媽媽審核</h2>
+    <h2>等媽媽審核</h2>
     <div id="pendingTasks"></div>
   </div>
 
   <!-- 商店頁 -->
   <div class="page" id="page-shop">
-    <h2>🛒 商店</h2>
+    <h2>商店</h2>
     <div id="shopList"></div>
+  </div>
+
+  <!-- 排行頁 -->
+  <div class="page" id="page-rank">
+    <div class="rankTabs">
+      <button class="on" data-r="totalEarned">累計賺到</button>
+      <button data-r="coins">目前金幣</button>
+      <button data-r="tasksDone">完成任務</button>
+    </div>
+    <div id="rankList"></div>
   </div>
 
   <!-- 紀錄頁 -->
   <div class="page" id="page-log">
-    <h2>🎁 待兌換（拿給媽媽核銷）</h2>
+    <h2>成就牆</h2>
+    <div class="achGrid" id="achWall"></div>
+    <h2>待兌換（拿給媽媽核銷）</h2>
     <div id="pendingBuys"></div>
-    <h2>✅ 已完成的任務</h2>
+    <h2>已完成的任務</h2>
     <div id="doneTasks"></div>
   </div>
 </main>
 
 <nav>
-  <button class="on" data-p="tasks">任務</button>
-  <button data-p="shop">商店</button>
-  <button data-p="log">紀錄</button>
+  <button class="on" data-p="tasks"><span class="ic">📋</span>任務</button>
+  <button data-p="shop"><span class="ic">🛒</span>商店</button>
+  <button data-p="rank"><span class="ic">🏆</span>排行</button>
+  <button data-p="log"><span class="ic">📜</span>紀錄</button>
 </nav>
 
 <div id="toast"></div>
+
+<!-- LEVEL UP -->
+<div id="levelup">
+  <div class="luRay"></div>
+  <div class="luLabel">LEVEL UP</div>
+  <div class="luBig" id="luBig">Lv.2</div>
+  <div class="luTitle" id="luTitle"></div>
+</div>
+
+<!-- 成就解鎖 -->
+<div id="achPop">
+  <div class="apLabel">🏆 成就解鎖</div>
+  <div class="apIcon" id="apIcon">🐣</div>
+  <div class="apName" id="apName"></div>
+  <div class="apDesc" id="apDesc"></div>
+</div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getFirestore, collection, doc, getDoc, setDoc, onSnapshot, updateDoc,
-  runTransaction, serverTimestamp, query, orderBy
+  runTransaction, serverTimestamp, query, orderBy, increment, arrayUnion
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* ====== 換成你自己的 firebaseConfig ====== */
+/* ====== firebaseConfig（沿用，不動） ====== */
 const firebaseConfig = {
   apiKey: "AIzaSyCMjNCwB1jC8S-wgCMQ2wnkdZxG22Gg10c",
   authDomain: "game-b556f.firebaseapp.com",
@@ -184,7 +460,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 let me = localStorage.getItem('taskboard_me') || null;
-let players = {};   // {p1:{name,coins}, p2:{...}}
+let players = {};
 let tasks = [];
 let shopItems = [];
 let purchases = [];
@@ -198,6 +474,194 @@ function toast(msg){
   t.classList.add('show');
   clearTimeout(t._tm);
   t._tm = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* ==================================================================
+   等級 / XP
+   門檻（累計 XP 才能到 Lv n）= 50 × (n-1) × (n+2)
+   → Lv1:0  Lv2:200  Lv3:500  Lv4:900  Lv5:1400 ...
+================================================================== */
+function xpThreshold(lv){ return 50 * (lv - 1) * (lv + 2); }
+function levelFromXp(xp){
+  let lv = 1;
+  while (xp >= xpThreshold(lv + 1)) lv++;
+  return lv;
+}
+const TITLES = [
+  { lv:1,  name:'見習生' },
+  { lv:3,  name:'打工仔' },
+  { lv:5,  name:'老手' },
+  { lv:7,  name:'家務戰神' },
+  { lv:10, name:'傳說 ✨' },
+];
+function titleFromLevel(lv){
+  let t = TITLES[0].name;
+  for(const x of TITLES){ if(lv >= x.lv) t = x.name; }
+  return t;
+}
+console.assert(levelFromXp(0)===1 && levelFromXp(199)===1 && levelFromXp(200)===2 && levelFromXp(499)===2 && levelFromXp(500)===3, 'levelFromXp 邊界錯誤');
+
+/* ==================================================================
+   成就
+================================================================== */
+const ACHIEVEMENTS = [
+  { id:'first_task',  icon:'🐣', name:'第一滴血',   desc:'完成第 1 個任務',      check: s => s.tasksDone >= 1 },
+  { id:'task_10',     icon:'💪', name:'勞動模範',   desc:'完成 10 個任務',       check: s => s.tasksDone >= 10 },
+  { id:'task_50',     icon:'🏭', name:'血汗工廠',   desc:'完成 50 個任務',       check: s => s.tasksDone >= 50 },
+  { id:'earn_500',    icon:'💰', name:'小有積蓄',   desc:'累計賺 500 金幣',      check: s => s.totalEarned >= 500 },
+  { id:'earn_2000',   icon:'🤑', name:'小富翁',     desc:'累計賺 2000 金幣',     check: s => s.totalEarned >= 2000 },
+  { id:'earn_10000',  icon:'👑', name:'家裡蹲首富', desc:'累計賺 10000 金幣',    check: s => s.totalEarned >= 10000 },
+  { id:'first_buy',   icon:'🛍️', name:'剁手初體驗', desc:'第一次購買',           check: s => s.buyCount >= 1 },
+  { id:'buy_10',      icon:'💸', name:'月光族',     desc:'購買 10 次',           check: s => s.buyCount >= 10 },
+  { id:'hoard_1000',  icon:'🏦', name:'守財奴',     desc:'同時持有 1000 金幣',   check: s => s.coins >= 1000 },
+  { id:'grab_king',   icon:'⚡', name:'手速之王',   desc:'搶到 10 個開放任務',   check: s => s.tasksGrabbed >= 10 },
+];
+let localUnlocked = null;
+
+function myStats(){
+  const p = players[me] || {};
+  return {
+    tasksDone: p.tasksDone ?? 0,
+    totalEarned: p.totalEarned ?? 0,
+    coins: p.coins ?? 0,
+    tasksGrabbed: p.tasksGrabbed ?? 0,
+    buyCount: purchases.filter(x => x.playerId === me && x.status !== 'refunded').length,
+  };
+}
+
+function checkAchievements(){
+  if(!me || !players[me]) return;
+  const serverList = players[me].achievements || [];
+  const firstLoad = (localUnlocked === null);
+  if(firstLoad) localUnlocked = new Set(serverList);
+  else serverList.forEach(id => localUnlocked.add(id));
+
+  const stats = myStats();
+  for(const a of ACHIEVEMENTS){
+    if(localUnlocked.has(a.id)) continue;
+    if(a.check(stats)){
+      localUnlocked.add(a.id);
+      updateDoc(doc(db,'players',me), { achievements: arrayUnion(a.id) }).catch(()=>{});
+      announceAchievement(a);
+    }
+  }
+  renderAchWall();
+}
+
+/* ==================================================================
+   音效（Web Audio 現場合成，無音檔）
+================================================================== */
+let audioCtx = null;
+let muted = localStorage.getItem('tb_muted') === '1';
+function ensureAudio(){
+  if(!audioCtx){
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){ return; }
+  }
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+}
+document.addEventListener('click', ensureAudio);
+document.addEventListener('touchstart', ensureAudio, { passive:true });
+
+function tone(freq, dur, type='sine', vol=0.2, when=0){
+  if(muted || !audioCtx) return;
+  const t0 = audioCtx.currentTime + when;
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t0);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.linearRampToValueAtTime(vol, t0 + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(g); g.connect(audioCtx.destination);
+  osc.start(t0); osc.stop(t0 + dur + 0.03);
+}
+function noiseBurst(dur=0.08, vol=0.25){
+  if(muted || !audioCtx) return;
+  const buf = audioCtx.createBuffer(1, Math.max(1, audioCtx.sampleRate*dur), audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/d.length, 2);
+  const src = audioCtx.createBufferSource(); src.buffer = buf;
+  const g = audioCtx.createGain(); g.gain.value = vol;
+  src.connect(g); g.connect(audioCtx.destination); src.start();
+}
+const sfxGrab    = ()=>{ tone(600,0.09,'square',0.14,0); tone(900,0.10,'square',0.14,0.08); };
+const sfxCoin    = ()=>{ tone(1200,0.08,'sine',0.18,0); tone(1650,0.16,'sine',0.15,0.06); };
+const sfxBuy     = ()=>{ noiseBurst(0.07,0.22); tone(520,0.12,'triangle',0.18,0.02); };
+const sfxError   = ()=>{ tone(150,0.2,'square',0.2,0); };
+const sfxAchieve = ()=>{ tone(523,0.12,'sine',0.18,0); tone(659,0.12,'sine',0.18,0.1); tone(784,0.22,'sine',0.2,0.2); };
+const sfxLevelUp = ()=>{ [523,659,784,1047].forEach((f,i)=> tone(f,0.2,'triangle',0.2,i*0.09)); };
+
+function updateMuteBtn(){ $('muteBtn').textContent = muted ? '🔇' : '🔊'; }
+$('muteBtn').onclick = ()=>{
+  muted = !muted;
+  localStorage.setItem('tb_muted', muted ? '1' : '0');
+  updateMuteBtn();
+  if(!muted){ ensureAudio(); sfxCoin(); }
+};
+updateMuteBtn();
+
+/* ==================================================================
+   動畫：數字滾動 / 飛幣 / LEVEL UP / 成就
+================================================================== */
+function animateNumber(el, from, to, dur=600){
+  from = Number(from)||0; to = Number(to)||0;
+  if(from === to){ el.textContent = to; return; }
+  const t0 = performance.now();
+  const ease = x => 1 - Math.pow(1-x, 3);
+  function step(now){
+    const p = Math.min(1, (now - t0)/dur);
+    el.textContent = Math.round(from + (to - from)*ease(p));
+    if(p < 1) requestAnimationFrame(step);
+    else el.textContent = to;
+  }
+  requestAnimationFrame(step);
+}
+
+function flyCoins(n=4){
+  const box = $('coinBox').getBoundingClientRect();
+  const tx = box.left + box.width/2, ty = box.top + box.height/2;
+  const cx = window.innerWidth/2, cy = window.innerHeight/2;
+  for(let i=0;i<n;i++){
+    const c = document.createElement('div');
+    c.className = 'flycoin'; c.textContent = '🪙';
+    const jx = (Math.random()-0.5)*120, jy = (Math.random()-0.5)*80;
+    c.style.left = (cx + jx) + 'px'; c.style.top = (cy + jy) + 'px';
+    document.body.appendChild(c);
+    const dx = tx - (cx + jx), dy = ty - (cy + jy);
+    c.animate([
+      { transform:'translate(0,0) scale(1.2)', opacity:1, offset:0 },
+      { transform:`translate(${dx*0.3}px,${dy*0.3 - 40}px) scale(1)`, opacity:1, offset:0.4 },
+      { transform:`translate(${dx}px,${dy}px) scale(.5)`, opacity:0, offset:1 },
+    ], { duration:720 + i*60, easing:'cubic-bezier(.5,0,.75,0)', delay:i*55 })
+     .onfinish = ()=> c.remove();
+  }
+  $('coinBox').classList.remove('pulse'); void $('coinBox').offsetWidth; $('coinBox').classList.add('pulse');
+}
+
+let luQueue = Promise.resolve();
+function showLevelUp(lv){
+  luQueue = luQueue.then(()=> new Promise(res=>{
+    sfxLevelUp();
+    $('luBig').textContent = 'Lv.' + lv;
+    $('luTitle').textContent = titleFromLevel(lv);
+    const el = $('levelup'); el.classList.add('show');
+    const big = $('luBig'); big.style.animation='none'; void big.offsetWidth; big.style.animation='';
+    setTimeout(()=>{ el.classList.remove('show'); setTimeout(res, 300); }, 2000);
+  }));
+}
+
+let achQueue = [], achShowing = false;
+function announceAchievement(a){ achQueue.push(a); if(!achShowing) nextAch(); }
+function nextAch(){
+  if(!achQueue.length){ achShowing = false; return; }
+  achShowing = true;
+  const a = achQueue.shift();
+  sfxAchieve();
+  $('apIcon').textContent = a.icon;
+  $('apName').textContent = a.name;
+  $('apDesc').textContent = a.desc;
+  const el = $('achPop'); el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  setTimeout(()=>{ el.classList.remove('show'); setTimeout(nextAch, 300); }, 2200);
 }
 
 /* ===== 登入（ID + 密碼） ===== */
@@ -217,27 +681,26 @@ $('loginBtn').onclick = async ()=>{
     const ref = doc(db,'players',id);
     const s = await getDoc(ref);
     if(!s.exists()){
-      // 新帳號 → 綁定密碼
       if(!confirm(`「${id}」是新帳號，要建立並綁定這組密碼嗎？\n以後登入都要用它，忘記要找管理員。`)){
-        $('loginBtn').disabled = false;
-        return;
+        $('loginBtn').disabled = false; return;
       }
-      await setDoc(ref, { name:id, coins:0, pw: await hashPw(pw), createdAt: serverTimestamp() });
+      await setDoc(ref, {
+        name:id, coins:0, xp:0, totalEarned:0, tasksDone:0, tasksGrabbed:0,
+        achievements:[], pw: await hashPw(pw), createdAt: serverTimestamp()
+      });
     } else if(!s.data().pw){
-      // 舊資料沒密碼 → 第一次登入綁定
       if(!confirm(`「${id}」還沒設密碼，要綁定這組密碼嗎？`)){
-        $('loginBtn').disabled = false;
-        return;
+        $('loginBtn').disabled = false; return;
       }
       await updateDoc(ref, { pw: await hashPw(pw) });
     } else if(s.data().pw !== await hashPw(pw)){
-      $('loginBtn').disabled = false;
+      $('loginBtn').disabled = false; sfxError();
       return loginMsg('密碼錯誤 ❌');
     }
     me = id;
     localStorage.setItem('taskboard_me', id);
-    $('loginPw').value = '';
-    loginMsg('');
+    localUnlocked = null; lastLevel = null; lastCoins = null;
+    $('loginPw').value = ''; loginMsg('');
     $('pickOverlay').style.display = 'none';
     renderAll();
   } catch(e){
@@ -249,10 +712,8 @@ $('loginPw').addEventListener('keydown', e=>{ if(e.key==='Enter') $('loginBtn').
 
 $('switchBtn').onclick = ()=>{
   localStorage.removeItem('taskboard_me');
-  me = null;
-  $('idInput').value = '';
-  $('loginPw').value = '';
-  loginMsg('');
+  me = null; localUnlocked = null; lastLevel = null; lastCoins = null;
+  $('idInput').value = ''; $('loginPw').value = ''; loginMsg('');
   $('pickOverlay').style.display = 'flex';
 };
 
@@ -263,6 +724,18 @@ document.querySelectorAll('nav button').forEach(b=>{
     document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));
     b.classList.add('on');
     $('page-'+b.dataset.p).classList.add('on');
+    if(b.dataset.p === 'rank') renderRank();
+  };
+});
+
+/* ===== 排行榜排序切換 ===== */
+let rankMode = 'totalEarned';
+document.querySelectorAll('.rankTabs button').forEach(b=>{
+  b.onclick = ()=>{
+    document.querySelectorAll('.rankTabs button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    rankMode = b.dataset.r;
+    renderRank();
   };
 });
 
@@ -277,6 +750,7 @@ onSnapshot(collection(db,'players'), snap=>{
     $('pickOverlay').style.display = 'none';
   }
   renderAll();
+  checkAchievements();
 });
 
 onSnapshot(query(collection(db,'tasks'), orderBy('createdAt','desc')), snap=>{
@@ -295,6 +769,7 @@ onSnapshot(query(collection(db,'purchases'), orderBy('createdAt','desc')), snap=
   purchases = [];
   snap.forEach(d=> purchases.push({id:d.id, ...d.data()}));
   renderLog();
+  checkAchievements();
 });
 
 /* ===== 任務動作 ===== */
@@ -307,16 +782,18 @@ window.grabTask = async (id)=>{
       const t = s.data();
       if(t.status !== 'open' || t.claimedBy) throw new Error('慢了一步，被搶走了 😭');
       tx.update(ref, { status:'claimed', claimedBy: me });
+      tx.update(doc(db,'players',me), { tasksGrabbed: increment(1) });
     });
+    sfxGrab();
     toast('搶到了！🔥');
-  } catch(e){ toast(e.message); }
+  } catch(e){ sfxError(); toast(e.message); }
 };
 
 window.reportDone = async (id)=>{
   try {
     await updateDoc(doc(db,'tasks',id), { status:'pending', wasRejected:false, completedAt: serverTimestamp() });
     toast('已回報，等媽媽審核 ⏳');
-  } catch(e){ toast('回報失敗：'+e.message); }
+  } catch(e){ sfxError(); toast('回報失敗：'+e.message); }
 };
 
 /* ===== 購買 ===== */
@@ -337,13 +814,24 @@ window.buyItem = async (itemId)=>{
         status: 'pending', createdAt: serverTimestamp()
       });
     });
+    sfxBuy();
     toast('購買成功！找媽媽兌換 🎁');
-  } catch(e){ toast(e.message); }
+  } catch(e){ sfxError(); toast(e.message); }
 };
 
-/* ===== 畫面 ===== */
-function taskCard(t, btnHtml, badge=''){
-  return `<div class="card">
+/* ==================================================================
+   畫面
+================================================================== */
+const seen = {};
+function cardCls(container, id){
+  if(!seen[container]) seen[container] = new Set();
+  if(seen[container].has(id)) return 'card';
+  seen[container].add(id);
+  return 'card pop';
+}
+
+function taskCard(container, t, btnHtml, badge=''){
+  return `<div class="${cardCls(container,t.id)}">
     <div class="title">${esc(t.title)}${badge}</div>
     <div class="row">
       <div class="reward">🪙 ${t.reward}</div>
@@ -352,12 +840,42 @@ function taskCard(t, btnHtml, badge=''){
   </div>`;
 }
 
+let lastLevel = null;
+let lastCoins = null;
+
+function renderHeader(){
+  if(!me || !players[me]) return;
+  const p = players[me];
+  const name = p.name || me;
+  $('myName').textContent = name;
+  $('avatar').textContent = (name.trim()[0] || '🎮');
+
+  const xp = p.xp ?? 0;
+  const lv = levelFromXp(xp);
+  $('lvPill').textContent = 'Lv.' + lv;
+
+  const floor = xpThreshold(lv), ceil = xpThreshold(lv+1);
+  const pct = ceil > floor ? Math.min(100, Math.round((xp - floor)/(ceil - floor)*100)) : 100;
+  $('xpFill').style.width = pct + '%';
+  $('xpTxt').textContent = `${xp - floor} / ${ceil - floor}`;
+
+  if(lastLevel !== null && lv > lastLevel) showLevelUp(lv);
+  lastLevel = lv;
+
+  const coins = p.coins ?? 0;
+  if(lastCoins === null){
+    $('myCoins').textContent = coins;
+  } else if(coins !== lastCoins){
+    animateNumber($('myCoins'), lastCoins, coins);
+    if(coins > lastCoins){ flyCoins(4); if(!muted) sfxCoin(); }
+  }
+  lastCoins = coins;
+}
+
 function renderAll(){
   if(!me || !players[me]) return;
-  $('myName').textContent = players[me].name;
-  $('myCoins').textContent = players[me].coins ?? 0;
+  renderHeader();
 
-  // 我的任務：指派給我(open) 或 我搶到的(claimed)
   const mine = tasks.filter(t =>
     (t.status==='open' && t.assignee===me) ||
     (t.status==='claimed' && t.claimedBy===me)
@@ -365,27 +883,26 @@ function renderAll(){
   $('myTasks').innerHTML = mine.length ? mine.map(t=>{
     const badge = t.wasRejected ? '<span class="badge back">被退回，再做一次</span>'
                 : (t.status==='claimed' ? '<span class="badge mine">我搶到的</span>' : '');
-    return taskCard(t, `<button class="btn gold" onclick="reportDone('${t.id}')">完成回報</button>`, badge);
+    return taskCard('myTasks', t, `<button class="btn gold" onclick="reportDone('${t.id}')">完成回報</button>`, badge);
   }).join('') : '<div class="empty">目前沒有任務，爽 😎</div>';
 
-  // 開放搶的
   const open = tasks.filter(t => t.status==='open' && t.assignee==='all');
   $('openTasks').innerHTML = open.length ? open.map(t=>
-    taskCard(t, `<button class="btn blue" onclick="grabTask('${t.id}')">搶任務 ⚡</button>`)
+    taskCard('openTasks', t, `<button class="btn blue" onclick="grabTask('${t.id}')">搶任務 ⚡</button>`)
   ).join('') : '<div class="empty">沒有可以搶的</div>';
 
-  // 待審核（我的）
   const pending = tasks.filter(t => t.status==='pending' && (t.claimedBy===me || t.assignee===me));
   $('pendingTasks').innerHTML = pending.length ? pending.map(t=>
-    taskCard(t, '<span class="badge wait">審核中</span>')
+    taskCard('pendingTasks', t, '<span class="badge wait">審核中</span>')
   ).join('') : '<div class="empty">沒有等審核的</div>';
 
   renderLog();
+  if($('page-rank').classList.contains('on')) renderRank();
 }
 
 function renderShop(){
   $('shopList').innerHTML = shopItems.length ? shopItems.map(i=>`
-    <div class="card">
+    <div class="${cardCls('shop',i.id)}">
       <div class="title">${esc(i.name)}</div>
       ${i.desc ? `<div class="sub">${esc(i.desc)}</div>` : ''}
       <div class="row">
@@ -396,11 +913,50 @@ function renderShop(){
   `).join('') : '<div class="empty">商店還沒上架東西</div>';
 }
 
+function renderRank(){
+  const rows = Object.entries(players)
+    .map(([id,p])=>({ id, name:p.name||id, val:p[rankMode] ?? 0, lv:levelFromXp(p.xp ?? 0) }))
+    .sort((a,b)=> b.val - a.val);
+
+  $('rankList').innerHTML = rows.length ? rows.map((r,i)=>{
+    const cls = 'rankRow' + (i===0 ? ' first' : '') + (r.id===me ? ' me' : '');
+    const no = i===0 ? '👑' : (i+1);
+    return `<div class="${cls}">
+      <div class="rankNo">${no}</div>
+      <div class="rankAv">${esc(r.name.trim()[0]||'?')}</div>
+      <div class="rankInfo">
+        <div class="rankName">${esc(r.name)}${r.id===me?'<span class="meTag">我</span>':''}</div>
+        <div class="rankSubLv">Lv.${r.lv} · ${esc(titleFromLevel(r.lv))}</div>
+      </div>
+      <div class="rankVal">${r.val}</div>
+    </div>`;
+  }).join('') : '<div class="empty">還沒有人上榜</div>';
+}
+
+function renderAchWall(){
+  const got = localUnlocked || new Set();
+  $('achWall').innerHTML = ACHIEVEMENTS.map(a=>{
+    const has = got.has(a.id);
+    return `<div class="achCell ${has?'got':''}" onclick="showAch('${a.id}')">
+      <div class="aic">${has ? a.icon : '🔒'}</div>
+      <div class="aname">${has ? esc(a.name) : '???'}</div>
+    </div>`;
+  }).join('');
+}
+window.showAch = (id)=>{
+  const a = ACHIEVEMENTS.find(x=>x.id===id);
+  if(!a) return;
+  const has = (localUnlocked||new Set()).has(id);
+  toast(has ? `${a.icon} ${a.name}：${a.desc} ✅` : `🔒 解鎖條件：${a.desc}`);
+};
+
 function renderLog(){
   if(!me) return;
+  renderAchWall();
+
   const myBuys = purchases.filter(p=>p.playerId===me && p.status==='pending');
   $('pendingBuys').innerHTML = myBuys.length ? myBuys.map(p=>`
-    <div class="card">
+    <div class="${cardCls('pbuy',p.id)}">
       <div class="title">${esc(p.itemName)}<span class="badge redeem">待兌換</span></div>
       <div class="sub">🪙 ${p.price}</div>
     </div>
@@ -408,7 +964,7 @@ function renderLog(){
 
   const done = tasks.filter(t => t.status==='done' && (t.claimedBy===me || t.assignee===me)).slice(0,20);
   $('doneTasks').innerHTML = done.length ? done.map(t=>`
-    <div class="card">
+    <div class="${cardCls('done',t.id)}">
       <div class="title">${esc(t.title)}<span class="badge done">已入帳</span></div>
       <div class="sub">🪙 +${t.reward}</div>
     </div>
