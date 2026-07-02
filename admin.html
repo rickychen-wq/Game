@@ -204,14 +204,7 @@ $('pwBtn').onclick = unlock;
 $('pwInput').addEventListener('keydown', e=>{ if(e.key==='Enter') unlock(); });
 if(sessionStorage.getItem('admin_ok')==='1') $('lockOverlay').style.display='none';
 
-/* ===== 首次初始化兩個玩家 ===== */
-async function initPlayers(){
-  for(const [id, name] of [['p1','弟弟A'],['p2','弟弟B']]){
-    const s = await getDoc(doc(db,'players',id));
-    if(!s.exists()) await setDoc(doc(db,'players',id), { name, coins:0 });
-  }
-}
-initPlayers();
+/* 玩家由前台自行註冊（ID + 密碼），後台不預建 */
 
 /* ===== 即時監聽 ===== */
 onSnapshot(collection(db,'players'), snap=>{
@@ -407,18 +400,31 @@ window.adjustCoins = async (id)=>{
   await updateDoc(doc(db,'players',id), { coins: increment(n) });
   toast(n>0 ? `已加 ${n} 🪙` : `已扣 ${-n} 🪙`);
 };
+window.resetPw = async (id)=>{
+  if(!confirm(`要重設「${players[id]?.name}」的密碼嗎？\n他下次登入時輸入的密碼會變成新密碼。`)) return;
+  await updateDoc(doc(db,'players',id), { pw: null });
+  toast('已重設，下次登入重新綁定');
+};
+window.delPlayer = async (id)=>{
+  if(!confirm(`確定刪除帳號「${players[id]?.name}」？金幣會一起消失，不能復原！`)) return;
+  await deleteDoc(doc(db,'players',id));
+  toast('已刪除帳號');
+};
 
 function renderPlayers(){
-  $('playerList').innerHTML = Object.entries(players).map(([id,p])=>`
+  const list = Object.entries(players);
+  $('playerList').innerHTML = list.length ? list.map(([id,p])=>`
     <div class="card">
       <div class="title">${esc(p.name)}</div>
-      <div class="sub">持有 <span class="coin">🪙 ${p.coins ?? 0}</span></div>
+      <div class="sub">ID：${esc(id)}・持有 <span class="coin">🪙 ${p.coins ?? 0}</span></div>
       <div class="row">
-        <button class="btn gray" onclick="renamePlayer('${id}')">改名</button>
-        <button class="btn gray" onclick="adjustCoins('${id}')">調整金幣</button>
+        <button class="btn gray" onclick="renamePlayer('${esc(id)}')">改名</button>
+        <button class="btn gray" onclick="adjustCoins('${esc(id)}')">調整金幣</button>
+        <button class="btn gray" onclick="resetPw('${esc(id)}')">重設密碼</button>
+        <button class="btn no" onclick="delPlayer('${esc(id)}')">刪除</button>
       </div>
     </div>
-  `).join('');
+  `).join('') : '<div class="empty">還沒有人註冊。叫弟弟打開前台輸入 ID + 密碼註冊。</div>';
 }
 </script>
 </body>
