@@ -27,15 +27,16 @@
     --mono:'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
   }
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body{ overscroll-behavior-y:none; }
+  html,body{ height:100%; overscroll-behavior-y:none; }
   body {
     font-family:'Noto Sans TC', sans-serif;
     background:var(--bg);
     color:var(--text);
-    min-height:100vh;
-    padding-bottom:86px;
+    height:100dvh;
+    min-height:-webkit-fill-available;
+    overflow:hidden;
     position:relative;
-    overflow-x:hidden;
+    display:flex; flex-direction:column;
   }
   /* 網格 + 頂部金光暈（背景層） */
   body::after{
@@ -84,9 +85,8 @@
   header {
     padding:13px 14px 11px;
     display:flex; align-items:center; gap:12px;
-    position:sticky; top:0; z-index:10;
+    position:relative; flex-shrink:0;
     background:linear-gradient(180deg, #0a0b12 40%, rgba(7,8,13,.82));
-    backdrop-filter:blur(10px);
     border-bottom:1px solid var(--line);
   }
   header::after{
@@ -154,11 +154,18 @@
 
   /* ===== tabs ===== */
   nav {
-    position:fixed; bottom:0; left:0; right:0; z-index:20;
+    position:relative; flex-shrink:0;
     display:flex; gap:2px; padding:6px 8px calc(6px + env(safe-area-inset-bottom));
     background:linear-gradient(180deg, #090a11, #07080d);
     border-top:1px solid var(--line);
   }
+  .navBadge{
+    position:absolute; top:1px; right:calc(50% - 22px); min-width:16px; height:16px; padding:0 4px;
+    display:none; align-items:center; justify-content:center;
+    font-family:var(--mono); font-size:9.5px; font-weight:800; color:#fff;
+    background:var(--pink); border-radius:99px; box-shadow:0 0 10px rgba(255,107,129,.5);
+  }
+  .navBadge.show{ display:flex; }
   nav::before{
     content:''; position:absolute; left:0; right:0; top:-1px; height:1px;
     background:linear-gradient(90deg, transparent, rgba(233,196,106,.45), transparent);
@@ -177,7 +184,11 @@
   }
   nav button:active{ transform:scale(.94); }
 
-  main { padding:16px 16px 8px; }
+  main {
+    flex:1; min-height:0; overflow-y:auto;
+    -webkit-overflow-scrolling:touch; overscroll-behavior-y:contain;
+    padding:16px 16px 24px;
+  }
   .page { display:none; animation:pagein .32s ease; }
   .page.on { display:block; }
   @keyframes pagein{ from{ opacity:0; transform:translateY(8px);} }
@@ -282,7 +293,7 @@
 
   /* ===== toast ===== */
   #toast {
-    position:fixed; left:50%; bottom:104px; transform:translateX(-50%) translateY(10px);
+    position:fixed; left:50%; bottom:86px; transform:translateX(-50%) translateY(10px);
     background:linear-gradient(180deg,#141620,#0c0e15); color:var(--gold); font-weight:700; font-family:var(--mono); font-size:14px; letter-spacing:.5px;
     padding:12px 22px; border-radius:9px; z-index:200;
     border:1px solid rgba(233,196,106,.5);
@@ -386,10 +397,19 @@
     <div id="pendingTasks"></div>
   </div>
 
-  <!-- 商店頁 -->
+  <!-- 商店頁（依分類分組，h2 由 renderShop 動態產生） -->
   <div class="page" id="page-shop">
-    <h2>商店</h2>
     <div id="shopList"></div>
+  </div>
+
+  <!-- 背包頁 -->
+  <div class="page" id="page-bag">
+    <h2>可使用</h2>
+    <div id="ownedList"></div>
+    <h2>等媽媽核銷</h2>
+    <div id="pendingBuys"></div>
+    <h2>使用紀錄</h2>
+    <div id="usedList"></div>
   </div>
 
   <!-- 排行頁 -->
@@ -406,8 +426,6 @@
   <div class="page" id="page-log">
     <h2 id="achTitle">成就牆</h2>
     <div class="achGrid" id="achWall"></div>
-    <h2>待兌換（拿給媽媽核銷）</h2>
-    <div id="pendingBuys"></div>
     <h2>已完成的任務</h2>
     <div id="doneTasks"></div>
   </div>
@@ -416,6 +434,7 @@
 <nav>
   <button class="on" data-p="tasks"><span class="ic">📋</span>任務</button>
   <button data-p="shop"><span class="ic">🛒</span>商店</button>
+  <button data-p="bag"><span class="ic">🎒</span>背包<span class="navBadge" id="navBag">0</span></button>
   <button data-p="rank"><span class="ic">🏆</span>排行</button>
   <button data-p="log"><span class="ic">📜</span>紀錄</button>
 </nav>
@@ -727,6 +746,7 @@ document.querySelectorAll('nav button').forEach(b=>{
     b.classList.add('on');
     $('page-'+b.dataset.p).classList.add('on');
     if(b.dataset.p === 'rank') renderRank();
+    if(b.dataset.p === 'bag') renderBag();
   };
 });
 
@@ -771,6 +791,7 @@ onSnapshot(query(collection(db,'purchases'), orderBy('createdAt','desc')), snap=
   purchases = [];
   snap.forEach(d=> purchases.push({id:d.id, ...d.data()}));
   renderLog();
+  renderBag();
   checkAchievements();
 });
 
@@ -798,7 +819,7 @@ window.reportDone = async (id)=>{
   } catch(e){ sfxError(); toast('回報失敗：'+e.message); }
 };
 
-/* ===== 購買 ===== */
+/* ===== 購買（→ 進背包 owned） ===== */
 window.buyItem = async (itemId)=>{
   const item = shopItems.find(i=>i.id===itemId);
   if(!item) return;
@@ -813,11 +834,23 @@ window.buyItem = async (itemId)=>{
       const buyRef = doc(collection(db,'purchases'));
       tx.set(buyRef, {
         playerId: me, itemName: item.name, price: item.price,
-        status: 'pending', createdAt: serverTimestamp()
+        status: 'owned', createdAt: serverTimestamp()
       });
     });
     sfxBuy();
-    toast('購買成功！找媽媽兌換 🎁');
+    toast('已放進背包 🎒');
+  } catch(e){ sfxError(); toast(e.message); }
+};
+
+/* ===== 使用（背包 owned → 待核銷 pending） ===== */
+window.useItem = async (id)=>{
+  const p = purchases.find(x=>x.id===id);
+  if(!p) return;
+  if(!confirm(`要使用「${p.itemName}」嗎？\n使用後會通知媽媽核銷，不能收回喔`)) return;
+  try {
+    await updateDoc(doc(db,'purchases',id), { status:'pending', usedAt: serverTimestamp() });
+    sfxBuy();
+    toast('已送出，找媽媽核銷 🎁');
   } catch(e){ sfxError(); toast(e.message); }
 };
 
@@ -902,8 +935,27 @@ function renderAll(){
   if($('page-rank').classList.contains('on')) renderRank();
 }
 
+// 依分類分組：回傳 [[分類名, 商品陣列(價格低到高)], ...]，組間依組內最低價排序，「其他」永遠最後
+function groupByCategory(items){
+  const groups = {};
+  items.forEach(i=>{
+    const c = (i.category && i.category.trim()) || '其他';
+    (groups[c] || (groups[c] = [])).push(i);
+  });
+  Object.values(groups).forEach(arr => arr.sort((a,b)=> (a.price||0) - (b.price||0)));
+  return Object.entries(groups).sort((a,b)=>{
+    if(a[0]==='其他') return 1;
+    if(b[0]==='其他') return -1;
+    const minA = Math.min(...a[1].map(x=>x.price||0));
+    const minB = Math.min(...b[1].map(x=>x.price||0));
+    return minA - minB;
+  });
+}
+
 function renderShop(){
-  $('shopList').innerHTML = shopItems.length ? shopItems.map(i=>`
+  if(!shopItems.length){ $('shopList').innerHTML = '<div class="empty">商店還沒上架東西</div>'; return; }
+  $('shopList').innerHTML = groupByCategory(shopItems).map(([cat, items])=>
+    `<h2>${esc(cat)}</h2>` + items.map(i=>`
     <div class="${cardCls('shop',i.id)}">
       <div class="title">${esc(i.name)}</div>
       ${i.desc ? `<div class="sub">${esc(i.desc)}</div>` : ''}
@@ -911,8 +963,8 @@ function renderShop(){
         <div class="reward">🪙 ${i.price}</div>
         <button class="btn gold" onclick="buyItem('${i.id}')">購買</button>
       </div>
-    </div>
-  `).join('') : '<div class="empty">商店還沒上架東西</div>';
+    </div>`).join('')
+  ).join('');
 }
 
 function renderRank(){
@@ -957,14 +1009,6 @@ function renderLog(){
   if(!me) return;
   renderAchWall();
 
-  const myBuys = purchases.filter(p=>p.playerId===me && p.status==='pending');
-  $('pendingBuys').innerHTML = myBuys.length ? myBuys.map(p=>`
-    <div class="${cardCls('pbuy',p.id)}">
-      <div class="title">${esc(p.itemName)}<span class="badge redeem">待兌換</span></div>
-      <div class="sub">🪙 ${p.price}</div>
-    </div>
-  `).join('') : '<div class="empty">沒有待兌換的東西</div>';
-
   const done = tasks.filter(t => t.status==='done' && (t.claimedBy===me || t.assignee===me)).slice(0,20);
   $('doneTasks').innerHTML = done.length ? done.map(t=>`
     <div class="${cardCls('done',t.id)}">
@@ -972,6 +1016,42 @@ function renderLog(){
       <div class="sub">🪙 +${t.reward}</div>
     </div>
   `).join('') : '<div class="empty">還沒有完成紀錄</div>';
+}
+
+/* ===== 背包：可使用(owned) / 等媽媽核銷(pending) / 使用紀錄(redeemed) ===== */
+function renderBag(){
+  if(!me) return;
+  const owned = purchases.filter(p=>p.playerId===me && p.status==='owned');
+  const pend  = purchases.filter(p=>p.playerId===me && p.status==='pending');
+  const used  = purchases.filter(p=>p.playerId===me && p.status==='redeemed').slice(0,15);
+
+  $('ownedList').innerHTML = owned.length ? owned.map(p=>`
+    <div class="${cardCls('owned',p.id)}">
+      <div class="title">${esc(p.itemName)}</div>
+      <div class="row">
+        <div class="reward">🪙 ${p.price}</div>
+        <button class="btn gold" onclick="useItem('${p.id}')">使用</button>
+      </div>
+    </div>
+  `).join('') : '<div class="empty">背包是空的，去商店逛逛 🛒</div>';
+
+  $('pendingBuys').innerHTML = pend.length ? pend.map(p=>`
+    <div class="${cardCls('pbuy',p.id)}">
+      <div class="title">${esc(p.itemName)}<span class="badge redeem">待核銷</span></div>
+      <div class="sub">🪙 ${p.price}</div>
+    </div>
+  `).join('') : '<div class="empty">沒有等核銷的</div>';
+
+  $('usedList').innerHTML = used.length ? used.map(p=>`
+    <div class="${cardCls('used',p.id)}">
+      <div class="title">${esc(p.itemName)}<span class="badge done">已使用</span></div>
+      <div class="sub">🪙 ${p.price}</div>
+    </div>
+  `).join('') : '<div class="empty">還沒有使用紀錄</div>';
+
+  const b = $('navBag');
+  b.textContent = owned.length;
+  b.classList.toggle('show', owned.length > 0);
 }
 </script>
 </body>
