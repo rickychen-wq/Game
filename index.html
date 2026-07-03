@@ -243,6 +243,7 @@
   .badge.mine { background:rgba(95,240,220,.12); color:var(--cyan); border:1px solid rgba(95,240,220,.3); }
   .badge.done { background:rgba(95,240,220,.12); color:var(--cyan); border:1px solid rgba(95,240,220,.28); }
   .badge.redeem { background:rgba(233,196,106,.12); color:var(--gold); border:1px solid rgba(233,196,106,.25); }
+  .badge.streak { background:rgba(255,140,60,.16); color:#ff9d5c; border:1px solid rgba(255,140,60,.4); }
 
   .empty { font-family:var(--mono); text-align:center; color:var(--dim); font-size:13px; letter-spacing:1px; padding:26px 0; }
 
@@ -389,6 +390,8 @@
 <main>
   <!-- 任務頁 -->
   <div class="page on" id="page-tasks">
+    <h2>每日任務</h2>
+    <div id="dailyTasks"></div>
     <h2>我的任務</h2>
     <div id="myTasks"></div>
     <h2>開放搶的任務</h2>
@@ -483,6 +486,7 @@ let players = {};
 let tasks = [];
 let shopItems = [];
 let purchases = [];
+let dailyTemplates = [];
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -534,17 +538,21 @@ const ACHIEVEMENTS = [
   { id:'buy_10',      icon:'💸', name:'月光族',     desc:'購買 10 次',           check: s => s.buyCount >= 10 },
   { id:'hoard_1000',  icon:'🏦', name:'守財奴',     desc:'同時持有 1000 金幣',   check: s => s.coins >= 1000 },
   { id:'grab_king',   icon:'⚡', name:'手速之王',   desc:'搶到 10 個開放任務',   check: s => s.tasksGrabbed >= 10 },
+  { id:'streak_7',    icon:'🔥', name:'燃燒吧',     desc:'任一每日任務連續達成 7 天', check: s => s.maxStreak >= 7 },
 ];
 let localUnlocked = null;
 
 function myStats(){
   const p = players[me] || {};
+  const streaks = p.dailyStreaks || {};
+  const maxStreak = Object.values(streaks).reduce((m,s)=> Math.max(m, s?.count || 0), 0);
   return {
     tasksDone: p.tasksDone ?? 0,
     totalEarned: p.totalEarned ?? 0,
     coins: p.coins ?? 0,
     tasksGrabbed: p.tasksGrabbed ?? 0,
     buyCount: purchases.filter(x => x.playerId === me && x.status !== 'refunded').length,
+    maxStreak,
   };
 }
 
@@ -723,6 +731,7 @@ $('loginBtn').onclick = async ()=>{
     $('loginPw').value = ''; loginMsg('');
     $('pickOverlay').style.display = 'none';
     renderAll();
+    scheduleEnsureDaily();
   } catch(e){
     loginMsg('出錯了：'+e.message);
   }
@@ -761,6 +770,51 @@ document.querySelectorAll('.rankTabs button').forEach(b=>{
   };
 });
 
+/* ==================================================================
+   每日任務：懶重置
+================================================================== */
+// 一律用台灣日期，不要用裝置本地日期拼字串
+function todayKey(){
+  return new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Taipei' });
+}
+// dateKey 的前一天（轉 Date 減一天再轉回，避免手拆字串）
+function prevKey(dateKey){
+  return new Date(new Date(dateKey).getTime() - 86400000).toISOString().slice(0,10);
+}
+
+// 只為自己(me)生成當日每日任務 + 過期處理
+async function ensureDailyTasks(){
+  if(!me) return;
+  const today = todayKey();
+  for(const tpl of dailyTemplates){
+    if(!tpl.active) continue;
+    const id = `daily_${tpl.id}_${me}_${today}`;
+    if(tasks.some(t => t.id === id)) continue;
+    try {
+      await setDoc(doc(db,'tasks',id), {
+        isDaily:true, templateId:tpl.id, dateKey:today,
+        title:tpl.title, reward:tpl.reward, note:tpl.note || '',
+        assignee:me, status:'open', claimedBy:null, wasRejected:false,
+        createdAt: serverTimestamp()
+      });
+    } catch(e){}
+  }
+  // 過期：自己的、昨天以前、還 open 的每日任務（pending 不動，留給媽媽補審）
+  for(const t of tasks){
+    if(t.isDaily && t.assignee===me && t.status==='open' && t.dateKey < today){
+      updateDoc(doc(db,'tasks',t.id), { status:'expired' }).catch(()=>{});
+    }
+  }
+}
+let dailyTimer = null;
+function scheduleEnsureDaily(){ clearTimeout(dailyTimer); dailyTimer = setTimeout(ensureDailyTasks, 400); }
+// 跨午夜還開著 app：每 60 秒檢查日期是否變了
+let lastDayKey = todayKey();
+setInterval(()=>{
+  const k = todayKey();
+  if(k !== lastDayKey){ lastDayKey = k; scheduleEnsureDaily(); }
+}, 60000);
+
 /* ===== 即時監聽 ===== */
 onSnapshot(collection(db,'players'), snap=>{
   players = {};
@@ -779,6 +833,13 @@ onSnapshot(query(collection(db,'tasks'), orderBy('createdAt','desc')), snap=>{
   tasks = [];
   snap.forEach(d=> tasks.push({id:d.id, ...d.data()}));
   renderAll();
+  scheduleEnsureDaily();
+});
+
+onSnapshot(collection(db,'dailyTemplates'), snap=>{
+  dailyTemplates = [];
+  snap.forEach(d=> dailyTemplates.push({id:d.id, ...d.data()}));
+  scheduleEnsureDaily();
 });
 
 onSnapshot(collection(db,'shop'), snap=>{
@@ -910,29 +971,54 @@ function renderHeader(){
 function renderAll(){
   if(!me || !players[me]) return;
   renderHeader();
+  renderDaily();
 
-  const mine = tasks.filter(t =>
+  const mine = tasks.filter(t => !t.isDaily && (
     (t.status==='open' && t.assignee===me) ||
     (t.status==='claimed' && t.claimedBy===me)
-  );
+  ));
   $('myTasks').innerHTML = mine.length ? mine.map(t=>{
     const badge = t.wasRejected ? '<span class="badge back">被退回，再做一次</span>'
                 : (t.status==='claimed' ? '<span class="badge mine">我搶到的</span>' : '');
     return taskCard('myTasks', t, `<button class="btn gold" onclick="reportDone('${t.id}')">完成回報</button>`, badge);
   }).join('') : '<div class="empty">目前沒有任務，爽 😎</div>';
 
-  const open = tasks.filter(t => t.status==='open' && t.assignee==='all');
+  const open = tasks.filter(t => !t.isDaily && t.status==='open' && t.assignee==='all');
   $('openTasks').innerHTML = open.length ? open.map(t=>
     taskCard('openTasks', t, `<button class="btn blue" onclick="grabTask('${t.id}')">搶任務 ⚡</button>`)
   ).join('') : '<div class="empty">沒有可以搶的</div>';
 
-  const pending = tasks.filter(t => t.status==='pending' && (t.claimedBy===me || t.assignee===me));
+  const pending = tasks.filter(t => !t.isDaily && t.status==='pending' && (t.claimedBy===me || t.assignee===me));
   $('pendingTasks').innerHTML = pending.length ? pending.map(t=>
     taskCard('pendingTasks', t, '<span class="badge wait">審核中</span>')
   ).join('') : '<div class="empty">沒有等審核的</div>';
 
   renderLog();
   if($('page-rank').classList.contains('on')) renderRank();
+}
+
+/* ===== 每日任務區塊（只顯示自己當天的） ===== */
+function renderDaily(){
+  if(!me || !players[me]) return;
+  const today = todayKey();
+  const streaks = players[me].dailyStreaks || {};
+  const list = tasks.filter(t => t.isDaily && t.assignee===me && t.dateKey===today && t.status!=='expired');
+  $('dailyTasks').innerHTML = list.length ? list.map(t=>{
+    const sc = streaks[t.templateId]?.count || 0;
+    const fire = sc > 0 ? `<span class="badge streak">🔥x${sc}</span>` : '';
+    let ctrl = '', badge = '';
+    if(t.status==='open')        ctrl = `<button class="btn gold" onclick="reportDone('${t.id}')">完成回報</button>`;
+    else if(t.status==='pending') badge = '<span class="badge wait">審核中</span>';
+    else if(t.status==='done')    badge = '<span class="badge done">已完成 ✅</span>';
+    return `<div class="${cardCls('daily',t.id)}">
+      <div class="title">${esc(t.title)}${fire}${badge}</div>
+      ${t.note ? `<div class="sub">${esc(t.note)}</div>` : ''}
+      <div class="row">
+        <div class="reward">🪙 ${t.reward}</div>
+        ${ctrl}
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty">今天沒有每日任務</div>';
 }
 
 // 依分類分組：回傳 [[分類名, 商品陣列(價格低到高)], ...]，組間依組內最低價排序，「其他」永遠最後
@@ -1012,7 +1098,7 @@ function renderLog(){
   const done = tasks.filter(t => t.status==='done' && (t.claimedBy===me || t.assignee===me)).slice(0,20);
   $('doneTasks').innerHTML = done.length ? done.map(t=>`
     <div class="${cardCls('done',t.id)}">
-      <div class="title">${esc(t.title)}<span class="badge done">已入帳</span></div>
+      <div class="title">${t.isDaily?'📅 ':''}${esc(t.title)}<span class="badge done">已入帳</span></div>
       <div class="sub">🪙 +${t.reward}</div>
     </div>
   `).join('') : '<div class="empty">還沒有完成紀錄</div>';
@@ -1054,12 +1140,5 @@ function renderBag(){
   b.classList.toggle('show', owned.length > 0);
 }
 </script>
-
-
-
-
-
-
-  
 </body>
 </html>
