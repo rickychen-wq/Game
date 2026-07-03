@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>任務板</title>
+<title>任務板・管理後台</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -38,7 +38,6 @@
     position:relative;
     display:flex; flex-direction:column;
   }
-  /* 網格 + 頂部金光暈（背景層） */
   body::after{
     content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
     background:
@@ -46,126 +45,145 @@
       linear-gradient(rgba(233,196,106,.030) 1px, transparent 1px) 0 0/100% 36px,
       linear-gradient(90deg, rgba(233,196,106,.030) 1px, transparent 1px) 0 0/36px 100%;
   }
-  /* CRT 掃描線（最上層薄薄一片，不擋點擊） */
   body::before{
     content:''; position:fixed; inset:0; z-index:9999; pointer-events:none;
     background:repeating-linear-gradient(0deg, rgba(0,0,0,0) 0 2px, rgba(0,0,0,.16) 2px 4px);
-    opacity:.55; animation:flick 7s steps(40) infinite;
+    opacity:.5; animation:flick 7s steps(40) infinite;
   }
-  @keyframes flick{ 0%,97%,100%{opacity:.55;} 98%{opacity:.42;} 99%{opacity:.6;} }
+  @keyframes flick{ 0%,97%,100%{opacity:.5;} 98%{opacity:.4;} 99%{opacity:.58;} }
 
-  main, header, nav, #pickOverlay { position:relative; z-index:1; }
+  main, header, nav { position:relative; z-index:1; }
 
-  /* ===== 登入遮罩 ===== */
-  #pickOverlay {
+  /* ===== 密碼遮罩 ===== */
+  #lockOverlay {
     position:fixed; inset:0; background:var(--bg); z-index:100;
-    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:24px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:24px;
   }
-  #pickOverlay .logo{ font-size:50px; filter:drop-shadow(0 4px 20px rgba(233,196,106,.4)); animation:bob 3s ease-in-out infinite; }
-  @keyframes bob{ 50%{ transform:translateY(-8px);} }
-  #pickOverlay h1 { font-family:var(--mono); font-size:26px; font-weight:800; letter-spacing:6px; color:var(--gold); }
-  #pickOverlay .sub{ font-family:var(--mono); color:var(--muted); font-size:12px; letter-spacing:2px; margin-top:-10px; }
-  .loginInput {
-    width:min(300px,82vw); padding:15px 18px; border-radius:10px;
-    border:1px solid var(--line); background:#0c0e15; color:var(--text);
-    font-size:16px; font-family:var(--mono); text-align:center; letter-spacing:1px;
+  #lockOverlay .lockIcon{ font-size:46px; filter:drop-shadow(0 4px 18px rgba(233,196,106,.35)); }
+  #lockOverlay h1 { font-family:var(--mono); font-size:22px; font-weight:800; letter-spacing:5px; color:var(--gold); }
+  #lockOverlay .hint{ font-family:var(--mono); color:var(--muted); font-size:12px; letter-spacing:2px; margin-top:-8px; }
+  #pwInput {
+    font-family:var(--mono); font-size:18px; letter-spacing:3px; padding:13px 16px; border-radius:10px;
+    border:1px solid var(--line); width:min(280px,82vw); text-align:center; background:#0c0e15; color:var(--text);
     transition:border-color .2s, box-shadow .2s;
   }
-  .loginInput:focus { outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(233,196,106,.12), 0 0 20px rgba(233,196,106,.1); }
-  .pickBtn {
-    width:min(300px,82vw); padding:15px; border:none; border-radius:10px;
-    background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206;
-    font-size:16px; font-weight:800; font-family:var(--mono); letter-spacing:3px; cursor:pointer;
-    box-shadow:0 0 0 1px rgba(233,196,106,.4), 0 8px 24px rgba(233,196,106,.18); transition:transform .12s, box-shadow .12s;
+  #pwInput:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(233,196,106,.12), 0 0 20px rgba(233,196,106,.1); }
+  #pwBtn {
+    width:min(280px,82vw); padding:13px; border:none; border-radius:10px;
+    background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206; font-size:16px; font-weight:800;
+    font-family:var(--mono); letter-spacing:3px; cursor:pointer;
+    box-shadow:0 0 0 1px rgba(233,196,106,.4), 0 8px 24px rgba(233,196,106,.18); transition:transform .12s;
   }
-  .pickBtn:active { transform:translateY(2px) scale(.98); }
-  #loginMsg{ color:var(--pink); font-size:13px; font-weight:700; font-family:var(--mono); min-height:20px; }
+  #pwBtn:active{ transform:translateY(2px) scale(.98); }
 
-  /* ===== header：HUD 狀態列 ===== */
+  /* ===== header ===== */
   header {
-    padding:13px 14px 11px;
-    display:flex; align-items:center; gap:12px;
-    position:relative; flex-shrink:0;
+    padding:14px 16px 12px; position:relative; flex-shrink:0;
     background:linear-gradient(180deg, #0a0b12 40%, rgba(7,8,13,.82));
     border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:10px;
   }
   header::after{
     content:''; position:absolute; left:0; right:0; bottom:-1px; height:1px;
     background:linear-gradient(90deg, transparent, rgba(233,196,106,.5), transparent);
   }
-  .avatar{
-    width:46px; height:46px; border-radius:10px; flex-shrink:0;
-    display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; font-family:var(--mono);
-    color:var(--gold);
-    background:linear-gradient(145deg,#14161f,#0c0e15);
-    border:1px solid rgba(233,196,106,.5);
-    box-shadow:inset 0 0 14px rgba(233,196,106,.14), 0 4px 14px rgba(0,0,0,.5);
-  }
-  .idblock{ flex:1; min-width:0; }
-  .nameRow{ display:flex; align-items:center; gap:8px; }
-  #myName{ font-size:16px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:118px; }
-  .lvPill{
-    flex-shrink:0; font-family:var(--mono); font-size:11px; font-weight:800; letter-spacing:.5px;
-    padding:3px 9px; border-radius:5px; color:#1a1206;
-    background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep));
-    box-shadow:0 0 12px rgba(233,196,106,.3);
-  }
-  #switchBtn{
-    flex-shrink:0; background:none; border:1px solid var(--line); color:var(--muted);
-    border-radius:6px; padding:2px 8px; font-size:11px; font-family:var(--mono); cursor:pointer;
-  }
-  .xpWrap{ display:flex; align-items:center; gap:8px; margin-top:7px; }
-  .xpBar{ flex:1; height:8px; border-radius:3px; background:#12141d; overflow:hidden; position:relative;
-    border:1px solid var(--line-soft); }
-  .xpFill{
-    height:100%; width:0%;
-    background:linear-gradient(90deg,var(--gold-deep),var(--gold-hi));
-    box-shadow:0 0 10px rgba(233,196,106,.55);
-    transition:width .6s cubic-bezier(.22,1,.36,1); position:relative;
-  }
-  .xpFill::after{
-    content:''; position:absolute; inset:0;
-    background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);
-    transform:translateX(-100%); animation:shine 2.6s ease-in-out infinite;
-  }
-  @keyframes shine{ 55%,100%{ transform:translateX(240%);} }
-  /* 分段格線疊在條上 */
-  .xpBar::after{
-    content:''; position:absolute; inset:0; pointer-events:none;
-    background:repeating-linear-gradient(90deg, transparent 0 11px, rgba(7,8,13,.85) 11px 12px);
-  }
-  .xpTxt{ font-family:var(--mono); font-size:10px; color:var(--muted); font-weight:700; flex-shrink:0; }
+  header .dot{ font-size:20px; }
+  header .htxt{ font-family:var(--mono); font-size:15px; font-weight:800; letter-spacing:1.5px; color:var(--gold); }
+  header .htag{ font-family:var(--mono); font-size:10px; letter-spacing:2px; color:var(--gold-dim); margin-left:auto; border:1px solid var(--line); padding:2px 8px; border-radius:5px; }
 
-  .hdr-right{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
-  #coinBox {
-    display:flex; align-items:center; gap:6px;
-    background:linear-gradient(145deg,#12141d,#0c0e15);
-    border:1px solid rgba(233,196,106,.5);
-    border-radius:9px; padding:7px 12px;
-    box-shadow:inset 0 0 12px rgba(233,196,106,.08), 0 3px 12px rgba(0,0,0,.4);
+  main {
+    flex:1; min-height:0; width:100%; max-width:640px; margin:0 auto;
+    overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior-y:contain;
+    padding:16px 16px 24px;
   }
-  #coinBox.pulse{ animation:coinpulse .5s ease; }
-  @keyframes coinpulse{ 30%{ transform:scale(1.14); box-shadow:inset 0 0 12px rgba(233,196,106,.2), 0 0 20px rgba(233,196,106,.4);} }
-  #coinBox .amt { font-family:var(--mono); font-size:18px; font-weight:800; color:var(--gold); font-variant-numeric:tabular-nums; }
-  .iconBtn{
-    background:none; border:1px solid var(--line); color:var(--muted);
-    border-radius:6px; padding:3px 8px; font-size:13px; font-family:inherit; cursor:pointer; line-height:1;
-  }
+  .page{ display:none; animation:pagein .3s ease; }
+  .page.on{ display:block; }
+  @keyframes pagein{ from{ opacity:0; transform:translateY(8px);} }
 
-  /* ===== tabs ===== */
+  section {
+    position:relative;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
+    border-radius:12px; padding:18px; margin-bottom:16px; border:1px solid var(--line);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.03), 0 6px 20px rgba(0,0,0,.45);
+  }
+  section::before, section::after{
+    content:''; position:absolute; width:12px; height:12px; pointer-events:none;
+    border:1.5px solid rgba(233,196,106,.5);
+  }
+  section::before{ top:-1px; left:-1px; border-right:0; border-bottom:0; border-top-left-radius:12px; }
+  section::after{ bottom:-1px; right:-1px; border-left:0; border-top:0; border-bottom-right-radius:12px; }
+  section h2 {
+    font-family:var(--mono); font-size:12px; font-weight:700; margin-bottom:14px; color:var(--gold);
+    display:flex; align-items:center; gap:8px; letter-spacing:1.5px;
+    padding-bottom:11px; border-bottom:1px dashed var(--line);
+  }
+  section h2::before{ content:'▍'; color:var(--gold); }
+  .count{ margin-left:auto; font-family:var(--mono); font-size:11px; font-weight:800; color:#1a1206;
+    background:var(--gold); border-radius:99px; padding:2px 9px; min-width:22px; text-align:center; }
+  .count.zero{ background:#2a2c38; color:var(--dim); }
+
+  .card {
+    position:relative; border:1px solid var(--line-soft); border-radius:10px;
+    padding:14px; margin-bottom:11px; background:linear-gradient(160deg,#12141d,#0c0e15);
+  }
+  .card .title { font-size:15.5px; font-weight:900; line-height:1.4; letter-spacing:.2px; }
+  .card .sub { font-family:var(--mono); font-size:12px; color:var(--muted); margin-top:4px; letter-spacing:.3px; }
+  .card .row { display:flex; gap:8px; margin-top:13px; flex-wrap:wrap; }
+
+  .btn {
+    border:none; border-radius:8px; padding:10px 16px;
+    font-size:14px; font-weight:800; font-family:var(--mono); letter-spacing:.8px; cursor:pointer;
+    transition:transform .12s, box-shadow .12s;
+  }
+  .btn:active { transform:translateY(2px) scale(.97); }
+  .btn.ok { background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206;
+    box-shadow:0 0 0 1px rgba(233,196,106,.4), 0 6px 16px rgba(233,196,106,.16); }
+  .btn.no { background:rgba(255,107,129,.12); color:var(--pink); border:1px solid rgba(255,107,129,.35); }
+  .btn.gray { background:#181a24; color:var(--muted); border:1px solid var(--line-soft); }
+
+  input, select {
+    font-family:var(--mono); font-size:14px; letter-spacing:.3px;
+    padding:12px 13px; border-radius:9px; border:1px solid var(--line);
+    background:#0c0e15; color:var(--text); width:100%; margin-bottom:10px;
+    transition:border-color .2s, box-shadow .2s;
+  }
+  input::placeholder{ color:var(--dim); }
+  input:focus, select:focus { outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(233,196,106,.1); }
+  select option{ background:#0c0e15; }
+
+  .formRow { display:flex; gap:10px; }
+  .formRow > * { flex:1; }
+
+  .empty { font-family:var(--mono); color:var(--dim); font-size:13px; text-align:center; padding:16px 0; letter-spacing:1px; }
+
+  .pill {
+    display:inline-block; font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:.4px;
+    padding:2px 9px; border-radius:5px; margin-left:6px; vertical-align:1px;
+  }
+  .pill.a { background:rgba(233,196,106,.12); color:var(--gold); border:1px solid rgba(233,196,106,.25); }
+  .pill.grab { background:rgba(233,196,106,.08); color:var(--gold-dim); border:1px solid rgba(233,196,106,.2); }
+  .pill.claimed { background:rgba(95,240,220,.12); color:var(--cyan); border:1px solid rgba(95,240,220,.3); }
+
+  .coin { color:var(--gold); font-weight:800; font-family:var(--mono); }
+
+  /* 玩家卡 */
+  .pHead{ display:flex; align-items:center; gap:10px; }
+  .pAv{ width:38px; height:38px; border-radius:9px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:16px; font-weight:800; color:var(--gold);
+    background:linear-gradient(145deg,#14161f,#0c0e15); border:1px solid var(--line); }
+  .pLv{ font-family:var(--mono); font-size:11px; font-weight:800; letter-spacing:.5px; color:#1a1206;
+    background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); border-radius:5px; padding:2px 8px;
+    box-shadow:0 0 10px rgba(233,196,106,.25); }
+  .pStats{ display:flex; gap:16px; margin-top:10px; flex-wrap:wrap; }
+  .pStat{ font-family:var(--mono); font-size:12px; color:var(--muted); font-weight:600; }
+  .pStat b{ color:var(--text); font-weight:800; }
+
+  /* ===== 底部分頁 nav ===== */
   nav {
     position:relative; flex-shrink:0;
     display:flex; gap:2px; padding:6px 8px calc(6px + env(safe-area-inset-bottom));
-    background:linear-gradient(180deg, #090a11, #07080d);
-    border-top:1px solid var(--line);
+    background:linear-gradient(180deg, #090a11, #07080d); border-top:1px solid var(--line);
   }
-  .navBadge{
-    position:absolute; top:1px; right:calc(50% - 22px); min-width:16px; height:16px; padding:0 4px;
-    display:none; align-items:center; justify-content:center;
-    font-family:var(--mono); font-size:9.5px; font-weight:800; color:#fff;
-    background:var(--pink); border-radius:99px; box-shadow:0 0 10px rgba(255,107,129,.5);
-  }
-  .navBadge.show{ display:flex; }
   nav::before{
     content:''; position:absolute; left:0; right:0; top:-1px; height:1px;
     background:linear-gradient(90deg, transparent, rgba(233,196,106,.45), transparent);
@@ -183,171 +201,23 @@
     width:22px; height:2px; border-radius:2px; background:var(--gold); box-shadow:0 0 8px var(--gold);
   }
   nav button:active{ transform:scale(.94); }
-
-  main {
-    flex:1; min-height:0; overflow-y:auto;
-    -webkit-overflow-scrolling:touch; overscroll-behavior-y:contain;
-    padding:16px 16px 24px;
+  /* 審核紅點 */
+  .navBadge{
+    position:absolute; top:2px; right:calc(50% - 26px); min-width:17px; height:17px; padding:0 4px;
+    display:none; align-items:center; justify-content:center;
+    font-family:var(--mono); font-size:10px; font-weight:800; color:#fff;
+    background:var(--pink); border-radius:99px; box-shadow:0 0 10px rgba(255,107,129,.5);
   }
-  .page { display:none; animation:pagein .32s ease; }
-  .page.on { display:block; }
-  @keyframes pagein{ from{ opacity:0; transform:translateY(8px);} }
+  .navBadge.show{ display:flex; }
 
-  h2 {
-    font-family:var(--mono); font-size:11px; color:var(--gold-dim); font-weight:700;
-    margin:22px 2px 11px; letter-spacing:2px; display:flex; align-items:center; gap:8px;
-  }
-  h2::before{ content:'▍'; color:var(--gold); font-size:13px; }
-  h2:first-child { margin-top:2px; }
-
-  .card {
-    position:relative;
-    background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
-    border-radius:10px; padding:15px 16px; margin-bottom:11px;
-    border:1px solid var(--line);
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.03), 0 6px 20px rgba(0,0,0,.45);
-  }
-  /* HUD 角標 */
-  .card::before, .card::after{
-    content:''; position:absolute; width:11px; height:11px; pointer-events:none;
-    border:1.5px solid rgba(233,196,106,.55);
-  }
-  .card::before{ top:-1px; left:-1px; border-right:0; border-bottom:0; border-top-left-radius:10px; }
-  .card::after{ bottom:-1px; right:-1px; border-left:0; border-top:0; border-bottom-right-radius:10px; }
-  .card.pop{ animation:pop .42s cubic-bezier(.34,1.56,.64,1) both; }
-  @keyframes pop{ from{ opacity:0; transform:scale(.92) translateY(10px);} }
-  .card .title { font-size:15.5px; font-weight:900; margin-bottom:2px; line-height:1.4; letter-spacing:.2px; }
-  .card .sub { font-family:var(--mono); font-size:12px; color:var(--muted); letter-spacing:.3px; }
-  .card .row { display:flex; align-items:center; justify-content:space-between; margin-top:14px; }
-  .reward { font-family:var(--mono); font-size:15px; font-weight:800; color:var(--gold); letter-spacing:.5px;
-    display:inline-flex; align-items:center; gap:5px; }
-
-  .btn {
-    border:none; border-radius:8px; padding:10px 18px;
-    font-size:14px; font-weight:800; font-family:var(--mono); letter-spacing:1px; cursor:pointer;
-    transition:transform .12s, box-shadow .12s, opacity .2s;
-  }
-  .btn:active { transform:translateY(2px) scale(.97); }
-  .btn.gold { background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206;
-    box-shadow:0 0 0 1px rgba(233,196,106,.4), 0 6px 16px rgba(233,196,106,.18); }
-  .btn.blue { background:linear-gradient(180deg,#1a413d,var(--cyan-deep)); color:var(--cyan);
-    border:1px solid rgba(95,240,220,.45); box-shadow:0 0 14px rgba(95,240,220,.16); }
-  .btn:disabled { opacity:.35; box-shadow:none; }
-
-  .badge {
-    display:inline-block; font-family:var(--mono); font-size:10.5px; font-weight:700; letter-spacing:.5px;
-    padding:3px 9px; border-radius:5px; margin-left:8px; vertical-align:2px;
-  }
-  .badge.wait { background:rgba(233,196,106,.12); color:var(--gold); border:1px solid rgba(233,196,106,.25); }
-  .badge.back { background:rgba(255,107,129,.13); color:var(--pink); border:1px solid rgba(255,107,129,.3); }
-  .badge.mine { background:rgba(95,240,220,.12); color:var(--cyan); border:1px solid rgba(95,240,220,.3); }
-  .badge.done { background:rgba(95,240,220,.12); color:var(--cyan); border:1px solid rgba(95,240,220,.28); }
-  .badge.redeem { background:rgba(233,196,106,.12); color:var(--gold); border:1px solid rgba(233,196,106,.25); }
-
-  .empty { font-family:var(--mono); text-align:center; color:var(--dim); font-size:13px; letter-spacing:1px; padding:26px 0; }
-
-  /* ===== 排行榜 ===== */
-  .rankTabs{ display:flex; gap:7px; margin:2px 0 16px; }
-  .rankTabs button{
-    flex:1; padding:9px 0; border:1px solid var(--line); border-radius:8px;
-    background:#0d0f17; color:var(--muted); font-size:12px; font-weight:700; font-family:var(--mono); letter-spacing:.5px;
-    cursor:pointer; transition:.2s;
-  }
-  .rankTabs button.on{ background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206; border-color:transparent;
-    box-shadow:0 0 16px rgba(233,196,106,.22); }
-  .rankRow{
-    display:flex; align-items:center; gap:12px; padding:12px 14px; margin-bottom:9px;
-    background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
-    border-radius:8px; border:1px solid var(--line); box-shadow:0 5px 16px rgba(0,0,0,.4);
-  }
-  .rankRow.first{ border-color:rgba(233,196,106,.6);
-    box-shadow:0 0 24px rgba(233,196,106,.16), inset 0 0 20px rgba(233,196,106,.05);
-    background:linear-gradient(160deg,#181523,#0f0c17); }
-  .rankRow.me{ border-color:rgba(95,240,220,.6); box-shadow:0 0 18px rgba(95,240,220,.14); }
-  .rankNo{ width:30px; text-align:center; font-family:var(--mono); font-size:16px; font-weight:800; color:var(--gold-dim); flex-shrink:0; }
-  .rankRow.first .rankNo{ font-size:22px; }
-  .rankAv{ width:38px; height:38px; border-radius:9px; flex-shrink:0;
-    display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:16px; font-weight:800; color:var(--gold);
-    background:linear-gradient(145deg,#14161f,#0c0e15); border:1px solid var(--line); }
-  .rankInfo{ flex:1; min-width:0; }
-  .rankName{ font-size:15px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .rankSubLv{ font-family:var(--mono); font-size:10.5px; color:var(--muted); font-weight:700; letter-spacing:.5px; }
-  .meTag{ font-family:var(--mono); font-size:10px; font-weight:800; color:var(--cyan); background:rgba(95,240,220,.12);
-    border:1px solid rgba(95,240,220,.3); padding:1px 6px; border-radius:4px; margin-left:6px; }
-  .rankVal{ font-family:var(--mono); font-size:18px; font-weight:800; color:var(--gold); flex-shrink:0; font-variant-numeric:tabular-nums; }
-
-  /* ===== 成就牆 ===== */
-  .achGrid{ display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin:2px 0 4px; }
-  .achCell{
-    aspect-ratio:1; border-radius:9px; cursor:pointer;
-    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
-    background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
-    border:1px solid var(--line-soft); position:relative; transition:transform .12s;
-  }
-  .achCell:active{ transform:scale(.92); }
-  .achCell .aic{ font-size:22px; filter:grayscale(1) opacity(.3); }
-  .achCell.got{ border-color:rgba(233,196,106,.5); box-shadow:0 0 14px rgba(233,196,106,.12), inset 0 0 12px rgba(233,196,106,.05); }
-  .achCell.got .aic{ filter:drop-shadow(0 0 6px rgba(233,196,106,.5)); }
-  .achCell .aname{ font-family:var(--mono); font-size:8px; font-weight:700; color:var(--dim); text-align:center; line-height:1.1; padding:0 2px; letter-spacing:.3px; }
-  .achCell.got .aname{ color:var(--gold); }
-
-  /* ===== toast ===== */
   #toast {
-    position:fixed; left:50%; bottom:86px; transform:translateX(-50%) translateY(10px);
+    position:fixed; left:50%; bottom:84px; transform:translateX(-50%) translateY(8px);
     background:linear-gradient(180deg,#141620,#0c0e15); color:var(--gold); font-weight:700; font-family:var(--mono); font-size:14px; letter-spacing:.5px;
-    padding:12px 22px; border-radius:9px; z-index:200;
-    border:1px solid rgba(233,196,106,.5);
+    padding:12px 22px; border-radius:9px; z-index:200; border:1px solid rgba(233,196,106,.5);
     opacity:0; pointer-events:none; transition:opacity .25s, transform .25s;
-    max-width:85vw; text-align:center; box-shadow:0 0 26px rgba(233,196,106,.14), 0 8px 24px rgba(0,0,0,.6);
+    box-shadow:0 0 26px rgba(233,196,106,.14), 0 8px 24px rgba(0,0,0,.6); max-width:85vw; text-align:center;
   }
   #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
-
-  /* ===== 飛幣 ===== */
-  .flycoin{ position:fixed; z-index:250; font-size:24px; pointer-events:none;
-    filter:drop-shadow(0 2px 8px rgba(233,196,106,.7)); will-change:transform,opacity; }
-
-  /* ===== LEVEL UP ===== */
-  #levelup{
-    position:fixed; inset:0; z-index:400; display:none;
-    align-items:center; justify-content:center; flex-direction:column; gap:8px;
-    background:radial-gradient(circle at center, rgba(12,12,20,.9), rgba(3,3,6,.97));
-    overflow:hidden;
-  }
-  #levelup.show{ display:flex; animation:lufade .3s ease; }
-  @keyframes lufade{ from{ opacity:0; } }
-  #levelup .luLabel{ font-family:var(--mono); font-size:14px; font-weight:800; letter-spacing:10px; color:var(--gold); opacity:.9; padding-left:10px; }
-  #levelup .luBig{
-    font-family:var(--mono); font-size:62px; font-weight:800; color:transparent;
-    background:linear-gradient(180deg,#fff6d8,var(--gold) 55%,var(--gold-deep));
-    -webkit-background-clip:text; background-clip:text; letter-spacing:2px;
-    text-shadow:0 8px 44px rgba(233,196,106,.5);
-    animation:lupop .6s cubic-bezier(.34,1.56,.64,1) both;
-  }
-  @keyframes lupop{ 0%{ transform:scale(.3) rotate(-6deg); opacity:0;} 60%{ transform:scale(1.12);} 100%{ transform:scale(1); opacity:1;} }
-  #levelup .luTitle{ font-family:var(--mono); font-size:16px; font-weight:700; color:var(--text); letter-spacing:2px; }
-  .luRay{ position:absolute; width:200%; height:200%; z-index:-1;
-    background:conic-gradient(from 0deg, transparent 0 8deg, rgba(233,196,106,.12) 8deg 15deg, transparent 15deg 23deg,
-      rgba(95,240,220,.07) 23deg 30deg, transparent 30deg 38deg);
-    animation:rayspin 14s linear infinite; }
-  @keyframes rayspin{ to{ transform:rotate(360deg);} }
-
-  /* ===== 成就解鎖彈窗 ===== */
-  #achPop{
-    position:fixed; left:50%; top:22%; transform:translateX(-50%);
-    z-index:420; display:none; flex-direction:column; align-items:center; gap:8px;
-    padding:20px 26px; border-radius:14px; min-width:220px; max-width:80vw;
-    background:linear-gradient(160deg,#16161f,#0b0c13);
-    border:1px solid rgba(233,196,106,.55);
-    box-shadow:0 20px 50px rgba(0,0,0,.6), 0 0 44px rgba(233,196,106,.2);
-    text-align:center;
-  }
-  #achPop.show{ display:flex; animation:achslide .45s cubic-bezier(.34,1.56,.64,1) both; }
-  @keyframes achslide{ from{ opacity:0; transform:translateX(-50%) translateY(-30px);} }
-  #achPop .apLabel{ font-family:var(--mono); font-size:11px; font-weight:800; letter-spacing:3px; color:var(--gold); }
-  #achPop .apIcon{ font-size:46px; animation:achdrop .6s cubic-bezier(.34,1.7,.5,1) .05s both; filter:drop-shadow(0 0 10px rgba(233,196,106,.4)); }
-  @keyframes achdrop{ 0%{ transform:translateY(-40px) scale(.4); opacity:0;} 60%{ transform:translateY(6px) scale(1.15);} 100%{ transform:translateY(0) scale(1);} }
-  #achPop .apName{ font-size:18px; font-weight:900; color:#fff; }
-  #achPop .apDesc{ font-family:var(--mono); font-size:11.5px; color:var(--muted); font-weight:600; letter-spacing:.3px; }
 
   @media (prefers-reduced-motion: reduce){
     *{ animation-duration:.001s !important; transition-duration:.05s !important; }
@@ -357,114 +227,92 @@
 </head>
 <body>
 
-<div id="pickOverlay">
-  <div class="logo">🎮</div>
-  <h1>TASKBOARD</h1>
-  <div class="sub">做任務 · 賺金幣 · 換獎勵</div>
-  <input class="loginInput" id="idInput" placeholder="你的 ID" autocomplete="off">
-  <input class="loginInput" id="loginPw" type="password" placeholder="密碼">
-  <button class="pickBtn" id="loginBtn">進入</button>
-  <div id="loginMsg"></div>
+<div id="lockOverlay">
+  <div class="lockIcon">🔐</div>
+  <h1>ADMIN</h1>
+  <div class="hint">請輸入密碼</div>
+  <input type="password" id="pwInput" placeholder="輸入密碼">
+  <button id="pwBtn">進入</button>
 </div>
 
 <header>
-  <div class="avatar" id="avatar">🎮</div>
-  <div class="idblock">
-    <div class="nameRow">
-      <span id="myName">—</span>
-      <span class="lvPill" id="lvPill">Lv.1</span>
-      <button id="switchBtn">換人</button>
-    </div>
-    <div class="xpWrap">
-      <div class="xpBar"><div class="xpFill" id="xpFill"></div></div>
-      <span class="xpTxt" id="xpTxt">0 / 200</span>
-    </div>
-  </div>
-  <div class="hdr-right">
-    <button id="muteBtn" class="iconBtn">🔊</button>
-    <div id="coinBox">🪙 <span class="amt" id="myCoins">0</span></div>
-  </div>
+  <span class="dot">👩‍🏫</span>
+  <span class="htxt">TASKBOARD</span>
+  <span class="htag">ADMIN</span>
 </header>
 
 <main>
+  <!-- 審核頁 -->
+  <div class="page on" id="page-review">
+    <section>
+      <h2>待審核的任務回報 <span class="count zero" id="cReview">0</span></h2>
+      <div id="reviewList"></div>
+    </section>
+    <section>
+      <h2>待核銷（玩家已按使用） <span class="count zero" id="cBuy">0</span></h2>
+      <div id="buyReviewList"></div>
+    </section>
+  </div>
+
   <!-- 任務頁 -->
-  <div class="page on" id="page-tasks">
-    <h2>我的任務</h2>
-    <div id="myTasks"></div>
-    <h2>開放搶的任務</h2>
-    <div id="openTasks"></div>
-    <h2>等媽媽審核</h2>
-    <div id="pendingTasks"></div>
+  <div class="page" id="page-tasks">
+    <section>
+      <h2>發布新任務</h2>
+      <input id="tTitle" placeholder="任務內容（例：寫數學考卷一張）">
+      <div class="formRow">
+        <input id="tReward" type="number" min="1" placeholder="金幣獎勵">
+        <select id="tAssignee"></select>
+      </div>
+      <button class="btn ok" id="addTaskBtn" style="width:100%">發布任務</button>
+    </section>
+    <section>
+      <h2>進行中的任務 <span class="count zero" id="cTask">0</span></h2>
+      <div id="taskList"></div>
+    </section>
   </div>
 
-  <!-- 商店頁（依分類分組，h2 由 renderShop 動態產生） -->
+  <!-- 商店頁 -->
   <div class="page" id="page-shop">
-    <div id="shopList"></div>
+    <section>
+      <h2>商店管理 <span class="count zero" id="cShop">0</span></h2>
+      <input id="sName" placeholder="商品名稱（例：手機時間 30 分鐘）">
+      <input id="sCat" list="catList" placeholder="分類（選填，例：手機時間）">
+      <datalist id="catList"></datalist>
+      <div class="formRow">
+        <input id="sPrice" type="number" min="1" placeholder="價格（金幣）">
+        <input id="sDesc" placeholder="說明（選填）">
+      </div>
+      <button class="btn ok" id="addItemBtn" style="width:100%">上架商品</button>
+      <div id="shopList" style="margin-top:14px"></div>
+    </section>
   </div>
 
-  <!-- 背包頁 -->
-  <div class="page" id="page-bag">
-    <h2>可使用</h2>
-    <div id="ownedList"></div>
-    <h2>等媽媽核銷</h2>
-    <div id="pendingBuys"></div>
-    <h2>使用紀錄</h2>
-    <div id="usedList"></div>
-  </div>
-
-  <!-- 排行頁 -->
-  <div class="page" id="page-rank">
-    <div class="rankTabs">
-      <button class="on" data-r="totalEarned">累計賺到</button>
-      <button data-r="coins">目前金幣</button>
-      <button data-r="tasksDone">完成任務</button>
-    </div>
-    <div id="rankList"></div>
-  </div>
-
-  <!-- 紀錄頁 -->
-  <div class="page" id="page-log">
-    <h2 id="achTitle">成就牆</h2>
-    <div class="achGrid" id="achWall"></div>
-    <h2>已完成的任務</h2>
-    <div id="doneTasks"></div>
+  <!-- 玩家頁 -->
+  <div class="page" id="page-players">
+    <section>
+      <h2>玩家管理 <span class="count zero" id="cPlayer">0</span></h2>
+      <div id="playerList"></div>
+    </section>
   </div>
 </main>
 
 <nav>
-  <button class="on" data-p="tasks"><span class="ic">📋</span>任務</button>
+  <button class="on" data-p="review"><span class="ic">⏳</span>審核<span class="navBadge" id="navReview">0</span></button>
+  <button data-p="tasks"><span class="ic">📌</span>任務</button>
   <button data-p="shop"><span class="ic">🛒</span>商店</button>
-  <button data-p="bag"><span class="ic">🎒</span>背包<span class="navBadge" id="navBag">0</span></button>
-  <button data-p="rank"><span class="ic">🏆</span>排行</button>
-  <button data-p="log"><span class="ic">📜</span>紀錄</button>
+  <button data-p="players"><span class="ic">👦</span>玩家</button>
 </nav>
 
 <div id="toast"></div>
 
-<!-- LEVEL UP -->
-<div id="levelup">
-  <div class="luRay"></div>
-  <div class="luLabel">LEVEL UP</div>
-  <div class="luBig" id="luBig">Lv.2</div>
-  <div class="luTitle" id="luTitle"></div>
-</div>
-
-<!-- 成就解鎖 -->
-<div id="achPop">
-  <div class="apLabel">🏆 成就解鎖</div>
-  <div class="apIcon" id="apIcon">🐣</div>
-  <div class="apName" id="apName"></div>
-  <div class="apDesc" id="apDesc"></div>
-</div>
-
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, collection, doc, getDoc, setDoc, onSnapshot, updateDoc,
-  runTransaction, serverTimestamp, query, orderBy, increment, arrayUnion
+  getFirestore, collection, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc,
+  onSnapshot, runTransaction, serverTimestamp, query, orderBy, increment
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* ====== firebaseConfig（沿用，不動） ====== */
+/* ====== firebaseConfig（跟 index.html 同一份，不動） ====== */
 const firebaseConfig = {
   apiKey: "AIzaSyCMjNCwB1jC8S-wgCMQ2wnkdZxG22Gg10c",
   authDomain: "game-b556f.firebaseapp.com",
@@ -473,12 +321,13 @@ const firebaseConfig = {
   messagingSenderId: "162254677726",
   appId: "1:162254677726:web:5371b0c883d8b81b99844f"
 };
-/* ======================================= */
+/* ====== 後台密碼 ====== */
+const ADMIN_PASSWORD = "0414";
+/* ================================================================ */
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-let me = localStorage.getItem('taskboard_me') || null;
 let players = {};
 let tasks = [];
 let shopItems = [];
@@ -495,447 +344,237 @@ function toast(msg){
   t._tm = setTimeout(()=>t.classList.remove('show'), 2200);
 }
 
-/* ==================================================================
-   等級 / XP
-   門檻（累計 XP 才能到 Lv n）= 50 × (n-1) × (n+2)
-   → Lv1:0  Lv2:200  Lv3:500  Lv4:900  Lv5:1400 ...
-================================================================== */
+/* 等級（跟前台同公式，只用來顯示） */
 function xpThreshold(lv){ return 50 * (lv - 1) * (lv + 2); }
-function levelFromXp(xp){
-  let lv = 1;
-  while (xp >= xpThreshold(lv + 1)) lv++;
-  return lv;
-}
-const TITLES = [
-  { lv:1,  name:'見習生' },
-  { lv:3,  name:'打工仔' },
-  { lv:5,  name:'老手' },
-  { lv:7,  name:'家務戰神' },
-  { lv:10, name:'傳說 ✨' },
-];
-function titleFromLevel(lv){
-  let t = TITLES[0].name;
-  for(const x of TITLES){ if(lv >= x.lv) t = x.name; }
-  return t;
-}
-console.assert(levelFromXp(0)===1 && levelFromXp(199)===1 && levelFromXp(200)===2 && levelFromXp(499)===2 && levelFromXp(500)===3, 'levelFromXp 邊界錯誤');
+function levelFromXp(xp){ let lv=1; while(xp >= xpThreshold(lv+1)) lv++; return lv; }
 
-/* ==================================================================
-   成就
-================================================================== */
-const ACHIEVEMENTS = [
-  { id:'first_task',  icon:'🐣', name:'第一滴血',   desc:'完成第 1 個任務',      check: s => s.tasksDone >= 1 },
-  { id:'task_10',     icon:'💪', name:'勞動模範',   desc:'完成 10 個任務',       check: s => s.tasksDone >= 10 },
-  { id:'task_50',     icon:'🏭', name:'血汗工廠',   desc:'完成 50 個任務',       check: s => s.tasksDone >= 50 },
-  { id:'earn_500',    icon:'💰', name:'小有積蓄',   desc:'累計賺 500 金幣',      check: s => s.totalEarned >= 500 },
-  { id:'earn_2000',   icon:'🤑', name:'小富翁',     desc:'累計賺 2000 金幣',     check: s => s.totalEarned >= 2000 },
-  { id:'earn_10000',  icon:'👑', name:'家裡蹲首富', desc:'累計賺 10000 金幣',    check: s => s.totalEarned >= 10000 },
-  { id:'first_buy',   icon:'🛍️', name:'剁手初體驗', desc:'第一次購買',           check: s => s.buyCount >= 1 },
-  { id:'buy_10',      icon:'💸', name:'月光族',     desc:'購買 10 次',           check: s => s.buyCount >= 10 },
-  { id:'hoard_1000',  icon:'🏦', name:'守財奴',     desc:'同時持有 1000 金幣',   check: s => s.coins >= 1000 },
-  { id:'grab_king',   icon:'⚡', name:'手速之王',   desc:'搶到 10 個開放任務',   check: s => s.tasksGrabbed >= 10 },
-];
-let localUnlocked = null;
-
-function myStats(){
-  const p = players[me] || {};
-  return {
-    tasksDone: p.tasksDone ?? 0,
-    totalEarned: p.totalEarned ?? 0,
-    coins: p.coins ?? 0,
-    tasksGrabbed: p.tasksGrabbed ?? 0,
-    buyCount: purchases.filter(x => x.playerId === me && x.status !== 'refunded').length,
-  };
+function setCount(el, n){
+  const e = $(el); e.textContent = n; e.classList.toggle('zero', n===0);
+}
+/* nav 審核紅點 = 待審核任務 + 待核銷購買 */
+function updateNavBadge(){
+  const n = tasks.filter(t=>t.status==='pending').length + purchases.filter(p=>p.status==='pending').length;
+  const b = $('navReview');
+  b.textContent = n;
+  b.classList.toggle('show', n>0);
 }
 
-function checkAchievements(){
-  if(!me || !players[me]) return;
-  const serverList = players[me].achievements || [];
-  const firstLoad = (localUnlocked === null);
-  if(firstLoad) localUnlocked = new Set(serverList);
-  else serverList.forEach(id => localUnlocked.add(id));
-
-  const stats = myStats();
-  for(const a of ACHIEVEMENTS){
-    if(localUnlocked.has(a.id)) continue;
-    if(a.check(stats)){
-      localUnlocked.add(a.id);
-      updateDoc(doc(db,'players',me), { achievements: arrayUnion(a.id) }).catch(()=>{});
-      announceAchievement(a);
-    }
-  }
-  renderAchWall();
-}
-
-/* ==================================================================
-   音效（Web Audio 現場合成，無音檔）
-================================================================== */
-let audioCtx = null;
-let muted = localStorage.getItem('tb_muted') === '1';
-function ensureAudio(){
-  if(!audioCtx){
-    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){ return; }
-  }
-  if(audioCtx.state === 'suspended') audioCtx.resume();
-}
-document.addEventListener('click', ensureAudio);
-document.addEventListener('touchstart', ensureAudio, { passive:true });
-
-function tone(freq, dur, type='sine', vol=0.2, when=0){
-  if(muted || !audioCtx) return;
-  const t0 = audioCtx.currentTime + when;
-  const osc = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, t0);
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.linearRampToValueAtTime(vol, t0 + 0.012);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  osc.connect(g); g.connect(audioCtx.destination);
-  osc.start(t0); osc.stop(t0 + dur + 0.03);
-}
-function noiseBurst(dur=0.08, vol=0.25){
-  if(muted || !audioCtx) return;
-  const buf = audioCtx.createBuffer(1, Math.max(1, audioCtx.sampleRate*dur), audioCtx.sampleRate);
-  const d = buf.getChannelData(0);
-  for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/d.length, 2);
-  const src = audioCtx.createBufferSource(); src.buffer = buf;
-  const g = audioCtx.createGain(); g.gain.value = vol;
-  src.connect(g); g.connect(audioCtx.destination); src.start();
-}
-const sfxGrab    = ()=>{ tone(600,0.09,'square',0.14,0); tone(900,0.10,'square',0.14,0.08); };
-const sfxCoin    = ()=>{ tone(1200,0.08,'sine',0.18,0); tone(1650,0.16,'sine',0.15,0.06); };
-const sfxBuy     = ()=>{ noiseBurst(0.07,0.22); tone(520,0.12,'triangle',0.18,0.02); };
-const sfxError   = ()=>{ tone(150,0.2,'square',0.2,0); };
-const sfxAchieve = ()=>{ tone(523,0.12,'sine',0.18,0); tone(659,0.12,'sine',0.18,0.1); tone(784,0.22,'sine',0.2,0.2); };
-const sfxLevelUp = ()=>{ [523,659,784,1047].forEach((f,i)=> tone(f,0.2,'triangle',0.2,i*0.09)); };
-
-function updateMuteBtn(){ $('muteBtn').textContent = muted ? '🔇' : '🔊'; }
-$('muteBtn').onclick = ()=>{
-  muted = !muted;
-  localStorage.setItem('tb_muted', muted ? '1' : '0');
-  updateMuteBtn();
-  if(!muted){ ensureAudio(); sfxCoin(); }
-};
-updateMuteBtn();
-
-/* ==================================================================
-   動畫：數字滾動 / 飛幣 / LEVEL UP / 成就
-================================================================== */
-function animateNumber(el, from, to, dur=600){
-  from = Number(from)||0; to = Number(to)||0;
-  if(from === to){ el.textContent = to; return; }
-  const t0 = performance.now();
-  const ease = x => 1 - Math.pow(1-x, 3);
-  function step(now){
-    const p = Math.min(1, (now - t0)/dur);
-    el.textContent = Math.round(from + (to - from)*ease(p));
-    if(p < 1) requestAnimationFrame(step);
-    else el.textContent = to;
-  }
-  requestAnimationFrame(step);
-}
-
-function flyCoins(n=4){
-  const box = $('coinBox').getBoundingClientRect();
-  const tx = box.left + box.width/2, ty = box.top + box.height/2;
-  const cx = window.innerWidth/2, cy = window.innerHeight/2;
-  for(let i=0;i<n;i++){
-    const c = document.createElement('div');
-    c.className = 'flycoin'; c.textContent = '🪙';
-    const jx = (Math.random()-0.5)*120, jy = (Math.random()-0.5)*80;
-    c.style.left = (cx + jx) + 'px'; c.style.top = (cy + jy) + 'px';
-    document.body.appendChild(c);
-    const dx = tx - (cx + jx), dy = ty - (cy + jy);
-    c.animate([
-      { transform:'translate(0,0) scale(1.2)', opacity:1, offset:0 },
-      { transform:`translate(${dx*0.3}px,${dy*0.3 - 40}px) scale(1)`, opacity:1, offset:0.4 },
-      { transform:`translate(${dx}px,${dy}px) scale(.5)`, opacity:0, offset:1 },
-    ], { duration:720 + i*60, easing:'cubic-bezier(.5,0,.75,0)', delay:i*55 })
-     .onfinish = ()=> c.remove();
-  }
-  $('coinBox').classList.remove('pulse'); void $('coinBox').offsetWidth; $('coinBox').classList.add('pulse');
-}
-
-let luQueue = Promise.resolve();
-function showLevelUp(lv){
-  luQueue = luQueue.then(()=> new Promise(res=>{
-    sfxLevelUp();
-    $('luBig').textContent = 'Lv.' + lv;
-    $('luTitle').textContent = titleFromLevel(lv);
-    const el = $('levelup'); el.classList.add('show');
-    const big = $('luBig'); big.style.animation='none'; void big.offsetWidth; big.style.animation='';
-    setTimeout(()=>{ el.classList.remove('show'); setTimeout(res, 300); }, 2000);
-  }));
-}
-
-let achQueue = [], achShowing = false;
-function announceAchievement(a){ achQueue.push(a); if(!achShowing) nextAch(); }
-function nextAch(){
-  if(!achQueue.length){ achShowing = false; return; }
-  achShowing = true;
-  const a = achQueue.shift();
-  sfxAchieve();
-  $('apIcon').textContent = a.icon;
-  $('apName').textContent = a.name;
-  $('apDesc').textContent = a.desc;
-  const el = $('achPop'); el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
-  setTimeout(()=>{ el.classList.remove('show'); setTimeout(nextAch, 300); }, 2200);
-}
-
-/* ===== 登入（ID + 密碼） ===== */
-async function hashPw(s){
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
-}
-const loginMsg = m => $('loginMsg').textContent = m;
-
-$('loginBtn').onclick = async ()=>{
-  const id = $('idInput').value.trim();
-  const pw = $('loginPw').value;
-  if(!id) return loginMsg('要輸入 ID');
-  if(!pw) return loginMsg('要輸入密碼');
-  $('loginBtn').disabled = true;
-  try {
-    const ref = doc(db,'players',id);
-    const s = await getDoc(ref);
-    if(!s.exists()){
-      if(!confirm(`「${id}」是新帳號，要建立並綁定這組密碼嗎？\n以後登入都要用它，忘記要找管理員。`)){
-        $('loginBtn').disabled = false; return;
-      }
-      await setDoc(ref, {
-        name:id, coins:0, xp:0, totalEarned:0, tasksDone:0, tasksGrabbed:0,
-        achievements:[], pw: await hashPw(pw), createdAt: serverTimestamp()
-      });
-    } else if(!s.data().pw){
-      if(!confirm(`「${id}」還沒設密碼，要綁定這組密碼嗎？`)){
-        $('loginBtn').disabled = false; return;
-      }
-      await updateDoc(ref, { pw: await hashPw(pw) });
-    } else if(s.data().pw !== await hashPw(pw)){
-      $('loginBtn').disabled = false; sfxError();
-      return loginMsg('密碼錯誤 ❌');
-    }
-    me = id;
-    localStorage.setItem('taskboard_me', id);
-    localUnlocked = null; lastLevel = null; lastCoins = null;
-    Object.keys(seen).forEach(k => seen[k].clear());
-    $('loginPw').value = ''; loginMsg('');
-    $('pickOverlay').style.display = 'none';
-    renderAll();
-  } catch(e){
-    loginMsg('出錯了：'+e.message);
-  }
-  $('loginBtn').disabled = false;
-};
-$('loginPw').addEventListener('keydown', e=>{ if(e.key==='Enter') $('loginBtn').click(); });
-
-$('switchBtn').onclick = ()=>{
-  localStorage.removeItem('taskboard_me');
-  me = null; localUnlocked = null; lastLevel = null; lastCoins = null;
-  Object.keys(seen).forEach(k => seen[k].clear());
-  $('idInput').value = ''; $('loginPw').value = ''; loginMsg('');
-  $('pickOverlay').style.display = 'flex';
-};
-
-/* ===== tabs ===== */
+/* ===== 分頁切換 ===== */
 document.querySelectorAll('nav button').forEach(b=>{
   b.onclick = ()=>{
     document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
     document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));
     b.classList.add('on');
     $('page-'+b.dataset.p).classList.add('on');
-    if(b.dataset.p === 'rank') renderRank();
-    if(b.dataset.p === 'bag') renderBag();
   };
 });
 
-/* ===== 排行榜排序切換 ===== */
-let rankMode = 'totalEarned';
-document.querySelectorAll('.rankTabs button').forEach(b=>{
-  b.onclick = ()=>{
-    document.querySelectorAll('.rankTabs button').forEach(x=>x.classList.remove('on'));
-    b.classList.add('on');
-    rankMode = b.dataset.r;
-    renderRank();
-  };
-});
+/* ===== 密碼 ===== */
+function unlock(){
+  if($('pwInput').value === ADMIN_PASSWORD){
+    $('lockOverlay').style.display = 'none';
+    sessionStorage.setItem('admin_ok','1');
+  } else toast('密碼錯誤');
+}
+$('pwBtn').onclick = unlock;
+$('pwInput').addEventListener('keydown', e=>{ if(e.key==='Enter') unlock(); });
+if(sessionStorage.getItem('admin_ok')==='1') $('lockOverlay').style.display='none';
+
+/* 玩家由前台自行註冊（ID + 密碼），後台不預建 */
 
 /* ===== 即時監聽 ===== */
 onSnapshot(collection(db,'players'), snap=>{
   players = {};
   snap.forEach(d=> players[d.id] = d.data());
-  if(!me || !players[me]){
-    me = null;
-    $('pickOverlay').style.display = 'flex';
-  } else {
-    $('pickOverlay').style.display = 'none';
-  }
-  renderAll();
-  checkAchievements();
+  renderPlayers();
+  renderAssigneeSelect();
+  renderTasks();
+  renderReview();
+  renderBuyReview();
 });
-
 onSnapshot(query(collection(db,'tasks'), orderBy('createdAt','desc')), snap=>{
   tasks = [];
   snap.forEach(d=> tasks.push({id:d.id, ...d.data()}));
-  renderAll();
+  renderTasks();
+  renderReview();
+  updateNavBadge();
 });
-
 onSnapshot(collection(db,'shop'), snap=>{
   shopItems = [];
   snap.forEach(d=> shopItems.push({id:d.id, ...d.data()}));
   renderShop();
 });
-
 onSnapshot(query(collection(db,'purchases'), orderBy('createdAt','desc')), snap=>{
   purchases = [];
   snap.forEach(d=> purchases.push({id:d.id, ...d.data()}));
-  renderLog();
-  renderBag();
-  checkAchievements();
+  renderBuyReview();
+  renderPlayers();
+  updateNavBadge();
 });
 
-/* ===== 任務動作 ===== */
-window.grabTask = async (id)=>{
+const pName = id => id==='all' ? '大家搶' : (players[id]?.name || id);
+
+/* ===== 發布任務 ===== */
+$('addTaskBtn').onclick = async ()=>{
+  const title = $('tTitle').value.trim();
+  const reward = parseInt($('tReward').value);
+  const assignee = $('tAssignee').value;
+  if(!title) return toast('要輸入任務內容');
+  if(!reward || reward<1) return toast('金幣要大於 0');
+  await addDoc(collection(db,'tasks'), {
+    title, reward, assignee,
+    status:'open', claimedBy:null, wasRejected:false,
+    createdAt: serverTimestamp()
+  });
+  $('tTitle').value=''; $('tReward').value='';
+  toast('任務已發布 ✅');
+};
+
+function renderAssigneeSelect(){
+  const sel = $('tAssignee');
+  const cur = sel.value;
+  sel.innerHTML = Object.entries(players).map(([id,p])=>
+    `<option value="${id}">指派給 ${esc(p.name)}</option>`
+  ).join('') + '<option value="all">開放大家搶</option>';
+  if(cur) sel.value = cur;
+}
+
+/* ===== 審核任務（★ 通過時同步累加 coins / totalEarned / xp / tasksDone）===== */
+window.approveTask = async (id)=>{
+  const t = tasks.find(x=>x.id===id);
+  if(t){
+    const who = pName(t.claimedBy || t.assignee);
+    if(!confirm(`確定通過「${t.title}」？\n將發給 ${who} 🪙 ${t.reward}`)) return;
+  }
   try {
     await runTransaction(db, async tx=>{
       const ref = doc(db,'tasks',id);
       const s = await tx.get(ref);
-      if(!s.exists()) throw new Error('任務不見了');
+      if(!s.exists()) throw new Error('任務不存在');
       const t = s.data();
-      if(t.status !== 'open' || t.claimedBy) throw new Error('慢了一步，被搶走了 😭');
-      tx.update(ref, { status:'claimed', claimedBy: me });
-      tx.update(doc(db,'players',me), { tasksGrabbed: increment(1) });
-    });
-    sfxGrab();
-    toast('搶到了！🔥');
-  } catch(e){ sfxError(); toast(e.message); }
-};
-
-window.reportDone = async (id)=>{
-  try {
-    await updateDoc(doc(db,'tasks',id), { status:'pending', wasRejected:false, completedAt: serverTimestamp() });
-    toast('已回報，等媽媽審核 ⏳');
-  } catch(e){ sfxError(); toast('回報失敗：'+e.message); }
-};
-
-/* ===== 購買（→ 進背包 owned） ===== */
-window.buyItem = async (itemId)=>{
-  const item = shopItems.find(i=>i.id===itemId);
-  if(!item) return;
-  if(!confirm(`要用 ${item.price} 金幣買「${item.name}」嗎？`)) return;
-  try {
-    await runTransaction(db, async tx=>{
-      const pRef = doc(db,'players',me);
-      const s = await tx.get(pRef);
-      const coins = s.data().coins || 0;
-      if(coins < item.price) throw new Error('金幣不夠，先去做任務吧 💪');
-      tx.update(pRef, { coins: coins - item.price });
-      const buyRef = doc(collection(db,'purchases'));
-      tx.set(buyRef, {
-        playerId: me, itemName: item.name, price: item.price,
-        status: 'owned', createdAt: serverTimestamp()
+      if(t.status!=='pending') throw new Error('狀態已變更');
+      const payee = t.claimedBy || t.assignee;
+      if(!payee || payee==='all') throw new Error('找不到領獎的人');
+      tx.update(ref, { status:'done' });
+      tx.update(doc(db,'players',payee), {
+        coins:       increment(t.reward),
+        totalEarned: increment(t.reward),
+        xp:          increment(t.reward),   // 1 金幣 = 1 XP
+        tasksDone:   increment(1)
       });
     });
-    sfxBuy();
-    toast('已放進背包 🎒');
-  } catch(e){ sfxError(); toast(e.message); }
+    toast('已通過，金幣入帳 🪙');
+  } catch(e){ toast(e.message); }
 };
 
-/* ===== 使用（背包 owned → 待核銷 pending） ===== */
-window.useItem = async (id)=>{
-  const p = purchases.find(x=>x.id===id);
-  if(!p) return;
-  if(!confirm(`要使用「${p.itemName}」嗎？\n使用後會通知媽媽核銷，不能收回喔`)) return;
-  try {
-    await updateDoc(doc(db,'purchases',id), { status:'pending', usedAt: serverTimestamp() });
-    sfxBuy();
-    toast('已送出，找媽媽核銷 🎁');
-  } catch(e){ sfxError(); toast(e.message); }
+window.rejectTask = async (id)=>{
+  const t = tasks.find(x=>x.id===id);
+  if(!t) return;
+  await updateDoc(doc(db,'tasks',id), {
+    status: t.claimedBy ? 'claimed' : 'open',
+    wasRejected: true
+  });
+  toast('已退回，請他重做');
 };
 
-/* ==================================================================
-   畫面
-================================================================== */
-const seen = {};
-function cardCls(container, id){
-  if(!seen[container]) seen[container] = new Set();
-  if(seen[container].has(id)) return 'card';
-  seen[container].add(id);
-  return 'card pop';
-}
-
-function taskCard(container, t, btnHtml, badge=''){
-  return `<div class="${cardCls(container,t.id)}">
-    <div class="title">${esc(t.title)}${badge}</div>
-    <div class="row">
-      <div class="reward">🪙 ${t.reward}</div>
-      ${btnHtml}
+function renderReview(){
+  const list = tasks.filter(t=>t.status==='pending');
+  setCount('cReview', list.length);
+  $('reviewList').innerHTML = list.length ? list.map(t=>`
+    <div class="card">
+      <div class="title">${esc(t.title)}</div>
+      <div class="sub">${esc(pName(t.claimedBy || t.assignee))} 回報完成・獎勵 <span class="coin">🪙 ${t.reward}</span></div>
+      <div class="row">
+        <button class="btn ok" onclick="approveTask('${t.id}')">✅ 通過發錢</button>
+        <button class="btn no" onclick="rejectTask('${t.id}')">↩️ 退回重做</button>
+      </div>
     </div>
-  </div>`;
+  `).join('') : '<div class="empty">目前沒有待審核的</div>';
 }
 
-let lastLevel = null;
-let lastCoins = null;
-
-function renderHeader(){
-  if(!me || !players[me]) return;
-  const p = players[me];
-  const name = p.name || me;
-  $('myName').textContent = name;
-  $('avatar').textContent = (name.trim()[0] || '🎮');
-
-  const xp = p.xp ?? 0;
-  const lv = levelFromXp(xp);
-  $('lvPill').textContent = 'Lv.' + lv;
-
-  const floor = xpThreshold(lv), ceil = xpThreshold(lv+1);
-  const pct = ceil > floor ? Math.min(100, Math.round((xp - floor)/(ceil - floor)*100)) : 100;
-  $('xpFill').style.width = pct + '%';
-  $('xpTxt').textContent = `${xp - floor} / ${ceil - floor}`;
-
-  if(lastLevel !== null && lv > lastLevel) showLevelUp(lv);
-  lastLevel = lv;
-
-  const coins = p.coins ?? 0;
-  if(lastCoins === null){
-    $('myCoins').textContent = coins;
-  } else if(coins !== lastCoins){
-    animateNumber($('myCoins'), lastCoins, coins);
-    if(coins > lastCoins){ flyCoins(4); if(!muted) sfxCoin(); }
+/* ===== 核銷購買 ===== */
+window.redeemBuy = async (id)=>{
+  await updateDoc(doc(db,'purchases',id), { status:'redeemed' });
+  toast('已核銷 🎁');
+};
+window.refundBuy = async (id)=>{
+  const b = purchases.find(x=>x.id===id);
+  if(b){
+    const who = pName(b.playerId);
+    if(!confirm(`確定退款「${b.itemName}」？\n將退還 ${who} 🪙 ${b.price}`)) return;
   }
-  lastCoins = coins;
+  try {
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'purchases',id);
+      const s = await tx.get(ref);
+      if(!s.exists()) throw new Error('紀錄不存在');
+      const b = s.data();
+      if(b.status!=='pending') throw new Error('狀態已變更');
+      tx.update(ref, { status:'refunded' });
+      tx.update(doc(db,'players',b.playerId), { coins: increment(b.price) });
+    });
+    toast('已退款 🪙');
+  } catch(e){ toast(e.message); }
+};
+
+function renderBuyReview(){
+  const list = purchases.filter(p=>p.status==='pending');
+  setCount('cBuy', list.length);
+  $('buyReviewList').innerHTML = list.length ? list.map(p=>`
+    <div class="card">
+      <div class="title">${esc(p.itemName)}</div>
+      <div class="sub">${esc(pName(p.playerId))} 購買・<span class="coin">🪙 ${p.price}</span></div>
+      <div class="row">
+        <button class="btn ok" onclick="redeemBuy('${p.id}')">✅ 核銷兌換</button>
+        <button class="btn no" onclick="refundBuy('${p.id}')">↩️ 退款</button>
+      </div>
+    </div>
+  `).join('') : '<div class="empty">目前沒有待核銷的</div>';
 }
 
-function renderAll(){
-  if(!me || !players[me]) return;
-  renderHeader();
+/* ===== 進行中任務列表 ===== */
+window.delTask = async (id)=>{
+  if(!confirm('確定刪除這個任務？')) return;
+  await deleteDoc(doc(db,'tasks',id));
+  toast('已刪除');
+};
 
-  const mine = tasks.filter(t =>
-    (t.status==='open' && t.assignee===me) ||
-    (t.status==='claimed' && t.claimedBy===me)
-  );
-  $('myTasks').innerHTML = mine.length ? mine.map(t=>{
-    const badge = t.wasRejected ? '<span class="badge back">被退回，再做一次</span>'
-                : (t.status==='claimed' ? '<span class="badge mine">我搶到的</span>' : '');
-    return taskCard('myTasks', t, `<button class="btn gold" onclick="reportDone('${t.id}')">完成回報</button>`, badge);
-  }).join('') : '<div class="empty">目前沒有任務，爽 😎</div>';
-
-  const open = tasks.filter(t => t.status==='open' && t.assignee==='all');
-  $('openTasks').innerHTML = open.length ? open.map(t=>
-    taskCard('openTasks', t, `<button class="btn blue" onclick="grabTask('${t.id}')">搶任務 ⚡</button>`)
-  ).join('') : '<div class="empty">沒有可以搶的</div>';
-
-  const pending = tasks.filter(t => t.status==='pending' && (t.claimedBy===me || t.assignee===me));
-  $('pendingTasks').innerHTML = pending.length ? pending.map(t=>
-    taskCard('pendingTasks', t, '<span class="badge wait">審核中</span>')
-  ).join('') : '<div class="empty">沒有等審核的</div>';
-
-  renderLog();
-  if($('page-rank').classList.contains('on')) renderRank();
+function renderTasks(){
+  const list = tasks.filter(t=>t.status==='open' || t.status==='claimed');
+  setCount('cTask', list.length);
+  $('taskList').innerHTML = list.length ? list.map(t=>{
+    let pill;
+    if(t.status==='claimed') pill = `<span class="pill claimed">${esc(pName(t.claimedBy))} 搶到</span>`;
+    else if(t.assignee==='all') pill = '<span class="pill grab">開放搶</span>';
+    else pill = `<span class="pill a">${esc(pName(t.assignee))}</span>`;
+    return `<div class="card">
+      <div class="title">${esc(t.title)} ${pill}</div>
+      <div class="sub"><span class="coin">🪙 ${t.reward}</span></div>
+      <div class="row"><button class="btn gray" onclick="delTask('${t.id}')">刪除</button></div>
+    </div>`;
+  }).join('') : '<div class="empty">沒有進行中的任務</div>';
 }
 
-// 依分類分組：回傳 [[分類名, 商品陣列(價格低到高)], ...]，組間依組內最低價排序，「其他」永遠最後
+/* ===== 商店管理 ===== */
+$('addItemBtn').onclick = async ()=>{
+  const name = $('sName').value.trim();
+  const price = parseInt($('sPrice').value);
+  const desc = $('sDesc').value.trim();
+  const category = $('sCat').value.trim();
+  if(!name) return toast('要輸入商品名稱');
+  if(!price || price<1) return toast('價格要大於 0');
+  await addDoc(collection(db,'shop'), { name, price, desc, category });
+  $('sName').value=''; $('sPrice').value=''; $('sDesc').value=''; $('sCat').value='';
+  toast('已上架 🛒');
+};
+
+window.delItem = async (id)=>{
+  if(!confirm('確定下架這個商品？')) return;
+  await deleteDoc(doc(db,'shop',id));
+  toast('已下架');
+};
+
+// 依分類分組（組間最低價、其他最後；組內價格低到高）
 function groupByCategory(items){
   const groups = {};
   items.forEach(i=>{
@@ -953,105 +592,80 @@ function groupByCategory(items){
 }
 
 function renderShop(){
-  if(!shopItems.length){ $('shopList').innerHTML = '<div class="empty">商店還沒上架東西</div>'; return; }
+  setCount('cShop', shopItems.length);
+
+  // datalist：現有分類去重，讓上架時可直接選舊分類避免分裂
+  const cats = [...new Set(shopItems.map(i => (i.category||'').trim()).filter(Boolean))].sort();
+  $('catList').innerHTML = cats.map(c=>`<option value="${esc(c)}">`).join('');
+
+  if(!shopItems.length){ $('shopList').innerHTML = '<div class="empty">還沒有商品</div>'; return; }
   $('shopList').innerHTML = groupByCategory(shopItems).map(([cat, items])=>
-    `<h2>${esc(cat)}</h2>` + items.map(i=>`
-    <div class="${cardCls('shop',i.id)}">
+    `<h2 style="margin:16px 0 10px">${esc(cat)}</h2>` + items.map(i=>`
+    <div class="card">
       <div class="title">${esc(i.name)}</div>
-      ${i.desc ? `<div class="sub">${esc(i.desc)}</div>` : ''}
-      <div class="row">
-        <div class="reward">🪙 ${i.price}</div>
-        <button class="btn gold" onclick="buyItem('${i.id}')">購買</button>
-      </div>
+      <div class="sub"><span class="coin">🪙 ${i.price}</span>・${esc(cat)}${i.desc ? '・'+esc(i.desc) : ''}</div>
+      <div class="row"><button class="btn gray" onclick="delItem('${i.id}')">下架</button></div>
     </div>`).join('')
   ).join('');
 }
 
-function renderRank(){
-  const rows = Object.entries(players)
-    .map(([id,p])=>({ id, name:p.name||id, val:p[rankMode] ?? 0, tasksDone:p.tasksDone ?? 0, lv:levelFromXp(p.xp ?? 0) }))
-    .sort((a,b)=> b.val - a.val || (b.tasksDone ?? 0) - (a.tasksDone ?? 0) || a.name.localeCompare(b.name));
-
-  $('rankList').innerHTML = rows.length ? rows.map((r,i)=>{
-    const cls = 'rankRow' + (i===0 ? ' first' : '') + (r.id===me ? ' me' : '');
-    const no = i===0 ? '👑' : (i+1);
-    return `<div class="${cls}">
-      <div class="rankNo">${no}</div>
-      <div class="rankAv">${esc(r.name.trim()[0]||'?')}</div>
-      <div class="rankInfo">
-        <div class="rankName">${esc(r.name)}${r.id===me?'<span class="meTag">我</span>':''}</div>
-        <div class="rankSubLv">Lv.${r.lv} · ${esc(titleFromLevel(r.lv))}</div>
-      </div>
-      <div class="rankVal">${r.val}</div>
-    </div>`;
-  }).join('') : '<div class="empty">還沒有人上榜</div>';
-}
-
-function renderAchWall(){
-  const got = localUnlocked || new Set();
-  $('achTitle').innerHTML = `成就牆 <span style="color:var(--gold)">${got.size}/${ACHIEVEMENTS.length}</span>`;
-  $('achWall').innerHTML = ACHIEVEMENTS.map(a=>{
-    const has = got.has(a.id);
-    return `<div class="achCell ${has?'got':''}" onclick="showAch('${a.id}')">
-      <div class="aic">${has ? a.icon : '🔒'}</div>
-      <div class="aname">${has ? esc(a.name) : '???'}</div>
-    </div>`;
-  }).join('');
-}
-window.showAch = (id)=>{
-  const a = ACHIEVEMENTS.find(x=>x.id===id);
-  if(!a) return;
-  const has = (localUnlocked||new Set()).has(id);
-  toast(has ? `${a.icon} ${a.name}：${a.desc} ✅` : `🔒 解鎖條件：${a.desc}`);
+/* ===== 玩家管理 ===== */
+window.renamePlayer = async (id)=>{
+  const name = prompt('新名字：', players[id]?.name || '');
+  if(!name || !name.trim()) return;
+  await updateDoc(doc(db,'players',id), { name: name.trim() });
+  toast('已改名');
+};
+window.adjustCoins = async (id)=>{
+  const v = prompt(`調整 ${players[id]?.name} 的金幣（正數加、負數扣）：`, '');
+  const n = parseInt(v);
+  if(!n) return;
+  await updateDoc(doc(db,'players',id), { coins: increment(n) });
+  toast(n>0 ? `已加 ${n} 🪙` : `已扣 ${-n} 🪙`);
+};
+window.resetPw = async (id)=>{
+  if(!confirm(`要重設「${players[id]?.name}」的密碼嗎？\n他下次登入時輸入的密碼會變成新密碼。`)) return;
+  await updateDoc(doc(db,'players',id), { pw: null });
+  toast('已重設，下次登入重新綁定');
+};
+window.delPlayer = async (id)=>{
+  if(!confirm(`確定刪除帳號「${players[id]?.name}」？金幣會一起消失，不能復原！`)) return;
+  await deleteDoc(doc(db,'players',id));
+  toast('已刪除帳號');
 };
 
-function renderLog(){
-  if(!me) return;
-  renderAchWall();
-
-  const done = tasks.filter(t => t.status==='done' && (t.claimedBy===me || t.assignee===me)).slice(0,20);
-  $('doneTasks').innerHTML = done.length ? done.map(t=>`
-    <div class="${cardCls('done',t.id)}">
-      <div class="title">${esc(t.title)}<span class="badge done">已入帳</span></div>
-      <div class="sub">🪙 +${t.reward}</div>
-    </div>
-  `).join('') : '<div class="empty">還沒有完成紀錄</div>';
-}
-
-/* ===== 背包：可使用(owned) / 等媽媽核銷(pending) / 使用紀錄(redeemed) ===== */
-function renderBag(){
-  if(!me) return;
-  const owned = purchases.filter(p=>p.playerId===me && p.status==='owned');
-  const pend  = purchases.filter(p=>p.playerId===me && p.status==='pending');
-  const used  = purchases.filter(p=>p.playerId===me && p.status==='redeemed').slice(0,15);
-
-  $('ownedList').innerHTML = owned.length ? owned.map(p=>`
-    <div class="${cardCls('owned',p.id)}">
-      <div class="title">${esc(p.itemName)}</div>
-      <div class="row">
-        <div class="reward">🪙 ${p.price}</div>
-        <button class="btn gold" onclick="useItem('${p.id}')">使用</button>
+function renderPlayers(){
+  const list = Object.entries(players);
+  setCount('cPlayer', list.length);
+  $('playerList').innerHTML = list.length ? list.map(([id,p])=>{
+    const lv = levelFromXp(p.xp ?? 0);
+    const av = esc((p.name||id).trim()[0] || '?');
+    const bag = purchases.filter(x => x.playerId===id && x.status==='owned').length;
+    return `
+    <div class="card">
+      <div class="pHead">
+        <div class="pAv">${av}</div>
+        <div style="flex:1;min-width:0">
+          <div class="title" style="display:flex;align-items:center;gap:8px">
+            ${esc(p.name)} <span class="pLv">Lv.${lv}</span>
+          </div>
+          <div class="sub">ID：${esc(id)}</div>
+        </div>
       </div>
-    </div>
-  `).join('') : '<div class="empty">背包是空的，去商店逛逛 🛒</div>';
-
-  $('pendingBuys').innerHTML = pend.length ? pend.map(p=>`
-    <div class="${cardCls('pbuy',p.id)}">
-      <div class="title">${esc(p.itemName)}<span class="badge redeem">待核銷</span></div>
-      <div class="sub">🪙 ${p.price}</div>
-    </div>
-  `).join('') : '<div class="empty">沒有等核銷的</div>';
-
-  $('usedList').innerHTML = used.length ? used.map(p=>`
-    <div class="${cardCls('used',p.id)}">
-      <div class="title">${esc(p.itemName)}<span class="badge done">已使用</span></div>
-      <div class="sub">🪙 ${p.price}</div>
-    </div>
-  `).join('') : '<div class="empty">還沒有使用紀錄</div>';
-
-  const b = $('navBag');
-  b.textContent = owned.length;
-  b.classList.toggle('show', owned.length > 0);
+      <div class="pStats">
+        <div class="pStat">持有 <b class="coin">🪙 ${p.coins ?? 0}</b></div>
+        <div class="pStat">累計賺 <b>${p.totalEarned ?? 0}</b></div>
+        <div class="pStat">完成 <b>${p.tasksDone ?? 0}</b> 個</div>
+        <div class="pStat">背包 <b>${bag}</b> 件</div>
+      </div>
+      <div class="row">
+        <button class="btn gray" onclick="renamePlayer('${esc(id)}')">改名</button>
+        <button class="btn gray" onclick="adjustCoins('${esc(id)}')">調整金幣</button>
+        <button class="btn gray" onclick="resetPw('${esc(id)}')">重設密碼</button>
+        <button class="btn no" onclick="delPlayer('${esc(id)}')">刪除</button>
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty">還沒有人註冊。叫弟弟打開前台輸入 ID + 密碼註冊。</div>';
 }
 </script>
 </body>
