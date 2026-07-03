@@ -350,6 +350,33 @@
   #achPop .apName{ font-size:18px; font-weight:900; color:#fff; }
   #achPop .apDesc{ font-family:var(--mono); font-size:11.5px; color:var(--muted); font-weight:600; letter-spacing:.3px; }
 
+  /* ===== 新手教學（spotlight 導覽） ===== */
+  #tutorial{ position:fixed; inset:0; z-index:500; display:none; pointer-events:auto; }
+  #tutorial.show{ display:block; }
+  #tutHole{
+    position:fixed; display:none; border-radius:12px; pointer-events:none;
+    border:2px solid var(--gold);
+    box-shadow:0 0 0 9999px rgba(0,0,0,.82), 0 0 22px rgba(233,196,106,.5);
+    transition:top .25s ease, left .25s ease, width .25s ease, height .25s ease;
+  }
+  #tutBubble{
+    position:fixed; width:min(340px,88vw); z-index:501;
+    background:linear-gradient(160deg,#16161f,#0b0c13);
+    border:1px solid rgba(233,196,106,.55); border-radius:14px; padding:18px 18px 16px;
+    box-shadow:0 20px 50px rgba(0,0,0,.6), 0 0 40px rgba(233,196,106,.14);
+  }
+  #tutBubble .tTitle{ font-size:18px; font-weight:900; color:#fff; margin-bottom:6px; }
+  #tutBubble .tText{ font-size:14px; line-height:1.6; color:var(--text); }
+  #tutBubble .tFoot{ display:flex; align-items:center; justify-content:space-between; margin-top:16px; }
+  #tutBubble .tProg{ font-family:var(--mono); font-size:12px; font-weight:700; color:var(--gold-dim); letter-spacing:1px; }
+  #tutBubble .tNext{
+    border:none; border-radius:9px; padding:10px 20px; cursor:pointer;
+    font-family:var(--mono); font-size:14px; font-weight:800; letter-spacing:.8px;
+    background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206;
+    box-shadow:0 0 0 1px rgba(233,196,106,.4), 0 6px 16px rgba(233,196,106,.2);
+  }
+  #tutBubble .tNext:active{ transform:translateY(2px) scale(.97); }
+
   @media (prefers-reduced-motion: reduce){
     *{ animation-duration:.001s !important; transition-duration:.05s !important; }
     body::before{ display:none; }
@@ -375,6 +402,7 @@
       <span id="myName">—</span>
       <span class="lvPill" id="lvPill">Lv.1</span>
       <button id="switchBtn">換人</button>
+      <button id="replayBtn" class="iconBtn" style="padding:2px 6px">📖</button>
     </div>
     <div class="xpWrap">
       <div class="xpBar"><div class="xpFill" id="xpFill"></div></div>
@@ -390,13 +418,13 @@
 <main>
   <!-- 任務頁 -->
   <div class="page on" id="page-tasks">
-    <h2>每日任務</h2>
+    <h2 id="h2-daily">每日任務</h2>
     <div id="dailyTasks"></div>
     <h2>我的任務</h2>
     <div id="myTasks"></div>
-    <h2>開放搶的任務</h2>
+    <h2 id="h2-open">開放搶的任務</h2>
     <div id="openTasks"></div>
-    <h2>等媽媽審核</h2>
+    <h2 id="h2-pending">等媽媽審核</h2>
     <div id="pendingTasks"></div>
   </div>
 
@@ -458,6 +486,19 @@
   <div class="apIcon" id="apIcon">🐣</div>
   <div class="apName" id="apName"></div>
   <div class="apDesc" id="apDesc"></div>
+</div>
+
+<!-- 新手教學 -->
+<div id="tutorial">
+  <div id="tutHole"></div>
+  <div id="tutBubble">
+    <div class="tTitle" id="tutTitle"></div>
+    <div class="tText" id="tutText"></div>
+    <div class="tFoot">
+      <span class="tProg" id="tutProg"></span>
+      <button class="tNext" id="tutNext">下一步</button>
+    </div>
+  </div>
 </div>
 
 <script type="module">
@@ -727,6 +768,7 @@ $('loginBtn').onclick = async ()=>{
     me = id;
     localStorage.setItem('taskboard_me', id);
     localUnlocked = null; lastLevel = null; lastCoins = null;
+    tutChecked = false;
     Object.keys(seen).forEach(k => seen[k].clear());
     $('loginPw').value = ''; loginMsg('');
     $('pickOverlay').style.display = 'none';
@@ -742,6 +784,7 @@ $('loginPw').addEventListener('keydown', e=>{ if(e.key==='Enter') $('loginBtn').
 $('switchBtn').onclick = ()=>{
   localStorage.removeItem('taskboard_me');
   me = null; localUnlocked = null; lastLevel = null; lastCoins = null;
+  tutChecked = false; closeTutorial();
   Object.keys(seen).forEach(k => seen[k].clear());
   $('idInput').value = ''; $('loginPw').value = ''; loginMsg('');
   $('pickOverlay').style.display = 'flex';
@@ -827,6 +870,10 @@ onSnapshot(collection(db,'players'), snap=>{
   }
   renderAll();
   checkAchievements();
+  if(me && players[me] && !tutChecked && !tutOpen){
+    tutChecked = true;
+    if(players[me].tutorialDone !== true) startTutorial(true);
+  }
 });
 
 onSnapshot(query(collection(db,'tasks'), orderBy('createdAt','desc')), snap=>{
@@ -1139,6 +1186,131 @@ function renderBag(){
   b.textContent = owned.length;
   b.classList.toggle('show', owned.length > 0);
 }
+
+/* ==================================================================
+   新手教學（spotlight 導覽，不可跳過）
+   target 找不到（該版本沒此功能）→ 自動略過該步
+================================================================== */
+const TUT_STEPS = [
+  { target:null,           tab:null,      title:'歡迎來到任務板 🎮', text:'跟著教學走一遍，最後有新手禮包 🎁' },
+  { target:'#coinBox',     tab:null,      title:'你的金幣 🪙',       text:'做任務賺金幣，買東西、抽獎都靠它。' },
+  { target:'.lvPill',      tab:null,      title:'等級',              text:'完成任務會獲得經驗值，等級越高稱號越猛。' },
+  { target:'#h2-daily',    tab:'tasks',   title:'每日任務 📅',       text:'每天午夜刷新，記得天天來做，連續達成有 🔥 紀錄。' },
+  { target:'#h2-open',     tab:'tasks',   title:'搶任務 ⚡',         text:'這種任務誰先按誰的，手速決定一切。' },
+  { target:'#h2-pending',  tab:'tasks',   title:'重要！',            text:'按完成回報後要等媽媽審核通過，金幣才會入帳。' },
+  { target:'#shopList',    tab:'shop',    title:'商店 🛒',          text:'金幣在這裡花，買到的東西會進背包。' },
+  { target:'#ownedList',   tab:'bag',     title:'背包 🎒',          text:'要用的時候按「使用」，然後拿手機給媽媽核銷才算數。' },
+  { target:'#lotteryMain', tab:'lottery', title:'抽獎 🎁',          text:'商店買抽獎券來抽，有稱號、金幣、實體獎品。' },
+  { target:'#rankList',    tab:'rank',    title:'排行榜 🏆',         text:'看看誰才是這個家最強的打工仔。' },
+  { target:null,           tab:null,      title:'教學完成！',        text:'按下按鈕領取你的新手禮包，開始賺金幣吧！' },
+];
+
+let tutStep = 0;
+let tutOpen = false;
+let tutReward = true;    // 首次 true 發獎；重看依 tutorialDone 決定
+let tutTarget = null;    // 當前聚光目標（resize 重定位用）
+let tutChecked = false;  // 本 session 是否已判斷過要不要自動教學
+
+function startTutorial(reward){
+  tutReward = reward; tutOpen = true; tutStep = 0;
+  $('tutorial').classList.add('show');
+  showTutStep();
+}
+function closeTutorial(){
+  tutOpen = false; tutTarget = null;
+  $('tutorial').classList.remove('show');
+}
+function gotoTutTab(name){
+  const btn = document.querySelector(`nav button[data-p="${name}"]`);
+  if(btn) btn.click();   // 用現有切換邏輯；tab 不存在就不切，該步 target 也會找不到 → 略過
+}
+function showTutStep(){
+  const step = TUT_STEPS[tutStep];
+  if(!step){ closeTutorial(); return; }
+  if(step.tab) gotoTutTab(step.tab);
+  requestAnimationFrame(()=> requestAnimationFrame(()=> positionTutStep()));
+}
+function positionTutStep(){
+  const step = TUT_STEPS[tutStep];
+  let target = null;
+  if(step.target){
+    target = document.querySelector(step.target);
+    if(!target){ advanceTut(); return; }   // 自動略過
+  }
+  tutTarget = target;
+  if(target){
+    target.scrollIntoView({ block:'center' });
+    requestAnimationFrame(()=> layoutTut(target));
+  } else {
+    layoutTut(null);
+  }
+}
+function layoutTut(target){
+  const step = TUT_STEPS[tutStep];
+  const hole = $('tutHole'), bubble = $('tutBubble'), overlay = $('tutorial');
+  const vh = window.innerHeight;
+  if(target){
+    const r = target.getBoundingClientRect();
+    const pad = 6;
+    hole.style.display = 'block';
+    hole.style.left = (r.left - pad) + 'px';
+    hole.style.top = (r.top - pad) + 'px';
+    hole.style.width = (r.width + pad*2) + 'px';
+    hole.style.height = (r.height + pad*2) + 'px';
+    overlay.style.background = 'transparent';
+    bubble.style.left = '50%';
+    if((r.top + r.height/2) > vh/2){       // 洞在下半 → 氣泡放上方
+      bubble.style.top = 'auto';
+      bubble.style.bottom = (vh - (r.top - pad) + 12) + 'px';
+      bubble.style.transform = 'translateX(-50%)';
+    } else {                                // 洞在上半 → 氣泡放下方
+      bubble.style.bottom = 'auto';
+      bubble.style.top = (r.bottom + pad + 12) + 'px';
+      bubble.style.transform = 'translateX(-50%)';
+    }
+  } else {
+    hole.style.display = 'none';
+    overlay.style.background = 'rgba(0,0,0,.82)';
+    bubble.style.left = '50%'; bubble.style.top = '50%'; bubble.style.bottom = 'auto';
+    bubble.style.transform = 'translate(-50%,-50%)';
+  }
+  const isLast = (tutStep === TUT_STEPS.length - 1);
+  $('tutTitle').textContent = step.title;
+  $('tutText').textContent = step.text;
+  $('tutProg').textContent = `${tutStep + 1} / ${TUT_STEPS.length}`;
+  $('tutNext').textContent = isLast ? (tutReward ? '領取新手禮包 🎁 +50' : '完成') : '下一步';
+}
+function advanceTut(){
+  tutStep++;
+  if(tutStep >= TUT_STEPS.length){ closeTutorial(); return; }
+  showTutStep();
+}
+async function finishTutorial(){
+  closeTutorial();
+  if(!tutReward) return;   // 重看不發獎
+  try {
+    let granted = false;
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'players',me);
+      const s = await tx.get(ref);
+      if(!s.exists()) return;
+      if(s.data().tutorialDone === true) return;   // 冪等：已領過只關閉
+      tx.update(ref, { coins: increment(50), tutorialDone: true });  // 不加 totalEarned/xp
+      granted = true;
+    });
+    if(granted){ sfxCoin(); flyCoins(5); toast('新手禮包已入帳 🪙'); }
+  } catch(e){}
+}
+$('tutNext').onclick = ()=>{
+  if(tutStep === TUT_STEPS.length - 1) finishTutorial();
+  else advanceTut();
+};
+$('replayBtn').onclick = ()=>{
+  if(!me) return;
+  if(!confirm('要重看新手教學嗎？')) return;
+  startTutorial(players[me]?.tutorialDone !== true);  // 已完成過 → 重看不發獎
+};
+window.addEventListener('resize', ()=>{ if(tutOpen) positionTutStep(); });
 </script>
 </body>
 </html>
