@@ -257,6 +257,16 @@
   <!-- 任務頁 -->
   <div class="page" id="page-tasks">
     <section>
+      <h2>每日任務模板 <span class="count zero" id="cTpl">0</span></h2>
+      <input id="dTitle" placeholder="每日任務標題（例：每日作業）">
+      <div class="formRow">
+        <input id="dReward" type="number" min="1" placeholder="金幣獎勵">
+        <input id="dNote" placeholder="說明（選填）">
+      </div>
+      <button class="btn ok" id="addTplBtn" style="width:100%">建立模板</button>
+      <div id="tplList" style="margin-top:14px"></div>
+    </section>
+    <section>
       <h2>發布新任務</h2>
       <input id="tTitle" placeholder="任務內容（例：寫數學考卷一張）">
       <div class="formRow">
@@ -332,6 +342,8 @@ let players = {};
 let tasks = [];
 let shopItems = [];
 let purchases = [];
+let dailyTemplates = [];
+let adminUnlocked = (sessionStorage.getItem('admin_ok') === '1');
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -374,6 +386,8 @@ function unlock(){
   if($('pwInput').value === ADMIN_PASSWORD){
     $('lockOverlay').style.display = 'none';
     sessionStorage.setItem('admin_ok','1');
+    adminUnlocked = true;
+    scheduleEnsureAll();
   } else toast('密碼錯誤');
 }
 $('pwBtn').onclick = unlock;
@@ -381,6 +395,59 @@ $('pwInput').addEventListener('keydown', e=>{ if(e.key==='Enter') unlock(); });
 if(sessionStorage.getItem('admin_ok')==='1') $('lockOverlay').style.display='none';
 
 /* 玩家由前台自行註冊（ID + 密碼），後台不預建 */
+
+/* ==================================================================
+   每日任務：懶重置（全玩家版）
+================================================================== */
+function todayKey(){
+  return new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Taipei' });
+}
+function prevKey(dateKey){
+  return new Date(new Date(dateKey).getTime() - 86400000).toISOString().slice(0,10);
+}
+
+// 首次自動建立兩個預設模板（用固定 ID，重開不會重複）
+async function createDefaultTemplates(){
+  try {
+    await setDoc(doc(db,'dailyTemplates','tpl_homework'),
+      { title:'每日作業', reward:150, note:'', active:true, createdAt:serverTimestamp() });
+    await setDoc(doc(db,'dailyTemplates','tpl_phone'),
+      { title:'當日手機使用時間低於 1.5 小時', reward:300, note:'以螢幕使用時間為準，隔天由媽媽查驗', active:true, createdAt:serverTimestamp() });
+  } catch(e){}
+}
+
+// 對每個 active 模板 × 每個玩家補生成當日實例 + 過期所有玩家舊 open 每日任務
+function ensureAllDailyTasks(){
+  if(!adminUnlocked) return;
+  const ids = Object.keys(players);
+  if(!ids.length) return;
+  const today = todayKey();
+  for(const tpl of dailyTemplates){
+    if(!tpl.active) continue;
+    for(const pid of ids){
+      const id = `daily_${tpl.id}_${pid}_${today}`;
+      if(tasks.some(t => t.id === id)) continue;
+      setDoc(doc(db,'tasks',id), {
+        isDaily:true, templateId:tpl.id, dateKey:today,
+        title:tpl.title, reward:tpl.reward, note:tpl.note || '',
+        assignee:pid, status:'open', claimedBy:null, wasRejected:false,
+        createdAt: serverTimestamp()
+      }).catch(()=>{});
+    }
+  }
+  for(const t of tasks){
+    if(t.isDaily && t.status==='open' && t.dateKey < today){
+      updateDoc(doc(db,'tasks',t.id), { status:'expired' }).catch(()=>{});
+    }
+  }
+}
+let allDailyTimer = null;
+function scheduleEnsureAll(){ clearTimeout(allDailyTimer); allDailyTimer = setTimeout(ensureAllDailyTasks, 500); }
+let lastDayKeyA = todayKey();
+setInterval(()=>{
+  const k = todayKey();
+  if(k !== lastDayKeyA){ lastDayKeyA = k; scheduleEnsureAll(); }
+}, 60000);
 
 /* ===== 即時監聽 ===== */
 onSnapshot(collection(db,'players'), snap=>{
@@ -391,6 +458,7 @@ onSnapshot(collection(db,'players'), snap=>{
   renderTasks();
   renderReview();
   renderBuyReview();
+  scheduleEnsureAll();
 });
 onSnapshot(query(collection(db,'tasks'), orderBy('createdAt','desc')), snap=>{
   tasks = [];
@@ -398,6 +466,15 @@ onSnapshot(query(collection(db,'tasks'), orderBy('createdAt','desc')), snap=>{
   renderTasks();
   renderReview();
   updateNavBadge();
+  scheduleEnsureAll();
+});
+onSnapshot(collection(db,'dailyTemplates'), snap=>{
+  dailyTemplates = [];
+  snap.forEach(d=> dailyTemplates.push({id:d.id, ...d.data()}));
+  renderTemplates();
+  // collection 真的空（非快取）才建預設，避免重複
+  if(adminUnlocked && snap.empty && !snap.metadata.fromCache) createDefaultTemplates();
+  scheduleEnsureAll();
 });
 onSnapshot(collection(db,'shop'), snap=>{
   shopItems = [];
@@ -455,12 +532,28 @@ window.approveTask = async (id)=>{
       if(t.status!=='pending') throw new Error('狀態已變更');
       const payee = t.claimedBy || t.assignee;
       if(!payee || payee==='all') throw new Error('找不到領獎的人');
+      const pRef = doc(db,'players',payee);
+
+      // 每日任務：先讀玩家算 streak（連續性用任務 dateKey，不是審核當下）
+      let streakUpdate = {};
+      if(t.isDaily && t.templateId && t.dateKey){
+        const ps = await tx.get(pRef);
+        const streaks = (ps.exists() && ps.data().dailyStreaks) || {};
+        const cur = streaks[t.templateId] || { count:0, lastDate:null };
+        let count;
+        if(cur.lastDate === t.dateKey)             count = cur.count;        // 防重複（理論上不會發生）
+        else if(cur.lastDate === prevKey(t.dateKey)) count = (cur.count||0)+1; // 昨天有做 → 續
+        else                                        count = 1;                // 斷了 → 重算
+        streakUpdate['dailyStreaks.'+t.templateId] = { count, lastDate: t.dateKey };
+      }
+
       tx.update(ref, { status:'done' });
-      tx.update(doc(db,'players',payee), {
+      tx.update(pRef, {
         coins:       increment(t.reward),
         totalEarned: increment(t.reward),
         xp:          increment(t.reward),   // 1 金幣 = 1 XP
-        tasksDone:   increment(1)
+        tasksDone:   increment(1),
+        ...streakUpdate
       });
     });
     toast('已通過，金幣入帳 🪙');
@@ -482,7 +575,7 @@ function renderReview(){
   setCount('cReview', list.length);
   $('reviewList').innerHTML = list.length ? list.map(t=>`
     <div class="card">
-      <div class="title">${esc(t.title)}</div>
+      <div class="title">${esc(t.title)}${t.isDaily?' <span class="pill a">📅每日</span>':''}</div>
       <div class="sub">${esc(pName(t.claimedBy || t.assignee))} 回報完成・獎勵 <span class="coin">🪙 ${t.reward}</span></div>
       <div class="row">
         <button class="btn ok" onclick="approveTask('${t.id}')">✅ 通過發錢</button>
@@ -547,12 +640,49 @@ function renderTasks(){
     if(t.status==='claimed') pill = `<span class="pill claimed">${esc(pName(t.claimedBy))} 搶到</span>`;
     else if(t.assignee==='all') pill = '<span class="pill grab">開放搶</span>';
     else pill = `<span class="pill a">${esc(pName(t.assignee))}</span>`;
+    const dailyPill = t.isDaily ? '<span class="pill a">📅每日</span> ' : '';
     return `<div class="card">
-      <div class="title">${esc(t.title)} ${pill}</div>
+      <div class="title">${dailyPill}${esc(t.title)} ${pill}</div>
       <div class="sub"><span class="coin">🪙 ${t.reward}</span></div>
       <div class="row"><button class="btn gray" onclick="delTask('${t.id}')">刪除</button></div>
     </div>`;
   }).join('') : '<div class="empty">沒有進行中的任務</div>';
+}
+
+/* ===== 每日任務模板 ===== */
+$('addTplBtn').onclick = async ()=>{
+  const title = $('dTitle').value.trim();
+  const reward = parseInt($('dReward').value);
+  const note = $('dNote').value.trim();
+  if(!title) return toast('要輸入標題');
+  if(!reward || reward<1) return toast('金幣要大於 0');
+  await addDoc(collection(db,'dailyTemplates'), { title, reward, note, active:true, createdAt:serverTimestamp() });
+  $('dTitle').value=''; $('dReward').value=''; $('dNote').value='';
+  toast('模板已建立 ✅');
+};
+window.toggleTpl = async (id)=>{
+  const t = dailyTemplates.find(x=>x.id===id);
+  if(!t) return;
+  await updateDoc(doc(db,'dailyTemplates',id), { active: !t.active });
+  toast(t.active ? '已停用（隔天起不再生成）' : '已啟用');
+};
+window.delTpl = async (id)=>{
+  if(!confirm('確定刪除這個每日任務模板？\n（已生成的歷史任務不受影響）')) return;
+  await deleteDoc(doc(db,'dailyTemplates',id));
+  toast('模板已刪除');
+};
+function renderTemplates(){
+  setCount('cTpl', dailyTemplates.length);
+  $('tplList').innerHTML = dailyTemplates.length ? dailyTemplates.map(t=>`
+    <div class="card">
+      <div class="title">${esc(t.title)} ${t.active?'<span class="pill claimed">啟用中</span>':'<span class="pill grab">已停用</span>'}</div>
+      <div class="sub"><span class="coin">🪙 ${t.reward}</span>${t.note?'・'+esc(t.note):''}</div>
+      <div class="row">
+        <button class="btn gray" onclick="toggleTpl('${t.id}')">${t.active?'停用':'啟用'}</button>
+        <button class="btn no" onclick="delTpl('${t.id}')">刪除</button>
+      </div>
+    </div>
+  `).join('') : '<div class="empty">還沒有每日任務模板</div>';
 }
 
 /* ===== 商店管理 ===== */
