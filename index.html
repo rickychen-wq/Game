@@ -1256,24 +1256,39 @@ function positionTutStep(){
 function layoutTut(target){
   const step = TUT_STEPS[tutStep];
   const hole = $('tutHole'), bubble = $('tutBubble'), overlay = $('tutorial');
-  const vh = window.innerHeight;
+  const vh = window.innerHeight, vw = window.innerWidth;
   if(target){
     const r = target.getBoundingClientRect();
     const pad = 6;
+
+    // 洞：先算理想值再夾（超高元素只框可見上緣）
+    let hLeft   = Math.max(r.left - pad, 4);
+    let hWidth  = Math.min(r.width + pad*2, vw - 8);
+    let hTop    = r.top - pad;
+    let hHeight = r.height + pad*2;
+    const maxH = vh * 0.45;                 // 洞最高只佔 45% 視窗
+    if(hHeight > maxH){
+      hHeight = maxH;
+      hTop = Math.max(hTop, 64);            // 不蓋到 header
+    }
+    hTop = Math.min(Math.max(hTop, 8), vh - hHeight - 8);   // 夾回視窗
+
     hole.style.display = 'block';
-    hole.style.left = (r.left - pad) + 'px';
-    hole.style.top = (r.top - pad) + 'px';
-    hole.style.width = (r.width + pad*2) + 'px';
-    hole.style.height = (r.height + pad*2) + 'px';
+    hole.style.left   = hLeft + 'px';
+    hole.style.top    = hTop + 'px';
+    hole.style.width  = hWidth + 'px';
+    hole.style.height = hHeight + 'px';
     overlay.style.background = 'transparent';
+
+    // 氣泡：用夾過的洞座標決定上下，不用原始 r
     bubble.style.left = '50%';
-    if((r.top + r.height/2) > vh/2){       // 洞在下半 → 氣泡放上方
+    if((hTop + hHeight/2) > vh/2){          // 洞在下半 → 氣泡放上方
       bubble.style.top = 'auto';
-      bubble.style.bottom = (vh - (r.top - pad) + 12) + 'px';
+      bubble.style.bottom = (vh - hTop + 12) + 'px';
       bubble.style.transform = 'translateX(-50%)';
-    } else {                                // 洞在上半 → 氣泡放下方
+    } else {                                 // 洞在上半 → 氣泡放下方
       bubble.style.bottom = 'auto';
-      bubble.style.top = (r.bottom + pad + 12) + 'px';
+      bubble.style.top = (hTop + hHeight + 12) + 'px';
       bubble.style.transform = 'translateX(-50%)';
     }
   } else {
@@ -1287,6 +1302,19 @@ function layoutTut(target){
   $('tutText').textContent = step.text;
   $('tutProg').textContent = `${tutStep + 1} / ${TUT_STEPS.length}`;
   $('tutNext').textContent = isLast ? (tutReward ? '領取新手禮包 🎁 +50' : '完成') : '下一步';
+
+  // 最終保險：文案長度會改氣泡高度，量測後夾整顆進視窗
+  requestAnimationFrame(()=>{
+    const b = bubble.getBoundingClientRect();
+    if(b.bottom > vh - 8){
+      bubble.style.bottom = 'auto';
+      bubble.style.top = Math.max(8, vh - b.height - 8) + 'px';
+    }
+    if(b.top < 8){
+      bubble.style.bottom = 'auto';
+      bubble.style.top = '8px';
+    }
+  });
 }
 function advanceTut(){
   tutStep++;
