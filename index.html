@@ -647,6 +647,8 @@
       <h2>材料庫存</h2>
       <div class="matGrid" id="matGrid"></div>
       <button class="craftBtn" id="craftBtn" disabled>合成稱號</button>
+      <button class="probToggle" id="craftToggle">⚗️ 合成內容與機率 ▾</button>
+      <div class="probList" id="craftList"></div>
       <button class="probToggle" id="probToggle">📊 查看完整機率 ▾</button>
       <div class="probList" id="probList"></div>
     </div>
@@ -776,6 +778,7 @@ let shopItems = [];
 let purchases = [];
 let dailyTemplates = [];
 let penalties = [];
+let penaltiesLoaded = false;
 
 /* ==================================================================
    抽獎機常數（全部寫死，後台不可調）
@@ -790,8 +793,8 @@ const PRIZES = [
   { type:'coin', icon:'🪙', name:'金幣 200',  value:200,           prob:12.5 },
   { type:'again',icon:'🔄', name:'AGAIN',     value:0,             prob:3.5 },
   { type:'again',icon:'🔄', name:'AGAIN',     value:0,             prob:3.5 },
-  { type:'coin', icon:'💰', name:'金幣 1000', value:1000,          prob:2 },
-  { type:'coin', icon:'💰', name:'金幣 1000', value:1000,          prob:2 },
+  { type:'coin', icon:'💰', name:'金幣 1000', value:1000,          prob:2.5 },
+  { type:'coin', icon:'💰', name:'金幣 1000', value:1000,          prob:2.5 },
   { type:'mat',  icon:'🟣', name:'紫晶碎片 ×1', key:'purple', n:1,  prob:7.5 },
   { type:'mat',  icon:'🟣', name:'紫晶碎片 ×3', key:'purple', n:3,  prob:3 },
   { type:'mat',  icon:'⬜', name:'長白玉石 ×1', key:'jade',   n:1,  prob:7.5 },
@@ -799,7 +802,7 @@ const PRIZES = [
   { type:'mat',  icon:'🟦', name:'靈青石 ×1',  key:'azure',  n:1,  prob:7.5 },
   { type:'mat',  icon:'🟦', name:'靈青石 ×3',  key:'azure',  n:3,  prob:3 },
   { type:'mat',  icon:'💎', name:'鑽粉 ×1',    key:'dust',   n:1,  prob:5.5 },
-  { type:'mat',  icon:'🫧', name:'魂源泉水 ×1', key:'soul',   n:1,  prob:2 },
+  { type:'mat',  icon:'🫧', name:'魂源泉水 ×1', key:'soul',   n:1,  prob:1 },
 ];
 // 5×5 外圈順時針座標（row, col），對應 PRIZES 索引
 const POS = [
@@ -816,7 +819,7 @@ const MATERIALS = [
   { key:'jade',   icon:'⬜', name:'長白玉石', need:5 },
   { key:'azure',  icon:'🟦', name:'靈青石',  need:5 },
   { key:'dust',   icon:'💎', name:'鑽粉',    need:2 },
-  { key:'soul',   icon:'🫧', name:'魂源泉水', need:1 },
+  { key:'soul',   icon:'🫧', name:'魂源泉水', need:2 },
 ];
 const CRAFT_TITLES = [
   { id:'shadow', icon:'🌑', name:'暗影使者', mult:1.1,  prob:52 },
@@ -874,7 +877,7 @@ function titleBonus(p){ return bestTitle(p)?.mult || 1.0; }
 // 成就全解 ×1.2（動態：成就總數變多就自動失效）
 function achievementBonus(p){
   const got = ((p && p.achievements) || []).length;
-  return got >= ACHIEVEMENTS.length ? 1.2 : 1.0;
+  return got >= ACHIEVEMENTS.length ? 1.1 : 1.0;
 }
 function finalMultiplier(p){
   return Math.round(achievementBonus(p) * titleBonus(p) * 1000) / 1000;
@@ -895,8 +898,35 @@ const ACHIEVEMENTS = [
   { id:'hoard_1000',  icon:'🏦', name:'守財奴',     desc:'同時持有 1000 金幣',   check: s => s.coins >= 1000 },
   { id:'grab_king',   icon:'⚡', name:'手速之王',   desc:'搶到 10 個開放任務',   check: s => s.tasksGrabbed >= 10 },
   { id:'streak_7',    icon:'🔥', name:'燃燒吧',     desc:'任一每日任務連續達成 7 天', check: s => s.maxStreak >= 7 },
+  { id:'lottery_30',  icon:'🎰', name:'賭場常客',   desc:'抽獎 30 次',           check: s => s.lotteryCount >= 30 },
+  { id:'lv_20',       icon:'🏅', name:'資深工人',   desc:'等級達到 Lv.20',       check: s => s.level >= 20 },
+  { id:'lv_30',       icon:'💎', name:'家務大師',   desc:'等級達到 Lv.30',       check: s => s.level >= 30 },
+  { id:'clean_30',    icon:'😇', name:'清白之身',   desc:'連續 30 天沒有任何罰單', check: s => s.cleanDays >= 30 },
 ];
 let localUnlocked = null;
+
+// 連續無罰單天數：起算日 = 最後一張罰單日期（不分類型/狀態），從未被罰則用註冊日
+// 一律用台灣日期字串比較，不用毫秒差
+function cleanDays(){
+  if(!me || !penaltiesLoaded) return 0;      // penalties 還沒載入前不判定，避免誤解鎖
+  const tzKey = d => d.toLocaleDateString('en-CA', { timeZone:'Asia/Taipei' });
+  let startKey = null;
+  const mine = penalties.filter(p => p.playerId === me);
+  if(mine.length){
+    for(const p of mine){
+      const d = p.createdAt?.toDate ? p.createdAt.toDate() : null;
+      if(!d) continue;                        // serverTimestamp 尚未回填 → 略過該筆
+      const k = tzKey(d);
+      if(!startKey || k > startKey) startKey = k;
+    }
+  } else {
+    const c = players[me]?.createdAt;
+    const d = c?.toDate ? c.toDate() : null;
+    if(d) startKey = tzKey(d);
+  }
+  if(!startKey) return 0;
+  return Math.round((new Date(todayKey()) - new Date(startKey)) / 86400000) + 1;  // 當天算第 1 天
+}
 
 function myStats(){
   const p = players[me] || {};
@@ -909,6 +939,9 @@ function myStats(){
     tasksGrabbed: p.tasksGrabbed ?? 0,
     buyCount: purchases.filter(x => x.playerId === me && x.status !== 'refunded').length,
     maxStreak,
+    lotteryCount: p.lotteryCount ?? 0,
+    level: levelFromXp(p.xp ?? 0),
+    cleanDays: cleanDays(),
   };
 }
 
@@ -1195,7 +1228,7 @@ function scheduleEnsureDaily(){ clearTimeout(dailyTimer); dailyTimer = setTimeou
 let lastDayKey = todayKey();
 setInterval(()=>{
   const k = todayKey();
-  if(k !== lastDayKey){ lastDayKey = k; scheduleEnsureDaily(); }
+  if(k !== lastDayKey){ lastDayKey = k; scheduleEnsureDaily(); checkAchievements(); }
 }, 60000);
 
 /* ===== 即時監聽 ===== */
@@ -1245,6 +1278,8 @@ onSnapshot(query(collection(db,'purchases'), orderBy('createdAt','desc')), snap=
 onSnapshot(query(collection(db,'penalties'), orderBy('createdAt','desc')), snap=>{
   penalties = [];
   snap.forEach(d=> penalties.push({id:d.id, ...d.data()}));
+  penaltiesLoaded = true;
+  checkAchievements();
   renderAll();
   renderPenalty();
 });
@@ -1513,6 +1548,11 @@ $('probToggle').onclick = ()=>{
   const l = $('probList');
   l.classList.toggle('show');
   $('probToggle').textContent = l.classList.contains('show') ? '📊 收起機率 ▴' : '📊 查看完整機率 ▾';
+};
+$('craftToggle').onclick = ()=>{
+  const l = $('craftList');
+  l.classList.toggle('show');
+  $('craftToggle').textContent = l.classList.contains('show') ? '⚗️ 收起合成內容 ▴' : '⚗️ 合成內容與機率 ▾';
 };
 
 /* ==================================================================
@@ -1905,6 +1945,23 @@ function renderLottery(){
       `<div class="probRow"><span>${x.icon} ${esc(x.name)}</span><b>${x.prob}%</b></div>`
     ).join('') + `<div class="probRow"><span>🫧 保底</span><b>每 ${PITY_MAX} 抽必出魂源泉水</b></div>`;
     $('probList').dataset.built = '1';
+  }
+  // 合成公示（配方 + 稱號機率，全部由常數生成）
+  if(!$('craftList').dataset.built){
+    $('craftList').innerHTML =
+      `<div class="probRow"><span style="color:var(--gold)">配方</span><b></b></div>` +
+      MATERIALS.map(m=>
+        `<div class="probRow"><span>${m.icon} ${esc(m.name)}</span><b>×${m.need}</b></div>`
+      ).join('') +
+      `<div class="probRow"><span style="color:var(--gold)">可獲得的稱號</span><b></b></div>` +
+      CRAFT_TITLES.map(t=>
+        `<div class="probRow"><span>${t.icon} ${esc(t.name)}　金幣 ×${t.mult}</span><b>${t.prob}%</b></div>`
+      ).join('') +
+      `<div class="probRow" style="border:none;display:block;line-height:1.7">
+         ※ 重複取得會退還 🟣×2 ⬜×2 🟦×2<br>
+         ※ 擁有多個稱號時只取倍率最高的，不疊加
+       </div>`;
+    $('craftList').dataset.built = '1';
   }
   updateSpinBtn();
 }
