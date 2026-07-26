@@ -428,7 +428,7 @@ let penalties = [];
 let adminUnlocked = (sessionStorage.getItem('admin_ok') === '1');
 
 // ⚠️ 前台 index.html 的 ACHIEVEMENTS 陣列長度改變時，這裡必須同步修改
-const ACHIEVEMENT_TOTAL = 11;
+const ACHIEVEMENT_TOTAL = 15;
 
 /* 合成稱號倍率（跟前台同表，寫死） */
 const CRAFT_TITLES = [
@@ -444,7 +444,7 @@ function titleBonus(p){
   return best;                                   // 只取最高，不疊乘
 }
 function achievementBonus(p){
-  return (((p && p.achievements) || []).length >= ACHIEVEMENT_TOTAL) ? 1.2 : 1.0;
+  return (((p && p.achievements) || []).length >= ACHIEVEMENT_TOTAL) ? 1.1 : 1.0;
 }
 function finalMultiplier(p){
   return Math.round(achievementBonus(p) * titleBonus(p) * 1000) / 1000;
@@ -518,6 +518,7 @@ function unlock(){
     $('lockOverlay').style.display = 'none';
     sessionStorage.setItem('admin_ok','1');
     adminUnlocked = true;
+    if(dailyTemplates.length === 0) createDefaultTemplates();
     scheduleEnsureAll();
   } else toast('密碼錯誤');
 }
