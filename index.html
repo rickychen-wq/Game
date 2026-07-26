@@ -103,7 +103,7 @@
   }
   .idblock{ flex:1; min-width:0; }
   .nameRow{ display:flex; align-items:center; gap:8px; }
-  #myName{ font-size:16px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:118px; }
+  #myName{ font-size:16px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:88px; }
   .lvPill{
     flex-shrink:0; font-family:var(--mono); font-size:11px; font-weight:800; letter-spacing:.5px;
     padding:3px 9px; border-radius:5px; color:#1a1206;
@@ -377,6 +377,198 @@
   }
   #tutBubble .tNext:active{ transform:translateY(2px) scale(.97); }
 
+  /* ===== 抽屜選單 ===== */
+  #drawerMask{
+    position:fixed; inset:0; z-index:300; background:rgba(0,0,0,.6);
+    opacity:0; pointer-events:none; transition:opacity .32s;
+  }
+  #drawerMask.show{ opacity:1; pointer-events:auto; }
+  #drawer{
+    position:fixed; left:0; right:0; bottom:0; z-index:301;
+    background:linear-gradient(180deg,#12141d,#0a0b12);
+    border-top:1px solid var(--line);
+    border-radius:20px 20px 0 0; padding:10px 16px calc(20px + env(safe-area-inset-bottom));
+    transform:translateY(100%); transition:transform .32s cubic-bezier(.22,1,.36,1);
+    box-shadow:0 -10px 40px rgba(0,0,0,.6);
+  }
+  #drawer.show{ transform:translateY(0); }
+  #drawer .grip{ width:38px; height:4px; border-radius:99px; background:#3a3f52; margin:0 auto 16px; }
+  .drawerGrid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .drawerItem{
+    position:relative; display:flex; flex-direction:column; align-items:center; gap:6px;
+    padding:16px 6px; border-radius:12px; cursor:pointer;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
+    border:1px solid var(--line-soft); transition:transform .12s, border-color .2s;
+  }
+  .drawerItem:active{ transform:scale(.94); }
+  .drawerItem.on{ border-color:rgba(233,196,106,.5); box-shadow:0 0 14px rgba(233,196,106,.14); }
+  .drawerItem .dic{ font-size:24px; }
+  .drawerItem .dname{ font-family:var(--mono); font-size:11.5px; font-weight:700; color:var(--text); letter-spacing:.5px; }
+
+  /* ===== 合成稱號 pill ===== */
+  .titlePill{
+    flex-shrink:1; max-width:96px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    font-family:var(--mono); font-size:10.5px; font-weight:800; letter-spacing:.3px;
+    padding:3px 8px; border-radius:5px; color:#1a1206;
+    background:linear-gradient(180deg,#d9b3ff,#9a6ae0); box-shadow:0 0 12px rgba(154,106,224,.35);
+  }
+  .multPill{
+    font-family:var(--mono); font-size:10.5px; font-weight:800; color:#ffcf6b;
+    background:rgba(233,196,106,.12); border:1px solid rgba(233,196,106,.3);
+    padding:2px 7px; border-radius:5px; margin-left:7px;
+  }
+  #coinBox.debt{ border-color:rgba(255,107,129,.7); box-shadow:0 0 16px rgba(255,107,129,.22); }
+  #coinBox.debt .amt{ color:var(--pink); }
+  .debtTag{ font-family:var(--mono); font-size:9px; font-weight:800; color:var(--pink); letter-spacing:1px; }
+
+  /* ===== 抽獎機 ===== */
+  .lotTop{ display:flex; gap:10px; margin-bottom:14px; }
+  .lotBox{
+    flex:1; padding:12px 14px; border-radius:12px; text-align:center;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2)); border:1px solid var(--line);
+  }
+  .lotBox .lbl{ font-family:var(--mono); font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .lotBox .val{ font-family:var(--mono); font-size:20px; font-weight:800; color:var(--gold); margin-top:3px; }
+  .pityBar{ height:7px; border-radius:99px; background:#12141d; overflow:hidden; margin-top:8px; border:1px solid var(--line-soft); }
+  .pityFill{ height:100%; background:linear-gradient(90deg,#7a4fb0,#c9a0ff); box-shadow:0 0 10px rgba(201,160,255,.5); transition:width .4s; }
+
+  .wheel{
+    display:grid; grid-template-columns:repeat(5,1fr); grid-template-rows:repeat(5,1fr);
+    gap:5px; aspect-ratio:1; margin:0 auto 16px; max-width:400px;
+  }
+  .cell{
+    position:relative; border-radius:9px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:1px; padding:2px;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
+    border:1px solid var(--line-soft); overflow:hidden; transition:opacity .3s;
+  }
+  .cell .ci{ font-size:min(5vw,22px); line-height:1; }
+  .cell .cn{ font-family:var(--mono); font-size:min(2.3vw,10px); font-weight:700; color:var(--muted); letter-spacing:-.2px; }
+  .cell.active{ border-color:var(--gold); background:linear-gradient(160deg,#2a2416,#191509);
+    box-shadow:0 0 16px rgba(233,196,106,.45); }
+  .cell.win{ border-color:var(--gold); animation:winpulse .55s ease-in-out infinite alternate; }
+  @keyframes winpulse{
+    from{ box-shadow:0 0 12px rgba(233,196,106,.4); transform:scale(1); }
+    to{ box-shadow:0 0 30px rgba(233,196,106,.85); transform:scale(1.06); }
+  }
+  .cell.dim{ opacity:.28; }
+  .spinBtn{
+    grid-column:2 / span 3; grid-row:2 / span 3;
+    position:relative; border:none; border-radius:14px; cursor:pointer; overflow:hidden;
+    background:linear-gradient(160deg,#191d2e,#0d1018); border:1px solid rgba(233,196,106,.4);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+    font-family:var(--mono); color:var(--gold); font-weight:800;
+  }
+  .spinBtn::before{
+    content:''; position:absolute; inset:-50%; z-index:0;
+    background:conic-gradient(from 0deg, transparent 0 20deg, rgba(233,196,106,.16) 20deg 40deg,
+      transparent 40deg 60deg, rgba(154,106,224,.14) 60deg 80deg, transparent 80deg 100deg);
+    animation:rayspin 9s linear infinite;
+  }
+  .spinBtn.spinning::before{ animation-duration:1.1s; }
+  .spinBtn > *{ position:relative; z-index:1; }
+  .spinBtn .sTop{ font-size:min(6.5vw,26px); }
+  .spinBtn .sTxt{ font-size:min(3.4vw,14px); letter-spacing:1px; }
+  .spinBtn .sSub{ font-size:min(2.6vw,11px); color:var(--muted); font-weight:700; }
+  .spinBtn:disabled{ opacity:.5; cursor:default; }
+  .spinBtn:not(:disabled):active{ transform:scale(.97); }
+
+  .matGrid{ display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-bottom:12px; }
+  .matCell{
+    aspect-ratio:1; border-radius:10px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:2px;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2)); border:1px solid var(--line-soft);
+  }
+  .matCell.full{ border-color:rgba(233,196,106,.55); box-shadow:0 0 14px rgba(233,196,106,.18); }
+  .matCell.pop{ animation:matpop .5s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes matpop{ 0%{ transform:scale(1);} 45%{ transform:scale(1.22);} 100%{ transform:scale(1);} }
+  .matCell .mi{ font-size:20px; }
+  .matCell .mc{ font-family:var(--mono); font-size:10px; font-weight:800; color:var(--muted); }
+  .matCell.full .mc{ color:var(--gold); }
+
+  .craftBtn{
+    width:100%; border:none; border-radius:11px; padding:13px; cursor:pointer;
+    font-family:var(--mono); font-size:15px; font-weight:800; letter-spacing:1px;
+    background:linear-gradient(180deg,#d9b3ff,#9a6ae0); color:#1a1206;
+    box-shadow:0 0 0 1px rgba(154,106,224,.4), 0 6px 18px rgba(154,106,224,.25);
+  }
+  .craftBtn:disabled{ background:#181a24; color:var(--dim); box-shadow:none; cursor:default; }
+  .craftBtn:not(:disabled):active{ transform:translateY(2px) scale(.98); }
+
+  .probToggle{
+    width:100%; margin-top:10px; background:none; border:1px solid var(--line-soft); border-radius:9px;
+    color:var(--muted); font-family:var(--mono); font-size:12px; padding:9px; cursor:pointer;
+  }
+  .probList{ display:none; margin-top:8px; }
+  .probList.show{ display:block; }
+  .probRow{
+    display:flex; justify-content:space-between; padding:6px 10px;
+    font-family:var(--mono); font-size:11.5px; color:var(--muted); border-bottom:1px solid var(--line-soft);
+  }
+  .probRow b{ color:var(--gold); font-weight:800; }
+
+  #prizePop{
+    position:fixed; inset:0; z-index:430; display:none;
+    align-items:center; justify-content:center; flex-direction:column;
+    background:radial-gradient(circle at center, rgba(12,12,20,.9), rgba(3,3,6,.97));
+  }
+  #prizePop.show{ display:flex; animation:lufade .3s ease; }
+  #prizePop .pBox{
+    display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center;
+    padding:28px 34px; border-radius:18px; min-width:250px; max-width:84vw;
+    background:linear-gradient(160deg,#16161f,#0b0c13);
+    border:1px solid rgba(233,196,106,.55);
+    box-shadow:0 20px 50px rgba(0,0,0,.6), 0 0 44px rgba(233,196,106,.2);
+    animation:lupop .55s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  #prizePop.rare .pBox{
+    border-color:rgba(201,160,255,.75);
+    box-shadow:0 20px 50px rgba(0,0,0,.6), 0 0 60px rgba(154,106,224,.45);
+    background:linear-gradient(160deg,#1e1630,#0d0a16);
+  }
+  #prizePop .pLbl{ font-family:var(--mono); font-size:11px; font-weight:800; letter-spacing:3px; color:var(--gold); }
+  #prizePop.rare .pLbl{ color:#c9a0ff; }
+  #prizePop .pIcon{ font-size:64px; filter:drop-shadow(0 0 16px rgba(233,196,106,.5)); }
+  #prizePop.rare .pIcon{ filter:drop-shadow(0 0 22px rgba(201,160,255,.75)); }
+  #prizePop .pName{ font-size:22px; font-weight:900; color:#fff; }
+  #prizePop .pDesc{ font-family:var(--mono); font-size:12px; color:var(--muted); }
+  #prizePop .pBtn{
+    margin-top:6px; border:none; border-radius:10px; padding:11px 26px; cursor:pointer;
+    font-family:var(--mono); font-size:14px; font-weight:800; letter-spacing:1px;
+    background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206;
+  }
+
+  /* ===== 禁閉 / 罰單 ===== */
+  .lockCard{
+    position:relative; border-radius:12px; padding:16px; margin-bottom:14px;
+    background:linear-gradient(160deg,#2a1218,#160a0e);
+    border:1.5px solid rgba(255,107,129,.6);
+    box-shadow:0 0 26px rgba(255,107,129,.2), inset 0 1px 0 rgba(255,255,255,.04);
+    animation:lockglow 1.8s ease-in-out infinite alternate;
+  }
+  @keyframes lockglow{ to{ box-shadow:0 0 40px rgba(255,107,129,.35); } }
+  .lockCard .lkTag{ font-family:var(--mono); font-size:10.5px; font-weight:800; letter-spacing:2px; color:var(--pink); }
+  .lockCard .lkTitle{ font-size:18px; font-weight:900; color:#fff; margin:6px 0 4px; }
+  .lockCard .lkReason{ font-family:var(--mono); font-size:12px; color:#ffb3bf; }
+  .lockCard .lkTask{ margin-top:12px; padding:12px; border-radius:9px; background:rgba(0,0,0,.35); border:1px solid rgba(255,107,129,.25); }
+  .lockCard .lkTask .lt{ font-family:var(--mono); font-size:10px; color:var(--pink); letter-spacing:1px; }
+  .lockCard .lkTask .lv2{ font-size:15px; font-weight:800; color:#fff; margin-top:4px; }
+  .btn.danger{ background:linear-gradient(180deg,#ff8497,#d9455c); color:#fff; box-shadow:0 6px 16px rgba(217,69,92,.3); }
+  .lockNote{ font-family:var(--mono); font-size:11.5px; color:var(--pink); text-align:center; padding:14px 0; letter-spacing:.5px; }
+  .penRow{
+    padding:13px 14px; margin-bottom:10px; border-radius:10px;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2)); border:1px solid var(--line-soft);
+  }
+  .penRow.fine{ border-left:3px solid var(--gold); }
+  .penRow.lock{ border-left:3px solid var(--pink); }
+  .penRow .pTop{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .penRow .pType{ font-family:var(--mono); font-size:11px; font-weight:800; letter-spacing:1px; }
+  .penRow.fine .pType{ color:var(--gold); }
+  .penRow.lock .pType{ color:var(--pink); }
+  .penRow .pDate{ font-family:var(--mono); font-size:10.5px; color:var(--dim); }
+  .penRow .pReason{ font-size:14.5px; font-weight:800; margin-top:6px; }
+  .penRow .pMeta{ font-family:var(--mono); font-size:11.5px; color:var(--muted); margin-top:4px; }
+
   @media (prefers-reduced-motion: reduce){
     *{ animation-duration:.001s !important; transition-duration:.05s !important; }
     body::before{ display:none; }
@@ -401,6 +593,7 @@
     <div class="nameRow">
       <span id="myName">—</span>
       <span class="lvPill" id="lvPill">Lv.1</span>
+      <span class="titlePill" id="titlePill" style="display:none"></span>
       <button id="switchBtn">換人</button>
       <button id="replayBtn" class="iconBtn" style="padding:2px 6px">📖</button>
     </div>
@@ -411,13 +604,14 @@
   </div>
   <div class="hdr-right">
     <button id="muteBtn" class="iconBtn">🔊</button>
-    <div id="coinBox">🪙 <span class="amt" id="myCoins">0</span></div>
+    <div id="coinBox">🪙 <span class="amt" id="myCoins">0</span><span class="debtTag" id="debtTag" style="display:none">負債</span></div>
   </div>
 </header>
 
 <main>
   <!-- 任務頁 -->
   <div class="page on" id="page-tasks">
+    <div id="lockZone"></div>
     <h2 id="h2-daily">每日任務</h2>
     <div id="dailyTasks"></div>
     <h2>我的任務</h2>
@@ -428,9 +622,40 @@
     <div id="pendingTasks"></div>
   </div>
 
-  <!-- 商店頁（依分類分組，h2 由 renderShop 動態產生） -->
+  <!-- 商店頁（券寫死在最上方，底下才是 Firestore 分類商品） -->
   <div class="page" id="page-shop">
+    <h2>抽獎</h2>
+    <div id="ticketCard"></div>
     <div id="shopList"></div>
+  </div>
+
+  <!-- 抽獎頁 -->
+  <div class="page" id="page-lottery">
+    <div id="lotteryMain">
+      <div class="lotTop">
+        <div class="lotBox">
+          <div class="lbl">持有抽獎券</div>
+          <div class="val" id="ticketCount">0</div>
+        </div>
+        <div class="lotBox">
+          <div class="lbl">🫧 魂源保底</div>
+          <div class="val" id="pityText">—</div>
+          <div class="pityBar"><div class="pityFill" id="pityFill"></div></div>
+        </div>
+      </div>
+      <div class="wheel" id="wheel"></div>
+      <h2>材料庫存</h2>
+      <div class="matGrid" id="matGrid"></div>
+      <button class="craftBtn" id="craftBtn" disabled>合成稱號</button>
+      <button class="probToggle" id="probToggle">📊 查看完整機率 ▾</button>
+      <div class="probList" id="probList"></div>
+    </div>
+  </div>
+
+  <!-- 罰單頁 -->
+  <div class="page" id="page-penalty">
+    <h2>我的罰單</h2>
+    <div id="penaltyList"></div>
   </div>
 
   <!-- 背包頁 -->
@@ -465,10 +690,32 @@
 <nav>
   <button class="on" data-p="tasks"><span class="ic">📋</span>任務</button>
   <button data-p="shop"><span class="ic">🛒</span>商店</button>
-  <button data-p="bag"><span class="ic">🎒</span>背包<span class="navBadge" id="navBag">0</span></button>
-  <button data-p="rank"><span class="ic">🏆</span>排行</button>
-  <button data-p="log"><span class="ic">📜</span>紀錄</button>
+  <button data-p="lottery"><span class="ic">🎰</span>抽獎</button>
+  <button id="moreBtn"><span class="ic">☰</span>更多<span class="navBadge" id="navMore">0</span></button>
 </nav>
+
+<!-- 抽屜 -->
+<div id="drawerMask"></div>
+<div id="drawer">
+  <div class="grip"></div>
+  <div class="drawerGrid">
+    <div class="drawerItem" data-p="bag"><span class="dic">🎒</span><span class="dname">背包</span><span class="navBadge" id="drawerBagBadge" style="top:6px;right:10px">0</span></div>
+    <div class="drawerItem" data-p="rank"><span class="dic">🏆</span><span class="dname">排行</span></div>
+    <div class="drawerItem" data-p="log"><span class="dic">📜</span><span class="dname">紀錄</span></div>
+    <div class="drawerItem" data-p="penalty"><span class="dic">🔒</span><span class="dname">我的罰單</span></div>
+  </div>
+</div>
+
+<!-- 獎品彈窗 -->
+<div id="prizePop">
+  <div class="pBox">
+    <div class="pLbl" id="pLbl">恭喜獲得</div>
+    <div class="pIcon" id="pIcon">🪙</div>
+    <div class="pName" id="pName"></div>
+    <div class="pDesc" id="pDesc"></div>
+    <button class="pBtn" id="pBtn">收下</button>
+  </div>
+</div>
 
 <div id="toast"></div>
 
@@ -528,6 +775,55 @@ let tasks = [];
 let shopItems = [];
 let purchases = [];
 let dailyTemplates = [];
+let penalties = [];
+
+/* ==================================================================
+   抽獎機常數（全部寫死，後台不可調）
+================================================================== */
+const TICKET_PRICE = 500;
+
+// 順時針 16 格
+const PRIZES = [
+  { type:'coin', icon:'🪙', name:'金幣 200',  value:200,           prob:12.5 },
+  { type:'coin', icon:'🪙', name:'金幣 200',  value:200,           prob:12.5 },
+  { type:'coin', icon:'🪙', name:'金幣 200',  value:200,           prob:12.5 },
+  { type:'coin', icon:'🪙', name:'金幣 200',  value:200,           prob:12.5 },
+  { type:'again',icon:'🔄', name:'AGAIN',     value:0,             prob:3.5 },
+  { type:'again',icon:'🔄', name:'AGAIN',     value:0,             prob:3.5 },
+  { type:'coin', icon:'💰', name:'金幣 1000', value:1000,          prob:2 },
+  { type:'coin', icon:'💰', name:'金幣 1000', value:1000,          prob:2 },
+  { type:'mat',  icon:'🟣', name:'紫晶碎片 ×1', key:'purple', n:1,  prob:7.5 },
+  { type:'mat',  icon:'🟣', name:'紫晶碎片 ×3', key:'purple', n:3,  prob:3 },
+  { type:'mat',  icon:'⬜', name:'長白玉石 ×1', key:'jade',   n:1,  prob:7.5 },
+  { type:'mat',  icon:'⬜', name:'長白玉石 ×3', key:'jade',   n:3,  prob:3 },
+  { type:'mat',  icon:'🟦', name:'靈青石 ×1',  key:'azure',  n:1,  prob:7.5 },
+  { type:'mat',  icon:'🟦', name:'靈青石 ×3',  key:'azure',  n:3,  prob:3 },
+  { type:'mat',  icon:'💎', name:'鑽粉 ×1',    key:'dust',   n:1,  prob:5.5 },
+  { type:'mat',  icon:'🫧', name:'魂源泉水 ×1', key:'soul',   n:1,  prob:2 },
+];
+// 5×5 外圈順時針座標（row, col），對應 PRIZES 索引
+const POS = [
+  [1,1],[1,2],[1,3],[1,4],[1,5],
+  [2,5],[3,5],[4,5],[5,5],
+  [5,4],[5,3],[5,2],[5,1],
+  [4,1],[3,1],[2,1],
+];
+const PITY_MAX = 70;          // 第 70 抽保底
+const AGAIN_LIMIT = 10;       // 連續 AGAIN 上限
+
+const MATERIALS = [
+  { key:'purple', icon:'🟣', name:'紫晶碎片', need:5 },
+  { key:'jade',   icon:'⬜', name:'長白玉石', need:5 },
+  { key:'azure',  icon:'🟦', name:'靈青石',  need:5 },
+  { key:'dust',   icon:'💎', name:'鑽粉',    need:2 },
+  { key:'soul',   icon:'🫧', name:'魂源泉水', need:1 },
+];
+const CRAFT_TITLES = [
+  { id:'shadow', icon:'🌑', name:'暗影使者', mult:1.1,  prob:52 },
+  { id:'ghost',  icon:'👻', name:'幽靈冠王', mult:1.15, prob:30 },
+  { id:'sky',    icon:'☁️', name:'蒼天使者', mult:1.2,  prob:15 },
+  { id:'chosen', icon:'✨', name:'天選之人', mult:1.5,  prob:3 },
+];
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -564,6 +860,25 @@ function titleFromLevel(lv){
   return t;
 }
 console.assert(levelFromXp(0)===1 && levelFromXp(199)===1 && levelFromXp(200)===2 && levelFromXp(499)===2 && levelFromXp(500)===3, 'levelFromXp 邊界錯誤');
+
+// 合成稱號：取倍率最高的那個（不疊乘）
+function bestTitle(p){
+  const owned = (p && p.craftedTitles) || [];
+  let best = null;
+  for(const t of CRAFT_TITLES){
+    if(owned.includes(t.id) && (!best || t.mult > best.mult)) best = t;
+  }
+  return best;
+}
+function titleBonus(p){ return bestTitle(p)?.mult || 1.0; }
+// 成就全解 ×1.2（動態：成就總數變多就自動失效）
+function achievementBonus(p){
+  const got = ((p && p.achievements) || []).length;
+  return got >= ACHIEVEMENTS.length ? 1.2 : 1.0;
+}
+function finalMultiplier(p){
+  return Math.round(achievementBonus(p) * titleBonus(p) * 1000) / 1000;
+}
 
 /* ==================================================================
    成就
@@ -658,6 +973,10 @@ const sfxBuy     = ()=>{ noiseBurst(0.07,0.22); tone(520,0.12,'triangle',0.18,0.
 const sfxError   = ()=>{ tone(150,0.2,'square',0.2,0); };
 const sfxAchieve = ()=>{ tone(523,0.12,'sine',0.18,0); tone(659,0.12,'sine',0.18,0.1); tone(784,0.22,'sine',0.2,0.2); };
 const sfxLevelUp = ()=>{ [523,659,784,1047].forEach((f,i)=> tone(f,0.2,'triangle',0.2,i*0.09)); };
+// 跑馬燈每跳一格：音高隨減速下降（爽感關鍵）
+const sfxTick    = (p)=>{ tone(520 + Math.max(0,Math.min(1,p)) * 900, 0.045, 'square', 0.09, 0); };
+const sfxRare    = ()=>{ [523,659,784,1047,1319].forEach((f,i)=> tone(f,0.3,'sine',0.2,i*0.11)); };
+const sfxCraft   = ()=>{ noiseBurst(0.09,0.2); [392,523,659,880].forEach((f,i)=> tone(f,0.25,'triangle',0.18,0.05+i*0.08)); };
 
 function updateMuteBtn(){ $('muteBtn').textContent = muted ? '🔇' : '🔊'; }
 $('muteBtn').onclick = ()=>{
@@ -792,16 +1111,35 @@ $('switchBtn').onclick = ()=>{
   $('pickOverlay').style.display = 'flex';
 };
 
-/* ===== tabs ===== */
-document.querySelectorAll('nav button').forEach(b=>{
-  b.onclick = ()=>{
-    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
-    document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));
-    b.classList.add('on');
-    $('page-'+b.dataset.p).classList.add('on');
-    if(b.dataset.p === 'rank') renderRank();
-    if(b.dataset.p === 'bag') renderBag();
-  };
+/* ===== tabs（nav 4 格 + 抽屜共用同一個切換函式） ===== */
+function goTab(name){
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.drawerItem').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));
+  const page = $('page-'+name);
+  if(!page) return;
+  page.classList.add('on');
+  const navBtn = document.querySelector(`nav button[data-p="${name}"]`);
+  if(navBtn) navBtn.classList.add('on');
+  const dItem = document.querySelector(`.drawerItem[data-p="${name}"]`);
+  if(dItem){ dItem.classList.add('on'); $('moreBtn').classList.add('on'); }
+  if(name === 'rank') renderRank();
+  if(name === 'bag') renderBag();
+  if(name === 'lottery') renderLottery();
+  if(name === 'penalty') renderPenalty();
+}
+window.goTab = goTab;   // 供 inline onclick 使用（背包的「去抽獎」）
+document.querySelectorAll('nav button[data-p]').forEach(b=>{
+  b.onclick = ()=> goTab(b.dataset.p);
+});
+
+/* ===== 抽屜 ===== */
+function openDrawer(){ $('drawerMask').classList.add('show'); $('drawer').classList.add('show'); }
+function closeDrawer(){ $('drawerMask').classList.remove('show'); $('drawer').classList.remove('show'); }
+$('moreBtn').onclick = openDrawer;
+$('drawerMask').onclick = closeDrawer;
+document.querySelectorAll('.drawerItem').forEach(el=>{
+  el.onclick = ()=>{ goTab(el.dataset.p); closeDrawer(); };
 });
 
 /* ===== 排行榜排序切換 ===== */
@@ -899,11 +1237,32 @@ onSnapshot(query(collection(db,'purchases'), orderBy('createdAt','desc')), snap=
   snap.forEach(d=> purchases.push({id:d.id, ...d.data()}));
   renderLog();
   renderBag();
+  renderShop();
+  renderLottery();
   checkAchievements();
 });
 
+onSnapshot(query(collection(db,'penalties'), orderBy('createdAt','desc')), snap=>{
+  penalties = [];
+  snap.forEach(d=> penalties.push({id:d.id, ...d.data()}));
+  renderAll();
+  renderPenalty();
+});
+
+/* ===== 禁閉判定（即時算，不在 player 上存 locked 欄位） ===== */
+function myLock(){
+  return penalties.find(p => p.playerId===me && p.type==='lock' && p.status!=='cleared') || null;
+}
+function isLocked(){ return !!myLock(); }
+// 被鎖時擋下所有操作
+function lockGuard(){
+  if(isLocked()){ sfxError(); toast('🔒 禁閉中，先完成贖罪任務'); return true; }
+  return false;
+}
+
 /* ===== 任務動作 ===== */
 window.grabTask = async (id)=>{
+  if(lockGuard()) return;
   try {
     await runTransaction(db, async tx=>{
       const ref = doc(db,'tasks',id);
@@ -920,6 +1279,7 @@ window.grabTask = async (id)=>{
 };
 
 window.reportDone = async (id)=>{
+  if(lockGuard()) return;
   try {
     await updateDoc(doc(db,'tasks',id), { status:'pending', wasRejected:false, completedAt: serverTimestamp() });
     toast('已回報，等媽媽審核 ⏳');
@@ -928,6 +1288,7 @@ window.reportDone = async (id)=>{
 
 /* ===== 購買（→ 進背包 owned） ===== */
 window.buyItem = async (itemId)=>{
+  if(lockGuard()) return;
   const item = shopItems.find(i=>i.id===itemId);
   if(!item) return;
   if(!confirm(`要用 ${item.price} 金幣買「${item.name}」嗎？`)) return;
@@ -951,6 +1312,7 @@ window.buyItem = async (itemId)=>{
 
 /* ===== 使用（背包 owned → 待核銷 pending） ===== */
 window.useItem = async (id)=>{
+  if(lockGuard()) return;
   const p = purchases.find(x=>x.id===id);
   if(!p) return;
   if(!confirm(`要使用「${p.itemName}」嗎？\n使用後會通知媽媽核銷，不能收回喔`)) return;
@@ -959,6 +1321,198 @@ window.useItem = async (id)=>{
     sfxBuy();
     toast('已送出，找媽媽核銷 🎁');
   } catch(e){ sfxError(); toast(e.message); }
+};
+
+/* ==================================================================
+   抽獎機
+================================================================== */
+function myTickets(){
+  return purchases.filter(p => p.playerId===me && p.status==='owned' && p.isTicket===true);
+}
+
+/* 買券（券寫死 500，不存在 shop collection） */
+window.buyTicket = async ()=>{
+  if(lockGuard()) return;
+  if(!confirm(`要用 ${TICKET_PRICE} 金幣買「抽獎券」嗎？`)) return;
+  try {
+    await runTransaction(db, async tx=>{
+      const pRef = doc(db,'players',me);
+      const s = await tx.get(pRef);
+      const coins = s.data().coins || 0;
+      if(coins < TICKET_PRICE) throw new Error('金幣不夠，先去做任務吧 💪');
+      tx.update(pRef, { coins: coins - TICKET_PRICE });
+      const buyRef = doc(collection(db,'purchases'));
+      tx.set(buyRef, {
+        playerId: me, itemName: '抽獎券', price: TICKET_PRICE,
+        status: 'owned', isTicket: true, createdAt: serverTimestamp()
+      });
+    });
+    sfxBuy();
+    toast('抽獎券已放進背包 🎟️');
+  } catch(e){ sfxError(); toast(e.message); }
+};
+
+/* 先算結果（保底優先），再讓轉盤停在那格 */
+function pickPrizeIndex(){
+  const pity = players[me]?.lotteryPity ?? 0;
+  if(pity >= PITY_MAX - 1) return 15;        // 本抽為第 70 抽 → 強制魂源泉水
+  const r = Math.random() * 100;
+  let acc = 0;
+  for(let i=0;i<PRIZES.length;i++){ acc += PRIZES[i].prob; if(r < acc) return i; }
+  return PRIZES.length - 1;
+}
+
+let spinning = false;
+let againChain = 0;
+let currentCell = 0;
+
+window.spin = ()=>{
+  if(spinning) return;
+  if(lockGuard()) return;
+  if(!myTickets().length){ sfxError(); toast('沒有抽獎券，去商店買 🛒'); return; }
+  againChain = 0;
+  doSpin();
+};
+
+function doSpin(){
+  spinning = true;
+  updateSpinBtn();
+  const target = pickPrizeIndex();
+  runWheel(target, ()=> settle(target));
+}
+
+function runWheel(target, done){
+  const btn = $('spinBtn');
+  btn.classList.add('spinning');
+  document.querySelectorAll('.cell').forEach(c=> c.classList.remove('win','dim'));
+  const start = currentCell;
+  const steps = 3*16 + (((target - start) % 16) + 16) % 16;   // 3 圈 + 補到目標格
+  let i = 0;
+  function step(){
+    currentCell = (start + i) % 16;
+    document.querySelectorAll('.cell').forEach(c=> c.classList.remove('active'));
+    const cell = document.querySelector(`.cell[data-i="${currentCell}"]`);
+    if(cell) cell.classList.add('active');
+    const progress = i / steps;
+    sfxTick(1 - progress);                                     // 音高隨減速下降
+    i++;
+    if(i <= steps) setTimeout(step, 42 + Math.pow(progress, 3.2) * 300);
+    else { btn.classList.remove('spinning'); done(); }
+  }
+  step();
+}
+
+async function settle(idx){
+  const prize = PRIZES[idx];
+  document.querySelectorAll('.cell').forEach(c=>{
+    if(+c.dataset.i === idx) c.classList.add('win');
+    else c.classList.add('dim');
+  });
+
+  // AGAIN：不消耗券、不動 pity，自動再轉一次
+  if(prize.type === 'again'){
+    againChain++;
+    if(againChain > AGAIN_LIMIT){
+      spinning = false; updateSpinBtn();
+      toast('連續 AGAIN 太多次，先休息一下 😵');
+      return;
+    }
+    sfxGrab();
+    showPrize(prize, `再轉一次！(${againChain}/${AGAIN_LIMIT})`, false, true);
+    setTimeout(()=>{ hidePrize(); doSpin(); }, 1200);
+    return;
+  }
+
+  try {
+    await commitPrize(idx);
+    const rare = (idx === 15);
+    if(rare) sfxRare(); else { sfxCoin(); if(prize.type==='coin') flyCoins(4); }
+    showPrize(prize, rare ? '稀有！魂源泉水' : '恭喜獲得', rare, false);
+  } catch(e){
+    sfxError(); toast(e.message);
+  }
+  spinning = false;
+  updateSpinBtn();
+}
+
+/* 原子結算：消耗券 + 發獎 + pity（金幣不加 totalEarned / xp） */
+async function commitPrize(idx){
+  const prize = PRIZES[idx];
+  const ticket = myTickets()[0];
+  if(!ticket) throw new Error('沒有抽獎券');
+  await runTransaction(db, async tx=>{
+    const tRef = doc(db,'purchases',ticket.id);
+    const ts = await tx.get(tRef);
+    if(!ts.exists() || ts.data().status !== 'owned') throw new Error('抽獎券已被使用');
+    const upd = {
+      lotteryCount: increment(1),
+      lotteryPity: (idx === 15) ? 0 : increment(1),
+    };
+    if(prize.type === 'coin') upd.coins = increment(prize.value);
+    if(prize.type === 'mat')  upd['materials.' + prize.key] = increment(prize.n);
+    tx.update(tRef, { status:'consumed', usedAt: serverTimestamp() });
+    tx.update(doc(db,'players',me), upd);
+  });
+}
+
+/* ===== 合成稱號 ===== */
+window.craft = async ()=>{
+  if(lockGuard()) return;
+  const mats = players[me]?.materials || {};
+  if(!MATERIALS.every(m => (mats[m.key] ?? 0) >= m.need)){ sfxError(); toast('材料還不夠'); return; }
+  if(!confirm('要消耗全部材料合成稱號嗎？')) return;
+
+  // 依機率取得一個稱號
+  const r = Math.random() * 100;
+  let acc = 0, got = CRAFT_TITLES[CRAFT_TITLES.length-1];
+  for(const t of CRAFT_TITLES){ acc += t.prob; if(r < acc){ got = t; break; } }
+
+  try {
+    let dup = false;
+    await runTransaction(db, async tx=>{
+      const pRef = doc(db,'players',me);
+      const s = await tx.get(pRef);
+      const cur = s.data() || {};
+      const m = cur.materials || {};
+      if(!MATERIALS.every(x => (m[x.key] ?? 0) >= x.need)) throw new Error('材料還不夠');
+      const owned = cur.craftedTitles || [];
+      dup = owned.includes(got.id);
+      const upd = {};
+      MATERIALS.forEach(x=>{
+        // 重複取得 → 退還 紫2 / 長白2 / 靈青2（等於少扣 2）
+        const back = (dup && (x.key==='purple' || x.key==='jade' || x.key==='azure')) ? 2 : 0;
+        upd['materials.' + x.key] = increment(-(x.need - back));
+      });
+      if(!dup) upd.craftedTitles = arrayUnion(got.id);
+      tx.update(pRef, upd);
+    });
+    sfxCraft();
+    if(dup){
+      showPrize({ icon:got.icon, name:got.name }, `重複了！退還 🟣×2 ⬜×2 🟦×2`, false, false);
+      toast('重複稱號，已退還部分材料');
+    } else {
+      showPrize({ icon:got.icon, name:got.name }, `金幣 ×${got.mult}`, true, false);
+    }
+  } catch(e){ sfxError(); toast(e.message); }
+};
+
+/* ===== 獎品彈窗 ===== */
+function showPrize(prize, desc, rare, auto){
+  $('pLbl').textContent = rare ? '★ 稀有 ★' : '恭喜獲得';
+  $('pIcon').textContent = prize.icon;
+  $('pName').textContent = prize.name;
+  $('pDesc').textContent = desc || '';
+  $('pBtn').style.display = auto ? 'none' : '';
+  const el = $('prizePop');
+  el.classList.toggle('rare', !!rare);
+  el.classList.add('show');
+}
+function hidePrize(){ $('prizePop').classList.remove('show'); }
+$('pBtn').onclick = hidePrize;
+$('probToggle').onclick = ()=>{
+  const l = $('probList');
+  l.classList.toggle('show');
+  $('probToggle').textContent = l.classList.contains('show') ? '📊 收起機率 ▴' : '📊 查看完整機率 ▾';
 };
 
 /* ==================================================================
@@ -976,14 +1530,24 @@ function taskCard(container, t, btnHtml, badge=''){
   return `<div class="${cardCls(container,t.id)}">
     <div class="title">${esc(t.title)}${badge}</div>
     <div class="row">
-      <div class="reward">🪙 ${t.reward}</div>
-      ${btnHtml}
+      ${rewardHtml(t.reward)}
+      ${actionBtn(btnHtml)}
     </div>
   </div>`;
 }
 
 let lastLevel = null;
 let lastCoins = null;
+
+// 獎勵顯示：倍率 > 1 時加小標，讓弟弟知道錢為什麼比較多
+function rewardHtml(reward){
+  const m = finalMultiplier(players[me]);
+  return `<div class="reward">🪙 ${reward}${m > 1 ? `<span class="multPill">⭐×${m}</span>` : ''}</div>`;
+}
+// 禁閉中所有操作按鈕變 disabled
+function actionBtn(html){
+  return isLocked() ? '<button class="btn" disabled>🔒 禁閉中</button>' : html;
+}
 
 function renderHeader(){
   if(!me || !players[me]) return;
@@ -1004,7 +1568,23 @@ function renderHeader(){
   if(lastLevel !== null && lv > lastLevel) showLevelUp(lv);
   lastLevel = lv;
 
+  // 合成稱號取代等級稱號；沒有就照舊顯示等級稱號
+  const bt = bestTitle(p);
+  const tp = $('titlePill');
+  tp.style.display = '';
+  if(bt){
+    tp.textContent = `${bt.icon} ${bt.name}`;
+    tp.style.background = 'linear-gradient(180deg,#d9b3ff,#9a6ae0)';
+    tp.style.color = '#1a1206';
+  } else {
+    tp.textContent = titleFromLevel(lv);
+    tp.style.background = 'linear-gradient(180deg,#2a3048,#1a1f30)';
+    tp.style.color = 'var(--muted)';
+  }
+
   const coins = p.coins ?? 0;
+  $('coinBox').classList.toggle('debt', coins < 0);
+  $('debtTag').style.display = coins < 0 ? '' : 'none';
   if(lastCoins === null){
     $('myCoins').textContent = coins;
   } else if(coins !== lastCoins){
@@ -1017,7 +1597,9 @@ function renderHeader(){
 function renderAll(){
   if(!me || !players[me]) return;
   renderHeader();
+  renderLock();
   renderDaily();
+  renderLottery();     // 材料/保底/按鈕狀態跟著 players、penalties 更新
 
   const mine = tasks.filter(t => !t.isDaily && (
     (t.status==='open' && t.assignee===me) ||
@@ -1060,8 +1642,8 @@ function renderDaily(){
       <div class="title">${esc(t.title)}${fire}${badge}</div>
       ${t.note ? `<div class="sub">${esc(t.note)}</div>` : ''}
       <div class="row">
-        <div class="reward">🪙 ${t.reward}</div>
-        ${ctrl}
+        ${rewardHtml(t.reward)}
+        ${ctrl ? actionBtn(ctrl) : ''}
       </div>
     </div>`;
   }).join('') : '<div class="empty">今天沒有每日任務</div>';
@@ -1085,6 +1667,16 @@ function groupByCategory(items){
 }
 
 function renderShop(){
+  const own = myTickets().length;
+  $('ticketCard').innerHTML = `
+    <div class="card">
+      <div class="title">🎟️ 抽獎券</div>
+      <div class="sub">一張抽一次，可抽金幣、材料與稀有獎品${own ? `・持有 ${own} 張` : ''}</div>
+      <div class="row">
+        <div class="reward">🪙 ${TICKET_PRICE}</div>
+        ${actionBtn('<button class="btn gold" onclick="buyTicket()">購買</button>')}
+      </div>
+    </div>`;
   if(!shopItems.length){ $('shopList').innerHTML = '<div class="empty">商店還沒上架東西</div>'; return; }
   $('shopList').innerHTML = groupByCategory(shopItems).map(([cat, items])=>
     `<h2>${esc(cat)}</h2>` + items.map(i=>`
@@ -1093,7 +1685,7 @@ function renderShop(){
       ${i.desc ? `<div class="sub">${esc(i.desc)}</div>` : ''}
       <div class="row">
         <div class="reward">🪙 ${i.price}</div>
-        <button class="btn gold" onclick="buyItem('${i.id}')">購買</button>
+        ${actionBtn(`<button class="btn gold" onclick="buyItem('${i.id}')">購買</button>`)}
       </div>
     </div>`).join('')
   ).join('');
@@ -1101,7 +1693,7 @@ function renderShop(){
 
 function renderRank(){
   const rows = Object.entries(players)
-    .map(([id,p])=>({ id, name:p.name||id, val:p[rankMode] ?? 0, tasksDone:p.tasksDone ?? 0, lv:levelFromXp(p.xp ?? 0) }))
+    .map(([id,p])=>({ id, name:p.name||id, val:p[rankMode] ?? 0, tasksDone:p.tasksDone ?? 0, lv:levelFromXp(p.xp ?? 0), bt:bestTitle(p) }))
     .sort((a,b)=> b.val - a.val || (b.tasksDone ?? 0) - (a.tasksDone ?? 0) || a.name.localeCompare(b.name));
 
   $('rankList').innerHTML = rows.length ? rows.map((r,i)=>{
@@ -1112,7 +1704,7 @@ function renderRank(){
       <div class="rankAv">${esc(r.name.trim()[0]||'?')}</div>
       <div class="rankInfo">
         <div class="rankName">${esc(r.name)}${r.id===me?'<span class="meTag">我</span>':''}</div>
-        <div class="rankSubLv">Lv.${r.lv} · ${esc(titleFromLevel(r.lv))}</div>
+        <div class="rankSubLv">Lv.${r.lv} · ${r.bt ? esc(r.bt.icon+' '+r.bt.name) : esc(titleFromLevel(r.lv))}</div>
       </div>
       <div class="rankVal">${r.val}</div>
     </div>`;
@@ -1157,15 +1749,19 @@ function renderBag(){
   const pend  = purchases.filter(p=>p.playerId===me && p.status==='pending');
   const used  = purchases.filter(p=>p.playerId===me && p.status==='redeemed').slice(0,15);
 
-  $('ownedList').innerHTML = owned.length ? owned.map(p=>`
-    <div class="${cardCls('owned',p.id)}">
-      <div class="title">${esc(p.itemName)}</div>
+  $('ownedList').innerHTML = owned.length ? owned.map(p=>{
+    // 抽獎券不能送核銷，改成「去抽獎」
+    const ctrl = p.isTicket
+      ? '<button class="btn blue" onclick="goTab(\'lottery\')">去抽獎 🎰</button>'
+      : actionBtn(`<button class="btn gold" onclick="useItem('${p.id}')">使用</button>`);
+    return `<div class="${cardCls('owned',p.id)}">
+      <div class="title">${p.isTicket?'🎟️ ':''}${esc(p.itemName)}</div>
       <div class="row">
         <div class="reward">🪙 ${p.price}</div>
-        <button class="btn gold" onclick="useItem('${p.id}')">使用</button>
+        ${ctrl}
       </div>
-    </div>
-  `).join('') : '<div class="empty">背包是空的，去商店逛逛 🛒</div>';
+    </div>`;
+  }).join('') : '<div class="empty">背包是空的，去商店逛逛 🛒</div>';
 
   $('pendingBuys').innerHTML = pend.length ? pend.map(p=>`
     <div class="${cardCls('pbuy',p.id)}">
@@ -1181,9 +1777,136 @@ function renderBag(){
     </div>
   `).join('') : '<div class="empty">還沒有使用紀錄</div>';
 
-  const b = $('navBag');
-  b.textContent = owned.length;
-  b.classList.toggle('show', owned.length > 0);
+  // 底部已無背包 tab → 紅點改顯示在「☰ 更多」與抽屜的背包項目上
+  const n = owned.length;
+  [$('navMore'), $('drawerBagBadge')].forEach(b=>{
+    if(!b) return;
+    b.textContent = n;
+    b.classList.toggle('show', n > 0);
+  });
+}
+
+/* ===== 禁閉贖罪卡（任務頁最上方） ===== */
+function renderLock(){
+  const lk = myLock();
+  if(!lk){ $('lockZone').innerHTML = ''; return; }
+  const reported = lk.status === 'reported';
+  $('lockZone').innerHTML = `
+    <div class="lockCard">
+      <div class="lkTag">🔒 禁閉中</div>
+      <div class="lkTitle">你被關禁閉了</div>
+      <div class="lkReason">事由：${esc(lk.reason || '—')}</div>
+      <div class="lkTask">
+        <div class="lt">贖罪任務（無獎勵）</div>
+        <div class="lv2">${esc(lk.taskTitle || '—')}</div>
+      </div>
+      <div class="row" style="margin-top:14px;justify-content:flex-end">
+        ${reported
+          ? '<span class="badge wait">等媽媽確認</span>'
+          : `<button class="btn danger" onclick="reportLock('${lk.id}')">完成回報</button>`}
+      </div>
+    </div>`;
+}
+window.reportLock = async (id)=>{
+  if(!confirm('確定已經完成贖罪任務？\n媽媽確認後才會解除禁閉')) return;
+  try {
+    await updateDoc(doc(db,'penalties',id), { status:'reported' });
+    toast('已回報，等媽媽確認 ⏳');
+  } catch(e){ sfxError(); toast(e.message); }
+};
+
+/* ===== 我的罰單 ===== */
+function renderPenalty(){
+  if(!me) return;
+  const mine = penalties.filter(p=>p.playerId===me);
+  const st = { active:'進行中', reported:'等媽媽確認', cleared:'已解除' };
+  $('penaltyList').innerHTML = mine.length ? mine.map(p=>{
+    const d = p.createdAt?.toDate ? p.createdAt.toDate() : null;
+    const ds = d ? `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '—';
+    return `<div class="penRow ${p.type}">
+      <div class="pTop">
+        <span class="pType">${p.type==='fine'?'💸 罰款':'🔒 禁閉'}</span>
+        <span class="pDate">${ds}</span>
+      </div>
+      <div class="pReason">${esc(p.reason || '—')}</div>
+      <div class="pMeta">${p.type==='fine'
+        ? `扣款 🪙 ${p.amount ?? 0}`
+        : `贖罪任務：${esc(p.taskTitle || '—')}・${st[p.status] || p.status}`}</div>
+    </div>`;
+  }).join('') : '<div class="empty">沒有任何罰單，乖 👍</div>';
+}
+
+/* ==================================================================
+   抽獎頁畫面
+================================================================== */
+let wheelBuilt = false;
+function buildWheel(){
+  if(wheelBuilt) return;
+  const w = $('wheel');
+  w.innerHTML = PRIZES.map((p,i)=>
+    `<div class="cell" data-i="${i}" style="grid-row:${POS[i][0]};grid-column:${POS[i][1]}">
+       <div class="ci">${p.icon}</div><div class="cn">${esc(p.name)}</div>
+     </div>`
+  ).join('') + `
+    <button class="spinBtn" id="spinBtn" onclick="spin()">
+      <span class="sTop">🎰</span>
+      <span class="sTxt">抽一次</span>
+      <span class="sSub" id="spinSub"></span>
+    </button>`;
+  wheelBuilt = true;
+}
+function updateSpinBtn(){
+  const btn = $('spinBtn');
+  if(!btn) return;
+  const n = myTickets().length;
+  const locked = isLocked();
+  btn.disabled = spinning || locked || n === 0;
+  const txt = btn.querySelector('.sTxt'), sub = btn.querySelector('.sSub');
+  if(locked){ txt.textContent = '禁閉中'; sub.textContent = '🔒 先完成贖罪任務'; }
+  else if(spinning){ txt.textContent = '抽獎中'; sub.textContent = '⋯'; }
+  else if(n === 0){ txt.textContent = '沒有抽獎券'; sub.textContent = '去商店買 🛒'; }
+  else { txt.textContent = '抽一次'; sub.textContent = `持有 ${n} 張`; }
+}
+let lastMats = null;
+function renderLottery(){
+  if(!me || !players[me]) return;
+  buildWheel();
+  const p = players[me];
+  $('ticketCount').textContent = myTickets().length;
+
+  // 保底進度
+  const pity = p.lotteryPity ?? 0;
+  const left = PITY_MAX - pity;
+  $('pityText').textContent = left <= 1 ? '下一抽必出！' : `還有 ${left} 抽`;
+  $('pityFill').style.width = Math.min(100, pity / PITY_MAX * 100) + '%';
+
+  // 材料庫存（獲得時 pop）
+  const mats = p.materials || {};
+  $('matGrid').innerHTML = MATERIALS.map(m=>{
+    const have = mats[m.key] ?? 0;
+    const full = have >= m.need;
+    const grew = lastMats && (have > (lastMats[m.key] ?? 0));
+    return `<div class="matCell ${full?'full':''} ${grew?'pop':''}">
+      <div class="mi">${m.icon}</div>
+      <div class="mc">${have}/${m.need}</div>
+    </div>`;
+  }).join('');
+  lastMats = { ...mats };
+
+  const canCraft = MATERIALS.every(m => (mats[m.key] ?? 0) >= m.need);
+  const cb = $('craftBtn');
+  cb.disabled = !canCraft || isLocked();
+  cb.textContent = isLocked() ? '🔒 禁閉中' : (canCraft ? '✨ 合成稱號' : '材料不足，繼續抽');
+  cb.onclick = window.craft;
+
+  // 機率公示
+  if(!$('probList').dataset.built){
+    $('probList').innerHTML = PRIZES.map((x,i)=>
+      `<div class="probRow"><span>${x.icon} ${esc(x.name)}</span><b>${x.prob}%</b></div>`
+    ).join('') + `<div class="probRow"><span>🫧 保底</span><b>每 ${PITY_MAX} 抽必出魂源泉水</b></div>`;
+    $('probList').dataset.built = '1';
+  }
+  updateSpinBtn();
 }
 
 /* ==================================================================
@@ -1229,8 +1952,8 @@ function closeTutorial(){
   $('tutorial').classList.remove('show');
 }
 function gotoTutTab(name){
-  const btn = document.querySelector(`nav button[data-p="${name}"]`);
-  if(btn) btn.click();   // 用現有切換邏輯；tab 不存在就不切，該步 target 也會找不到 → 略過
+  closeDrawer();          // 背包/排行等已移入抽屜，直接切頁不用開抽屜
+  goTab(name);            // 用現有切換邏輯；頁面不存在就不切，該步 target 也會找不到 → 略過
 }
 function showTutStep(){
   const step = TUT_STEPS[tutStep];
