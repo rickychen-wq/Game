@@ -219,6 +219,53 @@
   }
   #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 
+  /* ===== 抽屜選單 ===== */
+  #drawerMask{
+    position:fixed; inset:0; z-index:300; background:rgba(0,0,0,.6);
+    opacity:0; pointer-events:none; transition:opacity .32s;
+  }
+  #drawerMask.show{ opacity:1; pointer-events:auto; }
+  #drawer{
+    position:fixed; left:0; right:0; bottom:0; z-index:301;
+    background:linear-gradient(180deg,#12141d,#0a0b12);
+    border-top:1px solid var(--line);
+    border-radius:20px 20px 0 0; padding:10px 16px calc(20px + env(safe-area-inset-bottom));
+    transform:translateY(100%); transition:transform .32s cubic-bezier(.22,1,.36,1);
+    box-shadow:0 -10px 40px rgba(0,0,0,.6);
+  }
+  #drawer.show{ transform:translateY(0); }
+  #drawer .grip{ width:38px; height:4px; border-radius:99px; background:#3a3f52; margin:0 auto 16px; }
+  .drawerGrid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; max-width:640px; margin:0 auto; }
+  .drawerItem{
+    position:relative; display:flex; flex-direction:column; align-items:center; gap:6px;
+    padding:16px 6px; border-radius:12px; cursor:pointer;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
+    border:1px solid var(--line-soft); transition:transform .12s, border-color .2s;
+  }
+  .drawerItem:active{ transform:scale(.94); }
+  .drawerItem.on{ border-color:rgba(233,196,106,.5); box-shadow:0 0 14px rgba(233,196,106,.14); }
+  .drawerItem .dic{ font-size:24px; }
+  .drawerItem .dname{ font-family:var(--mono); font-size:11.5px; font-weight:700; color:var(--text); letter-spacing:.5px; }
+
+  /* ===== 倍率 / 罰單 ===== */
+  .multPill{
+    font-family:var(--mono); font-size:10.5px; font-weight:800; color:#ffcf6b;
+    background:rgba(233,196,106,.12); border:1px solid rgba(233,196,106,.3);
+    padding:2px 7px; border-radius:5px; margin-left:6px;
+  }
+  .card.lockCard{ border-color:rgba(255,107,129,.5); background:linear-gradient(160deg,#23131a,#120a0e); }
+  .card.reported{ border-color:rgba(255,107,129,.85); box-shadow:0 0 20px rgba(255,107,129,.22); }
+  .dot{ display:inline-block; width:7px; height:7px; border-radius:99px; background:var(--pink);
+    box-shadow:0 0 8px var(--pink); margin-right:6px; vertical-align:1px; }
+  .pill.fine{ background:rgba(233,196,106,.12); color:var(--gold); border:1px solid rgba(233,196,106,.28); }
+  .pill.lock{ background:rgba(255,107,129,.13); color:var(--pink); border:1px solid rgba(255,107,129,.3); }
+  .segRow{ display:flex; gap:8px; margin-bottom:10px; }
+  .segRow button{
+    flex:1; padding:11px 0; border:1px solid var(--line); border-radius:9px;
+    background:#0d0f17; color:var(--muted); font-family:var(--mono); font-size:13px; font-weight:700; cursor:pointer;
+  }
+  .segRow button.on{ background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206; border-color:transparent; }
+
   @media (prefers-reduced-motion: reduce){
     *{ animation-duration:.001s !important; transition-duration:.05s !important; }
     body::before{ display:none; }
@@ -304,14 +351,48 @@
       <div id="playerList"></div>
     </section>
   </div>
+
+  <!-- 罰單頁 -->
+  <div class="page" id="page-penalty">
+    <section>
+      <h2>開罰單</h2>
+      <select id="fPlayer"></select>
+      <div class="segRow">
+        <button class="on" id="typeFine">💸 罰款</button>
+        <button id="typeLock">🔒 禁閉</button>
+      </div>
+      <input id="fReason" placeholder="事由（例：沒洗碗）">
+      <input id="fAmount" type="number" min="1" placeholder="罰款金額（金幣）">
+      <input id="fTask" placeholder="贖罪任務內容（例：把廁所洗乾淨）" style="display:none">
+      <button class="btn ok" id="addPenBtn" style="width:100%">送出罰單</button>
+    </section>
+    <section>
+      <h2>進行中的禁閉 <span class="count zero" id="cLock">0</span></h2>
+      <div id="lockList"></div>
+    </section>
+    <section>
+      <h2>罰單紀錄（最近 30 筆）</h2>
+      <div id="penLog"></div>
+    </section>
+  </div>
 </main>
 
 <nav>
   <button class="on" data-p="review"><span class="ic">⏳</span>審核<span class="navBadge" id="navReview">0</span></button>
   <button data-p="tasks"><span class="ic">📌</span>任務</button>
   <button data-p="shop"><span class="ic">🛒</span>商店</button>
-  <button data-p="players"><span class="ic">👦</span>玩家</button>
+  <button id="moreBtn"><span class="ic">☰</span>更多<span class="navBadge" id="navMore">0</span></button>
 </nav>
+
+<!-- 抽屜 -->
+<div id="drawerMask"></div>
+<div id="drawer">
+  <div class="grip"></div>
+  <div class="drawerGrid">
+    <div class="drawerItem" data-p="penalty"><span class="dic">🔒</span><span class="dname">罰單</span><span class="navBadge" id="drawerPenBadge" style="top:6px;right:10px">0</span></div>
+    <div class="drawerItem" data-p="players"><span class="dic">👦</span><span class="dname">玩家</span></div>
+  </div>
+</div>
 
 <div id="toast"></div>
 
@@ -343,7 +424,31 @@ let tasks = [];
 let shopItems = [];
 let purchases = [];
 let dailyTemplates = [];
+let penalties = [];
 let adminUnlocked = (sessionStorage.getItem('admin_ok') === '1');
+
+// ⚠️ 前台 index.html 的 ACHIEVEMENTS 陣列長度改變時，這裡必須同步修改
+const ACHIEVEMENT_TOTAL = 11;
+
+/* 合成稱號倍率（跟前台同表，寫死） */
+const CRAFT_TITLES = [
+  { id:'shadow', icon:'🌑', name:'暗影使者', mult:1.1 },
+  { id:'ghost',  icon:'👻', name:'幽靈冠王', mult:1.15 },
+  { id:'sky',    icon:'☁️', name:'蒼天使者', mult:1.2 },
+  { id:'chosen', icon:'✨', name:'天選之人', mult:1.5 },
+];
+function titleBonus(p){
+  const owned = (p && p.craftedTitles) || [];
+  let best = 1.0;
+  for(const t of CRAFT_TITLES){ if(owned.includes(t.id) && t.mult > best) best = t.mult; }
+  return best;                                   // 只取最高，不疊乘
+}
+function achievementBonus(p){
+  return (((p && p.achievements) || []).length >= ACHIEVEMENT_TOTAL) ? 1.2 : 1.0;
+}
+function finalMultiplier(p){
+  return Math.round(achievementBonus(p) * titleBonus(p) * 1000) / 1000;
+}
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -363,22 +468,48 @@ function levelFromXp(xp){ let lv=1; while(xp >= xpThreshold(lv+1)) lv++; return 
 function setCount(el, n){
   const e = $(el); e.textContent = n; e.classList.toggle('zero', n===0);
 }
-/* nav 審核紅點 = 待審核任務 + 待核銷購買 */
+/* nav 審核紅點 = 待審核任務 + 待核銷購買 + 待解除的禁閉 */
 function updateNavBadge(){
-  const n = tasks.filter(t=>t.status==='pending').length + purchases.filter(p=>p.status==='pending').length;
+  const n = tasks.filter(t=>t.status==='pending').length
+          + purchases.filter(p=>p.status==='pending').length
+          + penalties.filter(p=>p.type==='lock' && p.status==='reported').length;
   const b = $('navReview');
   b.textContent = n;
   b.classList.toggle('show', n>0);
+
+  const pen = penalties.filter(p=>p.type==='lock' && p.status==='reported').length;
+  [$('navMore'), $('drawerPenBadge')].forEach(x=>{
+    if(!x) return;
+    x.textContent = pen;
+    x.classList.toggle('show', pen>0);
+  });
 }
 
-/* ===== 分頁切換 ===== */
-document.querySelectorAll('nav button').forEach(b=>{
-  b.onclick = ()=>{
-    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
-    document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));
-    b.classList.add('on');
-    $('page-'+b.dataset.p).classList.add('on');
-  };
+/* ===== 分頁切換（nav + 抽屜共用） ===== */
+function goTab(name){
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.drawerItem').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));
+  const page = $('page-'+name);
+  if(!page) return;
+  page.classList.add('on');
+  const navBtn = document.querySelector(`nav button[data-p="${name}"]`);
+  if(navBtn) navBtn.classList.add('on');
+  const dItem = document.querySelector(`.drawerItem[data-p="${name}"]`);
+  if(dItem){ dItem.classList.add('on'); $('moreBtn').classList.add('on'); }
+  if(name === 'penalty') renderPenalties();
+}
+document.querySelectorAll('nav button[data-p]').forEach(b=>{
+  b.onclick = ()=> goTab(b.dataset.p);
+});
+
+/* ===== 抽屜 ===== */
+function openDrawer(){ $('drawerMask').classList.add('show'); $('drawer').classList.add('show'); }
+function closeDrawer(){ $('drawerMask').classList.remove('show'); $('drawer').classList.remove('show'); }
+$('moreBtn').onclick = openDrawer;
+$('drawerMask').onclick = closeDrawer;
+document.querySelectorAll('.drawerItem').forEach(el=>{
+  el.onclick = ()=>{ goTab(el.dataset.p); closeDrawer(); };
 });
 
 /* ===== 密碼 ===== */
@@ -458,6 +589,7 @@ onSnapshot(collection(db,'players'), snap=>{
   renderTasks();
   renderReview();
   renderBuyReview();
+  renderPenalties();
   scheduleEnsureAll();
 });
 onSnapshot(query(collection(db,'tasks'), orderBy('createdAt','desc')), snap=>{
@@ -486,6 +618,12 @@ onSnapshot(query(collection(db,'purchases'), orderBy('createdAt','desc')), snap=
   snap.forEach(d=> purchases.push({id:d.id, ...d.data()}));
   renderBuyReview();
   renderPlayers();
+  updateNavBadge();
+});
+onSnapshot(query(collection(db,'penalties'), orderBy('createdAt','desc')), snap=>{
+  penalties = [];
+  snap.forEach(d=> penalties.push({id:d.id, ...d.data()}));
+  renderPenalties();
   updateNavBadge();
 });
 
@@ -520,8 +658,12 @@ function renderAssigneeSelect(){
 window.approveTask = async (id)=>{
   const t = tasks.find(x=>x.id===id);
   if(t){
-    const who = pName(t.claimedBy || t.assignee);
-    if(!confirm(`確定通過「${t.title}」？\n將發給 ${who} 🪙 ${t.reward}`)) return;
+    const payee = t.claimedBy || t.assignee;
+    const who = pName(payee);
+    const m = finalMultiplier(players[payee]);
+    const payout = Math.round(t.reward * m);
+    const extra = m > 1 ? `（${t.reward} × ${m}）` : '';
+    if(!confirm(`確定通過「${t.title}」？\n將發給 ${who} 🪙 ${payout}${extra}`)) return;
   }
   try {
     await runTransaction(db, async tx=>{
@@ -533,12 +675,17 @@ window.approveTask = async (id)=>{
       const payee = t.claimedBy || t.assignee;
       if(!payee || payee==='all') throw new Error('找不到領獎的人');
       const pRef = doc(db,'players',payee);
+      const ps = await tx.get(pRef);                 // read 一律在 write 之前
+      const pd = (ps.exists() && ps.data()) || {};
 
-      // 每日任務：先讀玩家算 streak（連續性用任務 dateKey，不是審核當下）
+      // 最終倍率 = 成就全解加成 × 稱號最高倍率（相乘）
+      const mult = finalMultiplier(pd);
+      const payout = Math.round(t.reward * mult);
+
+      // 每日任務：streak 連續性用任務 dateKey，不是審核當下
       let streakUpdate = {};
       if(t.isDaily && t.templateId && t.dateKey){
-        const ps = await tx.get(pRef);
-        const streaks = (ps.exists() && ps.data().dailyStreaks) || {};
+        const streaks = pd.dailyStreaks || {};
         const cur = streaks[t.templateId] || { count:0, lastDate:null };
         let count;
         if(cur.lastDate === t.dateKey)             count = cur.count;        // 防重複（理論上不會發生）
@@ -549,9 +696,9 @@ window.approveTask = async (id)=>{
 
       tx.update(ref, { status:'done' });
       tx.update(pRef, {
-        coins:       increment(t.reward),
-        totalEarned: increment(t.reward),
-        xp:          increment(t.reward),   // 1 金幣 = 1 XP
+        coins:       increment(payout),
+        totalEarned: increment(payout),     // 用發放後金額累加
+        xp:          increment(payout),     // XP 同樣吃倍率
         tasksDone:   increment(1),
         ...streakUpdate
       });
@@ -576,7 +723,7 @@ function renderReview(){
   $('reviewList').innerHTML = list.length ? list.map(t=>`
     <div class="card">
       <div class="title">${esc(t.title)}${t.isDaily?' <span class="pill a">📅每日</span>':''}</div>
-      <div class="sub">${esc(pName(t.claimedBy || t.assignee))} 回報完成・獎勵 <span class="coin">🪙 ${t.reward}</span></div>
+      <div class="sub">${esc(pName(t.claimedBy || t.assignee))} 回報完成・獎勵 <span class="coin">🪙 ${t.reward}</span>${(()=>{const m=finalMultiplier(players[t.claimedBy||t.assignee]);return m>1?`<span class="multPill">⭐×${m} → 🪙 ${Math.round(t.reward*m)}</span>`:'';})()}</div>
       <div class="row">
         <button class="btn ok" onclick="approveTask('${t.id}')">✅ 通過發錢</button>
         <button class="btn no" onclick="rejectTask('${t.id}')">↩️ 退回重做</button>
@@ -739,6 +886,119 @@ function renderShop(){
   ).join('');
 }
 
+/* ==================================================================
+   罰單系統
+================================================================== */
+let penType = 'fine';
+$('typeFine').onclick = ()=>{
+  penType = 'fine';
+  $('typeFine').classList.add('on'); $('typeLock').classList.remove('on');
+  $('fAmount').style.display = ''; $('fTask').style.display = 'none';
+};
+$('typeLock').onclick = ()=>{
+  penType = 'lock';
+  $('typeLock').classList.add('on'); $('typeFine').classList.remove('on');
+  $('fAmount').style.display = 'none'; $('fTask').style.display = '';
+};
+
+function renderPenaltySelect(){
+  const sel = $('fPlayer');
+  const cur = sel.value;
+  sel.innerHTML = Object.entries(players).map(([id,p])=>
+    `<option value="${id}">${esc(p.name)}</option>`
+  ).join('');
+  if(cur) sel.value = cur;
+}
+
+$('addPenBtn').onclick = async ()=>{
+  const pid = $('fPlayer').value;
+  const reason = $('fReason').value.trim();
+  if(!pid) return toast('要先選玩家');
+  if(!reason) return toast('要填事由');
+
+  if(penType === 'fine'){
+    const amount = parseInt($('fAmount').value);
+    if(!amount || amount < 1) return toast('罰款金額要大於 0');
+    const after = (players[pid]?.coins ?? 0) - amount;
+    if(!confirm(`確定罰「${players[pid]?.name}」🪙 ${amount}？\n餘額將變成 ${after}`)) return;
+    try {
+      await runTransaction(db, async tx=>{
+        const pRef = doc(db,'players',pid);
+        const s = await tx.get(pRef);
+        if(!s.exists()) throw new Error('玩家不存在');
+        tx.update(pRef, { coins: increment(-amount) });      // 允許扣成負數（負債）
+        const ref = doc(collection(db,'penalties'));
+        tx.set(ref, {
+          playerId:pid, type:'fine', reason, amount,
+          status:'cleared', createdAt: serverTimestamp(), clearedAt: serverTimestamp()
+        });
+      });
+      $('fReason').value=''; $('fAmount').value='';
+      toast('已開罰單並扣款 💸');
+    } catch(e){ toast(e.message); }
+  } else {
+    const taskTitle = $('fTask').value.trim();
+    if(!taskTitle) return toast('要填贖罪任務內容');
+    if(penalties.some(p=>p.playerId===pid && p.type==='lock' && p.status!=='cleared'))
+      return toast('這個人已經在禁閉中了');
+    if(!confirm(`確定把「${players[pid]?.name}」關禁閉？\n事由：${reason}\n贖罪任務：${taskTitle}`)) return;
+    try {
+      await addDoc(collection(db,'penalties'), {
+        playerId:pid, type:'lock', reason, taskTitle,
+        status:'active', createdAt: serverTimestamp()
+      });
+      $('fReason').value=''; $('fTask').value='';
+      toast('已開禁閉 🔒');
+    } catch(e){ toast(e.message); }
+  }
+};
+
+window.clearLock = async (id)=>{
+  const p = penalties.find(x=>x.id===id);
+  if(!p) return;
+  if(!confirm(`確定解除「${pName(p.playerId)}」的禁閉？`)) return;
+  await updateDoc(doc(db,'penalties',id), { status:'cleared', clearedAt: serverTimestamp() });
+  toast('已解除禁閉 ✅');
+};
+window.rejectLock = async (id)=>{
+  await updateDoc(doc(db,'penalties',id), { status:'active' });
+  toast('已退回，請他重做');
+};
+
+function renderPenalties(){
+  renderPenaltySelect();
+
+  // 進行中的禁閉：待確認(reported)排最上面
+  const locks = penalties.filter(p=>p.type==='lock' && p.status!=='cleared')
+    .sort((a,b)=> (b.status==='reported') - (a.status==='reported'));
+  setCount('cLock', locks.length);
+  $('lockList').innerHTML = locks.length ? locks.map(p=>{
+    const rep = p.status==='reported';
+    return `<div class="card lockCard ${rep?'reported':''}">
+      <div class="title">${rep?'<span class="dot"></span>':''}${esc(pName(p.playerId))} <span class="pill lock">${rep?'已回報':'禁閉中'}</span></div>
+      <div class="sub">事由：${esc(p.reason||'—')}</div>
+      <div class="sub">贖罪任務：${esc(p.taskTitle||'—')}</div>
+      <div class="row">
+        <button class="btn ok" onclick="clearLock('${p.id}')">✅ 解除禁閉</button>
+        ${rep ? `<button class="btn no" onclick="rejectLock('${p.id}')">↩️ 退回</button>` : ''}
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty">目前沒有人在禁閉</div>';
+
+  // 罰單紀錄（最近 30 筆）
+  const log = penalties.slice(0,30);
+  $('penLog').innerHTML = log.length ? log.map(p=>{
+    const d = p.createdAt?.toDate ? p.createdAt.toDate() : null;
+    const ds = d ? `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '—';
+    const st = { active:'進行中', reported:'待確認', cleared:'已解除' }[p.status] || p.status;
+    return `<div class="card">
+      <div class="title">${esc(pName(p.playerId))} <span class="pill ${p.type}">${p.type==='fine'?'💸 罰款':'🔒 禁閉'}</span></div>
+      <div class="sub">${esc(p.reason||'—')}</div>
+      <div class="sub">${p.type==='fine' ? `扣款 <span class="coin">🪙 ${p.amount??0}</span>` : `贖罪：${esc(p.taskTitle||'—')}・${st}`}・${ds}</div>
+    </div>`;
+  }).join('') : '<div class="empty">還沒有罰單紀錄</div>';
+}
+
 /* ===== 玩家管理 ===== */
 window.renamePlayer = async (id)=>{
   const name = prompt('新名字：', players[id]?.name || '');
@@ -787,6 +1047,7 @@ function renderPlayers(){
         <div class="pStat">累計賺 <b>${p.totalEarned ?? 0}</b></div>
         <div class="pStat">完成 <b>${p.tasksDone ?? 0}</b> 個</div>
         <div class="pStat">背包 <b>${bag}</b> 件</div>
+        <div class="pStat">倍率 <b>⭐×${finalMultiplier(p)}</b></div>
       </div>
       <div class="row">
         <button class="btn gray" onclick="renamePlayer('${esc(id)}')">改名</button>
