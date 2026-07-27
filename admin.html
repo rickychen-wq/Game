@@ -427,22 +427,64 @@ let dailyTemplates = [];
 let penalties = [];
 let adminUnlocked = (sessionStorage.getItem('admin_ok') === '1');
 
-// ⚠️ 前台 index.html 的 ACHIEVEMENTS 陣列長度改變時，這裡必須同步修改
+/* ⚠️ 以下常數必須與 index.html 保持一致，前台改了這裡也要改 */
 const ACHIEVEMENT_TOTAL = 15;
 
-/* 合成稱號倍率（跟前台同表，寫死） */
 const CRAFT_TITLES = [
   { id:'shadow', icon:'🌑', name:'暗影使者', mult:1.1 },
   { id:'ghost',  icon:'👻', name:'幽靈冠王', mult:1.15 },
   { id:'sky',    icon:'☁️', name:'蒼天使者', mult:1.2 },
   { id:'chosen', icon:'✨', name:'天選之人', mult:1.5 },
 ];
-function titleBonus(p){
-  const owned = (p && p.craftedTitles) || [];
-  let best = 1.0;
-  for(const t of CRAFT_TITLES){ if(owned.includes(t.id) && t.mult > best) best = t.mult; }
-  return best;                                   // 只取最高，不疊乘
+const SHOP_TITLES = [
+  { id:'d01', tier:'D', name:'擺爛之王' },       { id:'d02', tier:'D', name:'睡到自然醒' },
+  { id:'d03', tier:'D', name:'三分鐘熱度' },     { id:'d04', tier:'D', name:'已讀不回' },
+  { id:'d05', tier:'D', name:'明天的事明天再說' }, { id:'d06', tier:'D', name:'沙發長期租戶' },
+  { id:'d07', tier:'D', name:'我媽叫我' },       { id:'d08', tier:'D', name:'隨便啦' },
+  { id:'d09', tier:'D', name:'裝忙專家' },       { id:'d10', tier:'D', name:'廢到笑' },
+  { id:'c01', tier:'C', name:'碗盤終結者' },     { id:'c02', tier:'C', name:'拖地小當家' },
+  { id:'c03', tier:'C', name:'手速還行' },       { id:'c04', tier:'C', name:'假日限定勤勞' },
+  { id:'c05', tier:'C', name:'微波爐工程師' },   { id:'c06', tier:'C', name:'遙控器守護神' },
+  { id:'c07', tier:'C', name:'剛好路過' },       { id:'c08', tier:'C', name:'有做就好' },
+  { id:'c09', tier:'C', name:'半夜找食物的人' }, { id:'c10', tier:'C', name:'一日限定認真' },
+  { id:'b01', tier:'B', name:'家務老手' },       { id:'b02', tier:'B', name:'說到做到' },
+  { id:'b03', tier:'B', name:'連續紀錄保持人' }, { id:'b04', tier:'B', name:'深夜清潔隊' },
+  { id:'b05', tier:'B', name:'效率至上' },       { id:'b06', tier:'B', name:'沒在怕的' },
+  { id:'b07', tier:'B', name:'誰都攔不住' },
+  { id:'a01', tier:'A', name:'不敗神話' },       { id:'a02', tier:'A', name:'一擊必殺' },
+  { id:'a03', tier:'A', name:'領域展開' },       { id:'a04', tier:'A', name:'無人能及' },
+  { id:'a05', tier:'A', name:'逆風翻盤' },
+  { id:'s01', tier:'S', name:'君臨天下' },       { id:'s02', tier:'S', name:'命運支配者' },
+  { id:'s03', tier:'S', name:'萬象歸一' },
+];
+const TIERS = {
+  D:{ luck:1.05, price:500   },
+  C:{ luck:1.07, price:1500  },
+  B:{ luck:1.10, price:4000  },
+  A:{ luck:1.15, price:10000 },
+  S:{ luck:1.50, price:30000 },
+};
+const MATERIALS = [
+  { key:'purple', icon:'🟣', name:'紫晶碎片', need:5 },
+  { key:'jade',   icon:'⬜', name:'長白玉石', need:5 },
+  { key:'azure',  icon:'🟦', name:'靈青石',  need:5 },
+  { key:'dust',   icon:'💎', name:'鑽粉',    need:2 },
+  { key:'soul',   icon:'🫧', name:'魂源泉水', need:2 },
+];
+const PITY_MAX = 70;
+
+/* 裝備制：全站只能裝一個稱號 */
+function equippedTitle(p){
+  const id = p && p.equippedTitle;
+  if(!id) return null;
+  const c = CRAFT_TITLES.find(t => t.id === id);
+  if(c) return { kind:'craft', id, icon:c.icon, name:c.name, mult:c.mult, luck:1.0 };
+  const s = SHOP_TITLES.find(t => t.id === id);
+  if(s) return { kind:'shop', id, icon:'', name:s.name, tier:s.tier, mult:1.0, luck:TIERS[s.tier].luck };
+  return null;
 }
+function titleBonus(p){ return equippedTitle(p)?.mult || 1.0; }   // 只看裝備中的合成稱號
+function luckOf(p){ return equippedTitle(p)?.luck || 1.0; }       // 只看裝備中的商店稱號
 function achievementBonus(p){
   return (((p && p.achievements) || []).length >= ACHIEVEMENT_TOTAL) ? 1.1 : 1.0;
 }
@@ -1025,36 +1067,110 @@ window.delPlayer = async (id)=>{
   toast('已刪除帳號');
 };
 
+let expandedPlayer = null;                    // 同時只展開一個
+window.togglePlayer = (id)=>{
+  expandedPlayer = (expandedPlayer === id) ? null : id;
+  renderPlayers();
+};
+
 function renderPlayers(){
   const list = Object.entries(players);
   setCount('cPlayer', list.length);
   $('playerList').innerHTML = list.length ? list.map(([id,p])=>{
     const lv = levelFromXp(p.xp ?? 0);
     const av = esc((p.name||id).trim()[0] || '?');
-    const bag = purchases.filter(x => x.playerId===id && x.status==='owned').length;
-    return `
-    <div class="card">
-      <div class="pHead">
+    const coins = p.coins ?? 0;
+    const open = expandedPlayer === id;
+
+    // 收合狀態：只有頭像 + 名字 + Lv + 金幣（清爽，不顯示按鈕避免誤觸刪除）
+    const head = `
+      <div class="pHead" onclick="togglePlayer('${esc(id)}')" style="cursor:pointer">
         <div class="pAv">${av}</div>
         <div style="flex:1;min-width:0">
           <div class="title" style="display:flex;align-items:center;gap:8px">
             ${esc(p.name)} <span class="pLv">Lv.${lv}</span>
           </div>
-          <div class="sub">ID：${esc(id)}</div>
+          <div class="sub">ID：${esc(id)}・<span class="coin" style="${coins<0?'color:var(--pink)':''}">🪙 ${coins}</span>${coins<0?' <b style="color:var(--pink)">負債</b>':''}</div>
         </div>
-      </div>
-      <div class="pStats">
-        <div class="pStat">持有 <b class="coin">🪙 ${p.coins ?? 0}</b></div>
-        <div class="pStat">累計賺 <b>${p.totalEarned ?? 0}</b></div>
-        <div class="pStat">完成 <b>${p.tasksDone ?? 0}</b> 個</div>
-        <div class="pStat">背包 <b>${bag}</b> 件</div>
-        <div class="pStat">倍率 <b>⭐×${finalMultiplier(p)}</b></div>
-      </div>
-      <div class="row">
-        <button class="btn gray" onclick="renamePlayer('${esc(id)}')">改名</button>
-        <button class="btn gray" onclick="adjustCoins('${esc(id)}')">調整金幣</button>
-        <button class="btn gray" onclick="resetPw('${esc(id)}')">重設密碼</button>
-        <button class="btn no" onclick="delPlayer('${esc(id)}')">刪除</button>
+        <div style="color:var(--gold);font-family:var(--mono);font-size:15px">${open?'▴':'▾'}</div>
+      </div>`;
+
+    if(!open) return `<div class="card">${head}</div>`;
+
+    /* ---- ① 資產 ---- */
+    const mine = purchases.filter(x => x.playerId===id);
+    const tickets = mine.filter(x => x.status==='owned' && x.isTicket===true).length;
+    const ownedItems = mine.filter(x => x.status==='owned' && !x.isTicket);
+    const pendItems  = mine.filter(x => x.status==='pending');
+    const usedItems  = mine.filter(x => x.status==='redeemed').slice(0,5);
+    const mats = p.materials || {};
+    const matLine = MATERIALS.map(m=>{
+      const have = mats[m.key] ?? 0;
+      const full = have >= m.need;
+      return `<span style="${full?'color:var(--gold);font-weight:800':''}">${m.icon} ${have}/${m.need}</span>`;
+    }).join('　');
+
+    /* ---- ② 遊戲進度 ---- */
+    const xp = p.xp ?? 0;
+    const floor = xpThreshold(lv), ceil = xpThreshold(lv+1);
+    const ach = (p.achievements || []).length;
+    const ab = achievementBonus(p), tb = titleBonus(p), fm = finalMultiplier(p);
+    const eq = equippedTitle(p);
+    const crafted = p.craftedTitles || {};
+    const craftLine = CRAFT_TITLES.filter(t=>(crafted[t.id]||0)>0)
+      .map(t=>`${t.icon}${esc(t.name)}${(crafted[t.id]>1)?' ×'+crafted[t.id]:''}`).join('、') || '無';
+    const shopCount = (p.shopTitles || []).length;
+    const pity = p.lotteryPity ?? 0;
+
+    /* ---- ③ 紀律 ---- */
+    const myPen = penalties.filter(x => x.playerId===id).slice(0,10);
+    const locked = penalties.some(x => x.playerId===id && x.type==='lock' && x.status!=='cleared');
+
+    const line = (label, val) => `<div class="pStat" style="width:100%">${label} <b>${val}</b></div>`;
+
+    return `
+    <div class="card">
+      ${head}
+      <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--line)">
+
+        <h2 style="font-size:11px;margin-bottom:10px">① 資產</h2>
+        <div class="pStats" style="flex-direction:column;gap:7px">
+          ${line('金幣', `<span class="coin" style="${coins<0?'color:var(--pink)':''}">🪙 ${coins}</span>${coins<0?' <span style="color:var(--pink)">負債</span>':''}`)}
+          ${line('抽獎券', `🎟️ ×${tickets}`)}
+          ${line('材料', matLine)}
+          ${line('可使用', ownedItems.length ? ownedItems.map(x=>esc(x.itemName)).join('、') : '無')}
+          ${line('<span style="color:var(--gold)">待核銷</span>', pendItems.length ? `<span style="color:var(--gold)">${pendItems.map(x=>esc(x.itemName)).join('、')}</span>` : '無')}
+          ${line('最近已核銷', usedItems.length ? usedItems.map(x=>esc(x.itemName)).join('、') : '無')}
+        </div>
+
+        <h2 style="font-size:11px;margin:16px 0 10px">② 遊戲進度</h2>
+        <div class="pStats" style="flex-direction:column;gap:7px">
+          ${line('等級', `Lv.${lv}　${xp - floor} / ${ceil - floor} XP`)}
+          ${line('成就', `${ach} / ${ACHIEVEMENT_TOTAL}`)}
+          ${line('倍率', `⭐×${fm}　<span style="color:var(--muted);font-weight:600">（成就 ×${ab} × 稱號 ×${tb}）</span>`)}
+          ${line('幸運', `🍀 ×${luckOf(p)}`)}
+          ${line('抽獎', `${p.lotteryCount ?? 0} 次　pity ${pity}/${PITY_MAX}`)}
+          ${line('合成稱號', craftLine)}
+          ${line('商店稱號', `${shopCount} 個`)}
+          ${line('裝備中', eq ? `${eq.icon} ${esc(eq.name)}` : '未裝備')}
+        </div>
+
+        <h2 style="font-size:11px;margin:16px 0 10px">③ 紀律 ${locked?'<span class="pill lock">禁閉中</span>':''}</h2>
+        ${myPen.length ? myPen.map(x=>{
+          const d = x.createdAt?.toDate ? x.createdAt.toDate() : null;
+          const ds = d ? `${d.getMonth()+1}/${d.getDate()}` : '—';
+          return `<div class="pStat" style="width:100%">
+            <span class="pill ${x.type}">${x.type==='fine'?'罰款':'禁閉'}</span>
+            ${esc(x.reason||'—')}${x.type==='fine'?`・🪙 ${x.amount??0}`:''}・${ds}</div>`;
+        }).join('') : '<div class="empty" style="padding:8px 0">沒有罰單紀錄</div>'}
+
+        <h2 style="font-size:11px;margin:16px 0 10px">④ 操作</h2>
+        <div class="row">
+          <button class="btn gray" onclick="renamePlayer('${esc(id)}')">改名</button>
+          <button class="btn gray" onclick="adjustCoins('${esc(id)}')">調整金幣</button>
+          <button class="btn gray" onclick="resetPw('${esc(id)}')">重設密碼</button>
+          <button class="btn no" onclick="delPlayer('${esc(id)}')">刪除</button>
+        </div>
       </div>
     </div>`;
   }).join('') : '<div class="empty">還沒有人註冊。叫弟弟打開前台輸入 ID + 密碼註冊。</div>';
