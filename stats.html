@@ -414,6 +414,21 @@ onSnapshot(query(collection(db,'ledger'), orderBy('createdAt','desc'), limit(LED
 const pName = id => players[id]?.name || id;
 const pids  = () => Object.keys(players);
 
+/* ===== 孤兒防呆：玩家已刪除但資料還在，一律排除在統計之外 ===== */
+const isKnown = id => id != null && Object.prototype.hasOwnProperty.call(players, id);
+function orphanCount(){
+  let n = 0;
+  ledger.forEach(l=>{ if(!isKnown(l.playerId)) n++; });
+  purchases.forEach(p=>{ if(!isKnown(p.playerId)) n++; });
+  penalties.forEach(p=>{ if(!isKnown(p.playerId)) n++; });
+  tasks.forEach(t=>{
+    const badA = t.assignee !== 'all' && !isKnown(t.assignee);   // 'all' 是合法值
+    const badC = t.claimedBy != null && !isKnown(t.claimedBy);
+    if(badA || badC) n++;
+  });
+  return n;
+}
+
 /* ==================================================================
    SVG 圖表（手刻，無套件）
 ================================================================== */
@@ -509,15 +524,19 @@ function ledgerStart(){
 function renderNotice(){
   const start = ledgerStart();
   const cap = ledgerCapped ? `　⚠️ ledger 已達上限，僅顯示最近 ${nf(LEDGER_LIMIT)} 筆` : '';
+  const orp = orphanCount();
+  const orpMsg = orp ? `<br><span style="color:var(--pink)">⚠️ 偵測到 ${nf(orp)} 筆孤兒資料（玩家已刪除），已排除在統計之外。
+    可到後台「玩家管理 → 孤兒資料清理」清除。</span>` : '';
   $('notice').innerHTML = start
     ? `📊 精確記帳自 <b style="color:var(--gold)">${start}</b> 起；更早的資料為估算<br>
-       估算誤差：任務金額為原始 reward（<b>未含倍率，會低估</b>）、抽獎收支與稱號購買在此之前<b>完全無紀錄</b>。${cap}`
+       估算誤差：任務金額為原始 reward（<b>未含倍率，會低估</b>）、抽獎收支與稱號購買在此之前<b>完全無紀錄</b>。${cap}${orpMsg}`
     : `📊 尚無精確記帳資料（ledger 為空）。以下數字全部來自 tasks / purchases / penalties 的<b>估算</b>：
-       任務金額未含倍率會低估，抽獎與稱號購買完全沒有紀錄。${cap}`;
+       任務金額未含倍率會低估，抽獎與稱號購買完全沒有紀錄。${cap}${orpMsg}`;
 }
 function renderKpi(){
-  const issued = ledger.filter(l=>(l.delta||0) > 0).reduce((a,b)=>a+b.delta,0);
-  const burned = ledger.filter(l=>(l.delta||0) < 0).reduce((a,b)=>a-b.delta,0);
+  const L = ledger.filter(l=>isKnown(l.playerId));          // 排除孤兒
+  const issued = L.filter(l=>(l.delta||0) > 0).reduce((a,b)=>a+b.delta,0);
+  const burned = L.filter(l=>(l.delta||0) < 0).reduce((a,b)=>a-b.delta,0);
   const net = issued - burned;
   const inMarket = pids().reduce((a,id)=>a + (players[id].coins ?? 0), 0);
   $('kpi').innerHTML = `
@@ -554,6 +573,7 @@ function renderFlow(){
   ledger.forEach(l=>{
     const d = dayOf(l.createdAt);
     if(!d || !(d in inc)) return;
+    if(!isKnown(l.playerId)) return;                        // 排除孤兒
     if(flowWho !== 'all' && l.playerId !== flowWho) return;
     const v = l.delta || 0;
     if(v > 0) inc[d] += v; else if(v < 0) exp[d] += -v;
@@ -644,7 +664,7 @@ function renderDaily(){
 function renderSpend(){
   // 商品銷售（purchases，全歷史；排除抽獎券）
   const g = {};
-  purchases.filter(p=>!p.isTicket && p.status!=='refunded').forEach(p=>{
+  purchases.filter(p=>isKnown(p.playerId) && !p.isTicket && p.status!=='refunded').forEach(p=>{
     const k = p.itemName || '（未命名）';
     g[k] = g[k] || { n:0, sum:0 };
     g[k].n++; g[k].sum += (p.price || 0);
@@ -653,11 +673,11 @@ function renderSpend(){
   const maxSum = Math.max(...rows.map(r=>r[1].sum), 1);
 
   // 抽獎券單獨列出（最大回收管道）
-  const tks = purchases.filter(p=>p.isTicket && p.status!=='refunded');
+  const tks = purchases.filter(p=>isKnown(p.playerId) && p.isTicket && p.status!=='refunded');
   const tkSum = tks.reduce((a,b)=>a+(b.price||0),0);
 
   // 稱號購買（只有 ledger 有）
-  const tls = ledger.filter(l=>l.kind==='title');
+  const tls = ledger.filter(l=>isKnown(l.playerId) && l.kind==='title');
   const tlSum = tls.reduce((a,b)=>a-(b.delta||0),0);
 
   $('spend').innerHTML = `
@@ -714,7 +734,7 @@ function renderLottery(){
   }).join('');
 
   // 獎品分布：實際 vs 理論（只有 ledger 有）
-  const draws = ledger.filter(l=>l.kind==='lottery_coin' || l.kind==='lottery_mat');
+  const draws = ledger.filter(l=>isKnown(l.playerId) && (l.kind==='lottery_coin' || l.kind==='lottery_mat'));
   let dist = '<div class="empty">記帳期間內沒有抽獎紀錄（ledger 上線前的抽獎無法重建）</div>';
   if(draws.length){
     const theo = {};
@@ -741,8 +761,8 @@ function renderLottery(){
   }
 
   // 花費 vs 抽回
-  const spent = ledger.filter(l=>l.kind==='ticket').reduce((a,b)=>a-(b.delta||0),0);
-  const back  = ledger.filter(l=>l.kind==='lottery_coin').reduce((a,b)=>a+(b.delta||0),0);
+  const spent = ledger.filter(l=>isKnown(l.playerId) && l.kind==='ticket').reduce((a,b)=>a-(b.delta||0),0);
+  const back  = ledger.filter(l=>isKnown(l.playerId) && l.kind==='lottery_coin').reduce((a,b)=>a+(b.delta||0),0);
   const rate  = spent ? (back/spent*100) : 0;
 
   $('lottery').innerHTML = `
@@ -764,7 +784,7 @@ function renderLottery(){
    ⑦ 紀律
 ================================================================== */
 function renderDiscipline(){
-  const sorted = [...penalties].sort((a,b)=>{
+  const sorted = penalties.filter(p=>isKnown(p.playerId)).sort((a,b)=>{
     const x = dayOf(a.createdAt) || '', y = dayOf(b.createdAt) || '';
     return y.localeCompare(x);
   });
