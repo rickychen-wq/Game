@@ -414,6 +414,12 @@ const firebaseConfig = {
 };
 /* ====== 後台密碼 ====== */
 const ADMIN_PASSWORD = "0414";
+
+/* ===== 記帳（ledger）：只新增紀錄，不影響任何既有邏輯 ===== */
+function ledgerData(playerId, kind, delta, label, meta){
+  return { playerId, kind, delta, label: label || '', meta: meta || {}, createdAt: serverTimestamp() };
+}
+const ledgerRef = () => doc(collection(db,'ledger'));
 /* ================================================================ */
 
 const app = initializeApp(firebaseConfig);
@@ -745,6 +751,7 @@ window.approveTask = async (id)=>{
         tasksDone:   increment(1),
         ...streakUpdate
       });
+      tx.set(ledgerRef(), ledgerData(payee, t.isDaily ? 'daily' : 'task', payout, t.title, { mult, base: t.reward }));
     });
     toast('已通過，金幣入帳 🪙');
   } catch(e){ toast(e.message); }
@@ -795,6 +802,7 @@ window.refundBuy = async (id)=>{
       if(b.status!=='pending') throw new Error('狀態已變更');
       tx.update(ref, { status:'refunded' });
       tx.update(doc(db,'players',b.playerId), { coins: increment(b.price) });
+      tx.set(ledgerRef(), ledgerData(b.playerId, 'refund', b.price, b.itemName));
     });
     toast('已退款 🪙');
   } catch(e){ toast(e.message); }
@@ -975,6 +983,7 @@ $('addPenBtn').onclick = async ()=>{
           playerId:pid, type:'fine', reason, amount,
           status:'cleared', createdAt: serverTimestamp(), clearedAt: serverTimestamp()
         });
+        tx.set(ledgerRef(), ledgerData(pid, 'penalty', -amount, reason));
       });
       $('fReason').value=''; $('fAmount').value='';
       toast('已開罰單並扣款 💸');
@@ -1054,6 +1063,7 @@ window.adjustCoins = async (id)=>{
   const n = parseInt(v);
   if(!n) return;
   await updateDoc(doc(db,'players',id), { coins: increment(n) });
+  addDoc(collection(db,'ledger'), ledgerData(id, 'admin', n, '後台手動調整')).catch(()=>{});
   toast(n>0 ? `已加 ${n} 🪙` : `已扣 ${-n} 🪙`);
 };
 window.resetPw = async (id)=>{
