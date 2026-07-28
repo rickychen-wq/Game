@@ -136,6 +136,7 @@
     transition:transform .12s, box-shadow .12s;
   }
   .btn:active { transform:translateY(2px) scale(.97); }
+  .btn:disabled { opacity:.35; box-shadow:none; cursor:default; transform:none; }
   .btn.ok { background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206;
     box-shadow:0 0 0 1px rgba(233,196,106,.4), 0 6px 16px rgba(233,196,106,.16); }
   .btn.no { background:rgba(255,107,129,.12); color:var(--pink); border:1px solid rgba(255,107,129,.35); }
@@ -350,6 +351,14 @@
       <h2>玩家管理 <span class="count zero" id="cPlayer">0</span></h2>
       <div id="playerList"></div>
     </section>
+    <section>
+      <h2>🧹 孤兒資料清理 <span class="count zero" id="cOrphan">0</span></h2>
+      <div id="orphanBox"><div class="empty">按「掃描」檢查已刪除帳號的殘留資料</div></div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+        <button class="btn ok" id="scanOrphanBtn">🔍 掃描</button>
+        <button class="btn no" id="clearOrphanBtn" disabled>🗑️ 清除全部孤兒資料</button>
+      </div>
+    </section>
   </div>
 
   <!-- 罰單頁 -->
@@ -399,8 +408,8 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, collection, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc,
-  onSnapshot, runTransaction, serverTimestamp, query, orderBy, increment
+  getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
+  onSnapshot, runTransaction, serverTimestamp, query, orderBy, where, writeBatch, increment
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ====== firebaseConfig（跟 index.html 同一份，不動） ====== */
@@ -725,7 +734,8 @@ window.approveTask = async (id)=>{
       if(!payee || payee==='all') throw new Error('找不到領獎的人');
       const pRef = doc(db,'players',payee);
       const ps = await tx.get(pRef);                 // read 一律在 write 之前
-      const pd = (ps.exists() && ps.data()) || {};
+      if(!ps.exists()) throw new Error('玩家帳號已被刪除，請改用「刪除這筆」清除紀錄');
+      const pd = ps.data() || {};
 
       // 最終倍率 = 成就全解加成 × 稱號最高倍率（相乘）
       const mult = finalMultiplier(pd);
@@ -770,17 +780,34 @@ window.rejectTask = async (id)=>{
 function renderReview(){
   const list = tasks.filter(t=>t.status==='pending');
   setCount('cReview', list.length);
-  $('reviewList').innerHTML = list.length ? list.map(t=>`
-    <div class="card">
-      <div class="title">${esc(t.title)}${t.isDaily?' <span class="pill a">📅每日</span>':''}</div>
-      <div class="sub">${esc(pName(t.claimedBy || t.assignee))} 回報完成・獎勵 <span class="coin">🪙 ${t.reward}</span>${(()=>{const m=finalMultiplier(players[t.claimedBy||t.assignee]);return m>1?`<span class="multPill">⭐×${m} → 🪙 ${Math.round(t.reward*m)}</span>`:'';})()}</div>
+  $('reviewList').innerHTML = list.length ? list.map(t=>{
+    const payee = t.claimedBy || t.assignee;
+    const gone = !isKnown(payee);            // 帳號已刪除 → 按發錢一定失敗
+    const m = gone ? 1 : finalMultiplier(players[payee]);
+    return `<div class="card">
+      <div class="title">${esc(t.title)}${t.isDaily?' <span class="pill a">📅每日</span>':''}${gone?' <span class="pill lock">⚠️ 帳號已刪除</span>':''}</div>
+      <div class="sub">${esc(gone ? payee : pName(payee))} 回報完成・獎勵 <span class="coin">🪙 ${t.reward}</span>${(!gone && m>1)?`<span class="multPill">⭐×${m} → 🪙 ${Math.round(t.reward*m)}</span>`:''}</div>
       <div class="row">
-        <button class="btn ok" onclick="approveTask('${t.id}')">✅ 通過發錢</button>
-        <button class="btn no" onclick="rejectTask('${t.id}')">↩️ 退回重做</button>
+        ${gone
+          ? `<button class="btn no" onclick="delOrphanTask('${t.id}')">🗑️ 刪除這筆</button>`
+          : `<button class="btn ok" onclick="approveTask('${t.id}')">✅ 通過發錢</button>
+             <button class="btn no" onclick="rejectTask('${t.id}')">↩️ 退回重做</button>`}
       </div>
-    </div>
-  `).join('') : '<div class="empty">目前沒有待審核的</div>';
+    </div>`;
+  }).join('') : '<div class="empty">目前沒有待審核的</div>';
 }
+
+/* ===== 孤兒單筆刪除（對象玩家已不存在，發錢/退款必定失敗） ===== */
+window.delOrphanTask = async (id)=>{
+  if(!confirm('這筆的玩家帳號已被刪除，確定刪除這筆任務紀錄？')) return;
+  await deleteDoc(doc(db,'tasks',id));
+  toast('已刪除孤兒任務');
+};
+window.delOrphanBuy = async (id)=>{
+  if(!confirm('這筆的玩家帳號已被刪除，確定刪除這筆購買紀錄？')) return;
+  await deleteDoc(doc(db,'purchases',id));
+  toast('已刪除孤兒購買');
+};
 
 /* ===== 核銷購買 ===== */
 window.redeemBuy = async (id)=>{
@@ -800,8 +827,11 @@ window.refundBuy = async (id)=>{
       if(!s.exists()) throw new Error('紀錄不存在');
       const b = s.data();
       if(b.status!=='pending') throw new Error('狀態已變更');
+      const pRef = doc(db,'players',b.playerId);
+      const ps = await tx.get(pRef);                 // read 一律在 write 之前
+      if(!ps.exists()) throw new Error('玩家帳號已被刪除，請改用「刪除這筆」清除紀錄');
       tx.update(ref, { status:'refunded' });
-      tx.update(doc(db,'players',b.playerId), { coins: increment(b.price) });
+      tx.update(pRef, { coins: increment(b.price) });
       tx.set(ledgerRef(), ledgerData(b.playerId, 'refund', b.price, b.itemName));
     });
     toast('已退款 🪙');
@@ -811,16 +841,19 @@ window.refundBuy = async (id)=>{
 function renderBuyReview(){
   const list = purchases.filter(p=>p.status==='pending');
   setCount('cBuy', list.length);
-  $('buyReviewList').innerHTML = list.length ? list.map(p=>`
-    <div class="card">
-      <div class="title">${esc(p.itemName)}</div>
-      <div class="sub">${esc(pName(p.playerId))} 購買・<span class="coin">🪙 ${p.price}</span></div>
+  $('buyReviewList').innerHTML = list.length ? list.map(p=>{
+    const gone = !isKnown(p.playerId);       // 帳號已刪除 → 退款一定失敗
+    return `<div class="card">
+      <div class="title">${esc(p.itemName)}${gone?' <span class="pill lock">⚠️ 帳號已刪除</span>':''}</div>
+      <div class="sub">${esc(gone ? p.playerId : pName(p.playerId))} 購買・<span class="coin">🪙 ${p.price}</span></div>
       <div class="row">
-        <button class="btn ok" onclick="redeemBuy('${p.id}')">✅ 核銷兌換</button>
-        <button class="btn no" onclick="refundBuy('${p.id}')">↩️ 退款</button>
+        ${gone
+          ? `<button class="btn no" onclick="delOrphanBuy('${p.id}')">🗑️ 刪除這筆</button>`
+          : `<button class="btn ok" onclick="redeemBuy('${p.id}')">✅ 核銷兌換</button>
+             <button class="btn no" onclick="refundBuy('${p.id}')">↩️ 退款</button>`}
       </div>
-    </div>
-  `).join('') : '<div class="empty">目前沒有待核銷的</div>';
+    </div>`;
+  }).join('') : '<div class="empty">目前沒有待核銷的</div>';
 }
 
 /* ===== 進行中任務列表 ===== */
@@ -1071,10 +1104,131 @@ window.resetPw = async (id)=>{
   await updateDoc(doc(db,'players',id), { pw: null });
   toast('已重設，下次登入重新綁定');
 };
+/* ==================================================================
+   孤兒資料：連帶刪除與清理工具
+   Firestore 沒有 cascade delete，玩家文件刪掉後名下資料會全部變孤兒
+================================================================== */
+const isKnown = id => id != null && Object.prototype.hasOwnProperty.call(players, id);
+
+// 分批刪除（Firestore writeBatch 上限 500，這裡用 450 保守）
+async function batchDelete(refs){
+  for(let i=0;i<refs.length;i+=450){
+    const b = writeBatch(db);
+    refs.slice(i, i+450).forEach(r=> b.delete(r));
+    await b.commit();
+  }
+  return refs.length;
+}
+
+// 查出某玩家名下所有資料（用伺服器查詢，不靠本地陣列）
+async function collectPlayerDocs(id){
+  const [buys, pens, leds, tA, tC] = await Promise.all([
+    getDocs(query(collection(db,'purchases'), where('playerId','==',id))),
+    getDocs(query(collection(db,'penalties'), where('playerId','==',id))),
+    getDocs(query(collection(db,'ledger'),    where('playerId','==',id))),
+    getDocs(query(collection(db,'tasks'),     where('assignee','==',id))),
+    getDocs(query(collection(db,'tasks'),     where('claimedBy','==',id))),
+  ]);
+  const taskMap = new Map();                       // 兩個條件可能命中同一筆 → 去重
+  tA.forEach(d=> taskMap.set(d.id, d.ref));
+  tC.forEach(d=> taskMap.set(d.id, d.ref));
+  return {
+    counts: { buys:buys.size, tasks:taskMap.size, pens:pens.size, leds:leds.size },
+    refs: [
+      ...buys.docs.map(d=>d.ref), ...pens.docs.map(d=>d.ref),
+      ...leds.docs.map(d=>d.ref), ...taskMap.values()
+    ]
+  };
+}
+
 window.delPlayer = async (id)=>{
-  if(!confirm(`確定刪除帳號「${players[id]?.name}」？金幣會一起消失，不能復原！`)) return;
-  await deleteDoc(doc(db,'players',id));
-  toast('已刪除帳號');
+  const name = players[id]?.name || id;
+  toast('清點資料中⋯');
+  let found;
+  try { found = await collectPlayerDocs(id); }
+  catch(e){ toast('查詢失敗：' + e.message); return; }
+  const c = found.counts;
+  if(!confirm(`確定刪除帳號「${name}」？\n將一併刪除：購買 ${c.buys} 筆、任務 ${c.tasks} 筆、罰單 ${c.pens} 筆、記帳 ${c.leds} 筆\n這個動作不能復原！`)) return;
+  try {
+    toast('清理中⋯');
+    await batchDelete(found.refs);
+    await deleteDoc(doc(db,'players',id));         // 最後才刪玩家本體
+    toast(`已刪除帳號與 ${found.refs.length} 筆相關資料`);
+  } catch(e){ toast('刪除失敗：' + e.message); }
+};
+
+/* ===== 孤兒掃描 / 清理 ===== */
+let orphanResult = null;      // { groups: {id:{buys,tasks,pens,leds}}, refs:[], total }
+
+$('scanOrphanBtn').onclick = async ()=>{
+  $('scanOrphanBtn').disabled = true;
+  $('orphanBox').innerHTML = '<div class="empty">掃描中⋯</div>';
+  try {
+    const [bs, ts, ps, ls] = await Promise.all([
+      getDocs(collection(db,'purchases')), getDocs(collection(db,'tasks')),
+      getDocs(collection(db,'penalties')), getDocs(collection(db,'ledger')),
+    ]);
+    const groups = {}, refs = [];
+    const add = (owner, type, ref)=>{
+      groups[owner] = groups[owner] || { buys:0, tasks:0, pens:0, leds:0 };
+      groups[owner][type]++;
+      refs.push(ref);
+    };
+    bs.forEach(d=>{ const v=d.data(); if(!isKnown(v.playerId)) add(v.playerId ?? '(未指定)','buys',d.ref); });
+    ps.forEach(d=>{ const v=d.data(); if(!isKnown(v.playerId)) add(v.playerId ?? '(未指定)','pens',d.ref); });
+    ls.forEach(d=>{ const v=d.data(); if(!isKnown(v.playerId)) add(v.playerId ?? '(未指定)','leds',d.ref); });
+    ts.forEach(d=>{
+      const v = d.data();
+      // assignee==='all'（開放搶）與 claimedBy===null 都是合法值，不算孤兒
+      const badAssignee = v.assignee !== 'all' && !isKnown(v.assignee);
+      const badClaimer  = v.claimedBy != null && !isKnown(v.claimedBy);
+      if(badAssignee || badClaimer) add(badAssignee ? (v.assignee ?? '(未指定)') : v.claimedBy, 'tasks', d.ref);
+    });
+    orphanResult = { groups, refs, total: refs.length };
+  } catch(e){
+    $('orphanBox').innerHTML = `<div class="empty">掃描失敗：${esc(e.message)}</div>`;
+    $('scanOrphanBtn').disabled = false; return;
+  }
+  $('scanOrphanBtn').disabled = false;
+  renderOrphans();
+};
+
+function renderOrphans(){
+  const r = orphanResult;
+  if(!r){ setCount('cOrphan', 0); return; }
+  setCount('cOrphan', r.total);
+  $('clearOrphanBtn').disabled = (r.total === 0);
+  if(r.total === 0){
+    $('orphanBox').innerHTML = '<div class="empty">沒有孤兒資料 ✅</div>';
+    return;
+  }
+  $('orphanBox').innerHTML =
+    `<div class="sub" style="margin-bottom:10px;font-family:var(--mono);font-size:12px;color:var(--pink)">
+       偵測到 ${r.total} 筆屬於「已刪除帳號」的殘留資料</div>` +
+    Object.entries(r.groups).map(([id,g])=>`
+      <div class="card">
+        <div class="title">${esc(id)} <span class="pill lock">帳號不存在</span></div>
+        <div class="sub">購買 ${g.buys} 筆・任務 ${g.tasks} 筆・罰單 ${g.pens} 筆・記帳 ${g.leds} 筆</div>
+      </div>`).join('');
+}
+
+$('clearOrphanBtn').onclick = async ()=>{
+  const r = orphanResult;
+  if(!r || !r.total) return;
+  const detail = Object.entries(r.groups)
+    .map(([id,g])=>`・${id}：購買 ${g.buys}、任務 ${g.tasks}、罰單 ${g.pens}、記帳 ${g.leds}`).join('\n');
+  if(!confirm(`確定清除以下已刪除帳號的全部殘留資料？\n\n${detail}\n\n合計 ${r.total} 筆，永久刪除且不能復原！`)) return;
+  try {
+    $('clearOrphanBtn').disabled = true;
+    toast('清理中⋯');
+    await batchDelete(r.refs);
+    toast(`已清除 ${r.total} 筆孤兒資料`);
+    orphanResult = { groups:{}, refs:[], total:0 };
+    renderOrphans();
+  } catch(e){
+    toast('清除失敗：' + e.message);
+    $('clearOrphanBtn').disabled = false;
+  }
 };
 
 let expandedPlayer = null;                    // 同時只展開一個
