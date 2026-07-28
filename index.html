@@ -901,6 +901,12 @@ let penaltiesLoaded = false;
 ================================================================== */
 const TICKET_PRICE = 500;
 
+/* ===== 記帳（ledger）：玩家端零感知，只新增紀錄不影響任何既有邏輯 ===== */
+function ledgerData(kind, delta, label, meta){
+  return { playerId: me, kind, delta, label: label || '', meta: meta || {}, createdAt: serverTimestamp() };
+}
+const ledgerRef = () => doc(collection(db,'ledger'));
+
 // 順時針 16 格（基礎機率，總和 100）
 const PRIZES = [
   { type:'coin', icon:'🪙', name:'金幣 200',  value:200,           prob:13 },
@@ -1533,6 +1539,7 @@ window.buyItem = async (itemId)=>{
         playerId: me, itemName: item.name, price: item.price,
         status: 'owned', createdAt: serverTimestamp()
       });
+      tx.set(ledgerRef(), ledgerData('shop', -item.price, item.name));
     });
     sfxBuy();
     toast('已放進背包 🎒');
@@ -1575,6 +1582,7 @@ window.buyTicket = async ()=>{
         playerId: me, itemName: '抽獎券', price: TICKET_PRICE,
         status: 'owned', isTicket: true, createdAt: serverTimestamp()
       });
+      tx.set(ledgerRef(), ledgerData('ticket', -TICKET_PRICE, '抽獎券'));
     });
     sfxBuy();
     toast('抽獎券已放進背包 🎟️');
@@ -1682,6 +1690,11 @@ async function commitPrize(idx){
     if(prize.type === 'mat')  upd['materials.' + prize.key] = increment(prize.n);
     tx.update(tRef, { status:'consumed', usedAt: serverTimestamp() });
     tx.update(doc(db,'players',me), upd);
+    // 記帳（AGAIN 不會走到這裡，所以不會被記）
+    if(prize.type === 'coin')
+      tx.set(ledgerRef(), ledgerData('lottery_coin', prize.value, prize.name));
+    if(prize.type === 'mat')
+      tx.set(ledgerRef(), ledgerData('lottery_mat', 0, prize.name, { matKey: prize.key, n: prize.n }));
   });
 }
 
@@ -1717,6 +1730,7 @@ window.craft = async ()=>{
       });
       upd['craftedTitles.' + got.id] = increment(1);
       tx.update(pRef, upd);
+      tx.set(ledgerRef(), ledgerData('craft', 0, got.name, { dup, count: newCount }));
     });
     sfxCraft();
     if(dup){
@@ -1880,6 +1894,7 @@ window.buyTitle = async (id)=>{
       const coins = cur.coins || 0;
       if(coins < info.price) throw new Error('金幣不夠，先去做任務吧 💪');
       tx.update(pRef, { coins: coins - info.price, shopTitles: arrayUnion(id) });
+      tx.set(ledgerRef(), ledgerData('title', -info.price, t.name, { tier: t.tier }));
     });
     sfxBuy();
     toast('已獲得稱號！去稱號頁裝備 🏷️');
@@ -2476,6 +2491,7 @@ async function finishTutorial(){
       if(!s.exists()) return;
       if(s.data().tutorialDone === true) return;   // 冪等：已領過只關閉
       tx.update(ref, { coins: increment(50), tutorialDone: true });  // 不加 totalEarned/xp
+      tx.set(ledgerRef(), ledgerData('tutorial', 50, '新手禮包'));
       granted = true;
     });
     if(granted){ sfxCoin(); flyCoins(5); toast('新手禮包已入帳 🪙'); }
