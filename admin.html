@@ -289,6 +289,9 @@
   <span class="htag">ADMIN</span>
 </header>
 
+<div id="evtBar" style="display:none;font-family:var(--mono);font-size:12px;color:var(--gold);
+  background:rgba(233,196,106,.08);border-bottom:1px solid var(--line);padding:10px 16px;line-height:1.8"></div>
+
 <main>
   <!-- 審核頁 -->
   <div class="page on" id="page-review">
@@ -405,6 +408,7 @@
 
 <div id="toast"></div>
 
+<script src="./shared.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -431,6 +435,18 @@ function ledgerData(playerId, kind, delta, label, meta){
 const ledgerRef = () => doc(collection(db,'ledger'));
 /* ================================================================ */
 
+
+/* ===== 共用常數與純函式（唯一真實來源：shared.js） ===== */
+const {
+  MATERIALS, CRAFT_TITLES, SHOP_TITLES, TIERS, ACHIEVEMENTS,
+  TALENT_ICON, TALENT_NAME, TALENT_MAX_LV, TALENT_TREES,
+  talentLv, talentSpent, talentEarned, talentAvail, talentAdd,
+  equippedTitle, xpThreshold, levelFromXp, PITY_MAX,
+  EVENTS, setRuntime, eventOn, eventUntil, activeEvents, eventAdd,
+  r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
+  todayKey, prevKey,
+} = window.GAME;
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -442,70 +458,6 @@ let dailyTemplates = [];
 let penalties = [];
 let adminUnlocked = (sessionStorage.getItem('admin_ok') === '1');
 
-/* ⚠️ 以下常數必須與 index.html 保持一致，前台改了這裡也要改 */
-const ACHIEVEMENT_TOTAL = 15;
-
-const CRAFT_TITLES = [
-  { id:'shadow', icon:'🌑', name:'暗影使者', mult:1.1 },
-  { id:'ghost',  icon:'👻', name:'幽靈冠王', mult:1.15 },
-  { id:'sky',    icon:'☁️', name:'蒼天使者', mult:1.2 },
-  { id:'chosen', icon:'✨', name:'天選之人', mult:1.5 },
-];
-const SHOP_TITLES = [
-  { id:'d01', tier:'D', name:'擺爛之王' },       { id:'d02', tier:'D', name:'睡到自然醒' },
-  { id:'d03', tier:'D', name:'三分鐘熱度' },     { id:'d04', tier:'D', name:'已讀不回' },
-  { id:'d05', tier:'D', name:'明天的事明天再說' }, { id:'d06', tier:'D', name:'沙發長期租戶' },
-  { id:'d07', tier:'D', name:'我媽叫我' },       { id:'d08', tier:'D', name:'隨便啦' },
-  { id:'d09', tier:'D', name:'裝忙專家' },       { id:'d10', tier:'D', name:'廢到笑' },
-  { id:'c01', tier:'C', name:'碗盤終結者' },     { id:'c02', tier:'C', name:'拖地小當家' },
-  { id:'c03', tier:'C', name:'手速還行' },       { id:'c04', tier:'C', name:'假日限定勤勞' },
-  { id:'c05', tier:'C', name:'微波爐工程師' },   { id:'c06', tier:'C', name:'遙控器守護神' },
-  { id:'c07', tier:'C', name:'剛好路過' },       { id:'c08', tier:'C', name:'有做就好' },
-  { id:'c09', tier:'C', name:'半夜找食物的人' }, { id:'c10', tier:'C', name:'一日限定認真' },
-  { id:'b01', tier:'B', name:'家務老手' },       { id:'b02', tier:'B', name:'說到做到' },
-  { id:'b03', tier:'B', name:'連續紀錄保持人' }, { id:'b04', tier:'B', name:'深夜清潔隊' },
-  { id:'b05', tier:'B', name:'效率至上' },       { id:'b06', tier:'B', name:'沒在怕的' },
-  { id:'b07', tier:'B', name:'誰都攔不住' },
-  { id:'a01', tier:'A', name:'不敗神話' },       { id:'a02', tier:'A', name:'一擊必殺' },
-  { id:'a03', tier:'A', name:'領域展開' },       { id:'a04', tier:'A', name:'無人能及' },
-  { id:'a05', tier:'A', name:'逆風翻盤' },
-  { id:'s01', tier:'S', name:'君臨天下' },       { id:'s02', tier:'S', name:'命運支配者' },
-  { id:'s03', tier:'S', name:'萬象歸一' },
-];
-const TIERS = {
-  D:{ luck:1.05, price:500   },
-  C:{ luck:1.07, price:1500  },
-  B:{ luck:1.10, price:4000  },
-  A:{ luck:1.15, price:10000 },
-  S:{ luck:1.50, price:30000 },
-};
-const MATERIALS = [
-  { key:'purple', icon:'🟣', name:'紫晶碎片', need:5 },
-  { key:'jade',   icon:'⬜', name:'長白玉石', need:5 },
-  { key:'azure',  icon:'🟦', name:'靈青石',  need:5 },
-  { key:'dust',   icon:'💎', name:'鑽粉',    need:2 },
-  { key:'soul',   icon:'🫧', name:'魂源泉水', need:2 },
-];
-const PITY_MAX = 70;
-
-/* 裝備制：全站只能裝一個稱號 */
-function equippedTitle(p){
-  const id = p && p.equippedTitle;
-  if(!id) return null;
-  const c = CRAFT_TITLES.find(t => t.id === id);
-  if(c) return { kind:'craft', id, icon:c.icon, name:c.name, mult:c.mult, luck:1.0 };
-  const s = SHOP_TITLES.find(t => t.id === id);
-  if(s) return { kind:'shop', id, icon:'', name:s.name, tier:s.tier, mult:1.0, luck:TIERS[s.tier].luck };
-  return null;
-}
-function titleBonus(p){ return equippedTitle(p)?.mult || 1.0; }   // 只看裝備中的合成稱號
-function luckOf(p){ return equippedTitle(p)?.luck || 1.0; }       // 只看裝備中的商店稱號
-function achievementBonus(p){
-  return (((p && p.achievements) || []).length >= ACHIEVEMENT_TOTAL) ? 1.1 : 1.0;
-}
-function finalMultiplier(p){
-  return Math.round(achievementBonus(p) * titleBonus(p) * 1000) / 1000;
-}
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -519,8 +471,6 @@ function toast(msg){
 }
 
 /* 等級（跟前台同公式，只用來顯示） */
-function xpThreshold(lv){ return 50 * (lv - 1) * (lv + 2); }
-function levelFromXp(xp){ let lv=1; while(xp >= xpThreshold(lv+1)) lv++; return lv; }
 
 function setCount(el, n){
   const e = $(el); e.textContent = n; e.classList.toggle('zero', n===0);
@@ -588,12 +538,6 @@ if(sessionStorage.getItem('admin_ok')==='1') $('lockOverlay').style.display='non
 /* ==================================================================
    每日任務：懶重置（全玩家版）
 ================================================================== */
-function todayKey(){
-  return new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Taipei' });
-}
-function prevKey(dateKey){
-  return new Date(new Date(dateKey).getTime() - 86400000).toISOString().slice(0,10);
-}
 
 // 首次自動建立兩個預設模板（用固定 ID，重開不會重複）
 async function createDefaultTemplates(){
@@ -718,10 +662,12 @@ window.approveTask = async (id)=>{
   if(t){
     const payee = t.claimedBy || t.assignee;
     const who = pName(payee);
-    const m = finalMultiplier(players[payee]);
-    const payout = Math.round(t.reward * m);
-    const extra = m > 1 ? `（${t.reward} × ${m}）` : '';
-    if(!confirm(`確定通過「${t.title}」？\n將發給 ${who} 🪙 ${payout}${extra}`)) return;
+    const cm = coinMultOf(players[payee]), xm = xpMultOf(players[payee]);
+    const payout = Math.round(t.reward * cm), xpGain = Math.round(t.reward * xm);
+    const evtNote = eventAdd('coin') > 0 ? `　⚡活動 +${Math.round(eventAdd('coin')*100)}%` : '';
+    const extra = cm > 1 ? `（${t.reward} × ${cm}${evtNote}）` : '';
+    const xpLine = xm !== cm ? `\nXP +${xpGain}（× ${xm}）` : '';
+    if(!confirm(`確定通過「${t.title}」？\n將發給 ${who} 🪙 ${payout}${extra}${xpLine}`)) return;
   }
   try {
     await runTransaction(db, async tx=>{
@@ -737,9 +683,11 @@ window.approveTask = async (id)=>{
       if(!ps.exists()) throw new Error('玩家帳號已被刪除，請改用「刪除這筆」清除紀錄');
       const pd = ps.data() || {};
 
-      // 最終倍率 = 成就全解加成 × 稱號最高倍率（相乘）
-      const mult = finalMultiplier(pd);
-      const payout = Math.round(t.reward * mult);
+      // 加法池：金幣與 XP 分開算（天賦 XP 加成不能連金幣一起放大）
+      const coinMult = coinMultOf(pd);
+      const xpMult   = xpMultOf(pd);
+      const payout   = Math.round(t.reward * coinMult);
+      const xpGain   = Math.round(t.reward * xpMult);
 
       // 每日任務：streak 連續性用任務 dateKey，不是審核當下
       let streakUpdate = {};
@@ -754,14 +702,17 @@ window.approveTask = async (id)=>{
       }
 
       tx.update(ref, { status:'done' });
+      const boost = eventOn('tokenBoost');     // 活動：每完成一個任務多 1 顆結晶
       tx.update(pRef, {
         coins:       increment(payout),
         totalEarned: increment(payout),     // 用發放後金額累加
-        xp:          increment(payout),     // XP 同樣吃倍率
+        xp:          increment(xpGain),     // XP 走自己的倍率
         tasksDone:   increment(1),
+        ...(boost ? { bonusTokens: increment(1) } : {}),
         ...streakUpdate
       });
-      tx.set(ledgerRef(), ledgerData(payee, t.isDaily ? 'daily' : 'task', payout, t.title, { mult, base: t.reward }));
+      tx.set(ledgerRef(), ledgerData(payee, t.isDaily ? 'daily' : 'task', payout, t.title,
+        { mult: coinMult, xpMult, xpGain, base: t.reward, ...(boost ? { tokenBoost:true } : {}) }));
     });
     toast('已通過，金幣入帳 🪙');
   } catch(e){ toast(e.message); }
@@ -783,10 +734,11 @@ function renderReview(){
   $('reviewList').innerHTML = list.length ? list.map(t=>{
     const payee = t.claimedBy || t.assignee;
     const gone = !isKnown(payee);            // 帳號已刪除 → 按發錢一定失敗
-    const m = gone ? 1 : finalMultiplier(players[payee]);
+    const m = gone ? 1 : coinMultOf(players[payee]);
     return `<div class="card">
       <div class="title">${esc(t.title)}${t.isDaily?' <span class="pill a">📅每日</span>':''}${gone?' <span class="pill lock">⚠️ 帳號已刪除</span>':''}</div>
-      <div class="sub">${esc(gone ? payee : pName(payee))} 回報完成・獎勵 <span class="coin">🪙 ${t.reward}</span>${(!gone && m>1)?`<span class="multPill">⭐×${m} → 🪙 ${Math.round(t.reward*m)}</span>`:''}</div>
+      <div class="sub">${esc(gone ? payee : pName(payee))} 回報完成・獎勵 <span class="coin">🪙 ${t.reward}</span>${(!gone && m>1)?`<span class="multPill">⭐×${m} → 🪙 ${Math.round(t.reward*m)}${
+        eventAdd('coin')>0?`（含活動 +${Math.round(eventAdd('coin')*100)}%）`:''}</span>`:''}</div>
       <div class="row">
         ${gone
           ? `<button class="btn no" onclick="delOrphanTask('${t.id}')">🗑️ 刪除這筆</button>`
@@ -1084,6 +1036,43 @@ function renderPenalties(){
   }).join('') : '<div class="empty">還沒有罰單紀錄</div>';
 }
 
+/* ===== 系統設定（config/system）：媽媽端唯讀，活動只能在 stats.html 修改 ===== */
+onSnapshot(doc(db,'config','system'), snap=>{
+  const cfg = snap.exists() ? (snap.data() || {}) : {};
+  setRuntime({ events: cfg.events || {} });
+  renderEventBar();
+  renderPlayers();
+  renderReview();
+});
+
+/* ===== 活動提示列（只顯示，不能改）===== */
+function renderEventBar(){
+  const box = $('evtBar');
+  if(!box) return;
+  const list = activeEvents();
+  if(!list.length){ box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.style.display = '';
+  box.innerHTML = list.map(e=>{
+    const u = eventUntil(e.key);
+    const d = u ? new Date(u) : null;
+    const till = d && !isNaN(d) ? `（至 ${d.getMonth()+1}/${d.getDate()}）` : '';
+    return `⚡ 活動中：${esc(e.name)}${till}　<span style="color:var(--muted)">${esc(e.ef)}</span>`;
+  }).join('<br>');
+}
+setInterval(renderEventBar, 30000);
+
+/* ===== 發放活動結晶 ===== */
+window.grantTokens = async (id)=>{
+  const v = prompt(`發放 ${TALENT_ICON}${TALENT_NAME} 給「${players[id]?.name}」（正數給、負數收回）：`, '');
+  const n = parseInt(v);
+  if(!n) return;
+  try {
+    await updateDoc(doc(db,'players',id), { bonusTokens: increment(n) });
+    addDoc(collection(db,'ledger'), ledgerData(id, 'talent', 0, '活動結晶', { bonus:n })).catch(()=>{});
+    toast(n>0 ? `已發 ${n} 顆${TALENT_NAME} 🔮` : `已收回 ${-n} 顆`);
+  } catch(e){ toast(e.message); }
+};
+
 /* ===== 玩家管理 ===== */
 window.renamePlayer = async (id)=>{
   const name = prompt('新名字：', players[id]?.name || '');
@@ -1278,7 +1267,7 @@ function renderPlayers(){
     const xp = p.xp ?? 0;
     const floor = xpThreshold(lv), ceil = xpThreshold(lv+1);
     const ach = (p.achievements || []).length;
-    const ab = achievementBonus(p), tb = titleBonus(p), fm = finalMultiplier(p);
+    const aA = achAdd(p), tA = titleCoinAdd(p), gC = talentAdd(p,'coin'), gX = talentAdd(p,'xp');
     const eq = equippedTitle(p);
     const crafted = p.craftedTitles || {};
     const craftLine = CRAFT_TITLES.filter(t=>(crafted[t.id]||0)>0)
@@ -1310,9 +1299,12 @@ function renderPlayers(){
         <h2 style="font-size:11px;margin:16px 0 10px">② 遊戲進度</h2>
         <div class="pStats" style="flex-direction:column;gap:7px">
           ${line('等級', `Lv.${lv}　${xp - floor} / ${ceil - floor} XP`)}
-          ${line('成就', `${ach} / ${ACHIEVEMENT_TOTAL}`)}
-          ${line('倍率', `⭐×${fm}　<span style="color:var(--muted);font-weight:600">（成就 ×${ab} × 稱號 ×${tb}）</span>`)}
+          ${line('成就', `${ach} / ${ACHIEVEMENTS.length}`)}
+          ${line('金幣倍率', `⭐×${coinMultOf(p)}　<span style="color:var(--muted);font-weight:600">（基礎 100% ＋成就 ${Math.round(aA*100)}% ＋稱號 ${Math.round(tA*100)}% ＋天賦 ${Math.round(gC*100)}%）</span>`)}
+          ${line('XP 倍率', `📈×${xpMultOf(p)}　<span style="color:var(--muted);font-weight:600">（天賦經驗 +${Math.round(gX*100)}%）</span>`)}
           ${line('幸運', `🍀 ×${luckOf(p)}`)}
+          ${line('天賦', `${TALENT_ICON} 可用 <b>${talentAvail(p)}</b>　已投入 ${talentSpent(p)}　`
+            + TALENT_TREES.map(t=>`${t.icon}L${talentLv(p,t.key)}`).join(' '))}
           ${line('抽獎', `${p.lotteryCount ?? 0} 次　pity ${pity}/${PITY_MAX}`)}
           ${line('合成稱號', craftLine)}
           ${line('商店稱號', `${shopCount} 個`)}
@@ -1332,6 +1324,7 @@ function renderPlayers(){
         <div class="row">
           <button class="btn gray" onclick="renamePlayer('${esc(id)}')">改名</button>
           <button class="btn gray" onclick="adjustCoins('${esc(id)}')">調整金幣</button>
+        <button class="btn gray" onclick="grantTokens('${esc(id)}')">發放結晶</button>
           <button class="btn gray" onclick="resetPw('${esc(id)}')">重設密碼</button>
           <button class="btn no" onclick="delPlayer('${esc(id)}')">刪除</button>
         </div>
