@@ -545,6 +545,203 @@
     background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206;
   }
 
+  /* ===== 活動系統 ===== */
+  #evtBanner{ display:none; margin-bottom:14px; }
+  #evtBanner.show{ display:block; }
+  .evtBar{
+    position:relative; overflow:hidden; border-radius:12px; padding:11px 14px;
+    background:linear-gradient(120deg,#2a2312,#171205 55%,#241d0e);
+    border:1px solid rgba(233,196,106,.55);
+    animation:evtBreath 2.5s ease-in-out infinite;      /* 呼吸脈動，幅度克制 */
+  }
+  @keyframes evtBreath{
+    0%,100%{ box-shadow:0 0 10px rgba(233,196,106,.16); }
+    50%    { box-shadow:0 0 22px rgba(233,196,106,.34); }
+  }
+  .evtBar::after{                                        /* 掃光 3.4s */
+    content:''; position:absolute; top:0; bottom:0; width:45%;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.16),transparent);
+    transform:translateX(-140%); animation:evtSweep 3.4s ease-in-out infinite; pointer-events:none;
+  }
+  @keyframes evtSweep{ 0%{transform:translateX(-140%);} 60%,100%{transform:translateX(260%);} }
+  .evtHd{ display:flex; align-items:center; gap:7px; margin-bottom:8px; }
+  .evtDot{ width:7px; height:7px; border-radius:50%; background:var(--pink);
+    box-shadow:0 0 8px var(--pink); animation:evtBlink 1.1s ease-in-out infinite; }
+  @keyframes evtBlink{ 0%,100%{opacity:1;} 50%{opacity:.15;} }
+  .evtHd .t{ font-family:var(--mono); font-size:10.5px; font-weight:800; letter-spacing:2px; color:var(--gold); }
+  .evtList{ display:flex; gap:7px; flex-wrap:wrap; position:relative; z-index:1; }
+  .evtPill{
+    display:flex; align-items:center; gap:5px; padding:5px 10px; border-radius:99px;
+    background:rgba(0,0,0,.32); border:1px solid rgba(233,196,106,.4);
+  }
+  .evtPill .en{ font-size:12.5px; font-weight:900; color:#fff; }
+  .evtPill .ec{ font-family:var(--mono); font-size:10px; color:var(--gold-dim); }
+
+  /* 開場動畫 */
+  #evtIntro{
+    position:fixed; inset:0; z-index:460; display:none; overflow:hidden;
+    align-items:center; justify-content:center; flex-direction:column; gap:10px;
+    background:radial-gradient(circle at center, rgba(20,16,6,.9), rgba(3,3,6,.96));
+  }
+  #evtIntro.show{ display:flex; }
+  #evtIntro .eiIcon{ font-size:70px; filter:drop-shadow(0 0 22px rgba(233,196,106,.6));
+    animation:eiPop .62s cubic-bezier(.2,1.5,.4,1) both; }
+  #evtIntro .eiName{
+    font-size:40px; font-weight:900; letter-spacing:2px; color:transparent; text-align:center;
+    background:linear-gradient(180deg,#fff6d8,var(--gold) 55%,var(--gold-deep));
+    -webkit-background-clip:text; background-clip:text;
+    text-shadow:0 8px 44px rgba(233,196,106,.5);
+    animation:eiPop .62s cubic-bezier(.2,1.5,.4,1) .06s both;
+  }
+  @keyframes eiPop{ 0%{ transform:scale(1.6); opacity:0; } 60%{ transform:scale(.94); } 100%{ transform:scale(1); opacity:1; } }
+  #evtIntro .eiEf{ font-family:var(--mono); font-size:14px; color:#fff; letter-spacing:1px;
+    animation:eiPop .5s ease .22s both; }
+  #evtIntro .eiTip{ font-family:var(--mono); font-size:10.5px; color:var(--muted); margin-top:8px; }
+
+  /* 金幣雨 */
+  #coinRain{ position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
+  #coinRain span{ position:absolute; top:-40px; font-size:20px; opacity:.25;
+    animation:cRain linear infinite; }
+  @keyframes cRain{
+    0%{ transform:translateY(-40px) rotate(0deg); }
+    100%{ transform:translateY(105vh) rotate(220deg); }
+  }
+  .saleOld{ text-decoration:line-through; color:var(--dim); font-weight:600; margin-right:6px; }
+  .saleTag{ font-family:var(--mono); font-size:10px; font-weight:800; color:#1a1206;
+    background:linear-gradient(180deg,#ff9d5c,#e0632c); padding:2px 7px; border-radius:5px; margin-left:6px; }
+
+  /* ===== 卡牌 / Boss ===== */
+  .imgFallback{ align-items:center; justify-content:center; font-size:34px; }
+  .packGrid{ display:grid; grid-template-columns:repeat(2,1fr); gap:11px; }
+  .packCard{
+    position:relative; border-radius:12px; padding:12px; overflow:hidden;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
+    border:2px solid var(--line-soft); text-align:center;
+  }
+  .packCard.bought{ opacity:.42; }
+  .packCard .pImg{ width:100%; aspect-ratio:1; border-radius:9px; object-fit:cover; display:block; }
+  .packCard .pFb{ width:100%; aspect-ratio:1; border-radius:9px; display:none; }
+  .packCard .pTier{ font-family:var(--mono); font-size:10.5px; font-weight:800; padding:2px 8px;
+    border-radius:5px; display:inline-block; margin-top:8px; }
+  .packCard .pNm{ font-size:14px; font-weight:900; margin-top:5px; }
+  .packCard .pPr{ font-family:var(--mono); font-size:13px; color:var(--gold); font-weight:800; margin:6px 0 9px; }
+  .rainbowBorder{ border-color:transparent !important;
+    background:linear-gradient(#0b0d14,#0b0d14) padding-box,
+      linear-gradient(120deg,#ff8fd4,#ffd166,#5ff0dc,#c9a0ff,#ff8fd4) border-box;
+    background-size:auto, 300% 100%; animation:rbFlow 4s linear infinite; }
+  @keyframes rbFlow{ to{ background-position:0 0, 300% 0; } }
+
+  .cardTile{
+    position:relative; border-radius:12px; padding:11px; margin-bottom:11px;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2)); border:2px solid var(--line-soft);
+    display:flex; gap:12px;
+  }
+  .cardTile.eq{ box-shadow:0 0 18px rgba(233,196,106,.28); }
+  .cardTile .cImg{ width:84px; aspect-ratio:3/4; border-radius:8px; object-fit:cover; flex-shrink:0; }
+  .cardTile .cFb{ width:84px; aspect-ratio:3/4; border-radius:8px; display:none; flex-shrink:0; }
+  .cardTile.locked .cImg, .cardTile.locked .cFb{ filter:grayscale(1) brightness(.45); }
+  .cardTile .cBody{ flex:1; min-width:0; }
+  .cardTile .cTop{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .cardTile .cNm{ font-size:15.5px; font-weight:900; }
+  .rarPill{ font-family:var(--mono); font-size:10px; font-weight:800; padding:2px 7px; border-radius:5px; color:#1a1206; }
+  .tierPill{ font-family:var(--mono); font-size:10px; font-weight:800; padding:2px 7px; border-radius:5px; }
+  .skRow{ font-family:var(--mono); font-size:10.5px; color:var(--muted); margin-top:5px; line-height:1.6; }
+  .skRow b{ color:var(--text); }
+  .skRow .dmgv{ color:var(--gold); font-weight:800; }
+
+  .bossWrap{ text-align:center; }
+  .bossImg{ width:100%; max-width:520px; aspect-ratio:16/9; object-fit:cover; border-radius:12px;
+    border:1px solid var(--line); }
+  .bossFb{ width:100%; max-width:520px; aspect-ratio:16/9; border-radius:12px; border:1px solid var(--line);
+    display:none; background:#0c0e15; }
+  .hpBar{ position:relative; height:22px; border-radius:99px; background:#12141d; overflow:hidden;
+    border:1px solid var(--line); margin:12px 0 4px; }
+  .hpFill{ height:100%; background:linear-gradient(90deg,#b03a4c,#ff6b81); transition:width .5s ease; }
+  .hpTxt{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-family:var(--mono); font-size:11.5px; font-weight:800; color:#fff; text-shadow:0 1px 3px #000; }
+  .msTick{ position:absolute; top:0; bottom:0; width:2px; background:rgba(255,255,255,.35); }
+  .skillBtn{
+    width:100%; text-align:left; border:1px solid var(--line-soft); border-radius:10px; padding:11px 13px;
+    background:linear-gradient(160deg,#141722,#0c0e15); color:var(--text); cursor:pointer; margin-bottom:9px;
+  }
+  .skillBtn:disabled{ opacity:.42; cursor:default; }
+  .skillBtn .sTop2{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .skillBtn .sN{ font-size:14.5px; font-weight:900; }
+  .skillBtn .sTag{ font-family:var(--mono); font-size:10px; padding:2px 6px; border-radius:4px;
+    background:rgba(201,160,255,.15); color:var(--purple); border:1px solid rgba(201,160,255,.35); }
+  .skillBtn .sInfo{ font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:5px; }
+  .skillBtn .sInfo .dm{ color:var(--gold); font-weight:800; }
+  .skillBtn .sInfo .dm.evt{ color:#ff8fa3; }
+  .epBar{ height:10px; border-radius:99px; background:#12141d; border:1px solid var(--line-soft); overflow:hidden; }
+  .epFill{ height:100%; background:linear-gradient(90deg,#3a7bd5,#5ff0dc); }
+
+  #packPop, #killPop{
+    position:fixed; inset:0; z-index:440; display:none; overflow:hidden;
+    align-items:center; justify-content:center; flex-direction:column;
+    background:radial-gradient(circle at center, rgba(12,12,20,.92), rgba(3,3,6,.97));
+  }
+  #packPop.show, #killPop.show{ display:flex; }
+  .ppCard{
+    display:flex; flex-direction:column; align-items:center; gap:9px; text-align:center;
+    padding:22px 26px; border-radius:16px; min-width:230px; max-width:84vw;
+    background:linear-gradient(160deg,#16161f,#0b0c13); border:2px solid var(--line);
+    animation:ppFlip .6s cubic-bezier(.3,1.4,.5,1) both;
+  }
+  @keyframes ppFlip{ 0%{ transform:rotateY(90deg) scale(.8); opacity:0; } 100%{ transform:rotateY(0) scale(1); opacity:1; } }
+  .ppCard.sRar{ box-shadow:0 0 60px rgba(247,227,161,.55); }
+  .ppImgBox img{ width:150px; aspect-ratio:3/4; object-fit:cover; border-radius:10px; }
+  .ppImgBox .fb{ width:150px; aspect-ratio:3/4; border-radius:10px; display:none; }
+  .ppRar{ font-family:var(--mono); font-size:12px; font-weight:800; letter-spacing:3px; }
+  .ppName{ font-size:22px; font-weight:900; color:#fff; }
+  .ppMeta{ font-family:var(--mono); font-size:11.5px; color:var(--muted); line-height:1.7; }
+  .kpTitle{ font-family:var(--mono); font-size:14px; letter-spacing:6px; color:var(--pink); }
+  .kpName{ font-size:38px; font-weight:900; color:#fff; margin:6px 0 10px;
+    animation:eiPop .6s cubic-bezier(.2,1.5,.4,1) both; }
+  .kpRewards{ font-family:var(--mono); font-size:14px; color:var(--gold); line-height:2; text-align:center; }
+
+  /* ===== 天賦系統 ===== */
+  .tkBar{
+    display:flex; align-items:center; gap:12px; padding:14px 16px; margin-bottom:14px;
+    border-radius:12px; background:linear-gradient(160deg,#1c1630,#0e0b18);
+    border:1px solid rgba(201,160,255,.45); box-shadow:0 0 22px rgba(154,106,224,.14);
+  }
+  .tkBar .tkIc{ font-size:30px; filter:drop-shadow(0 0 10px rgba(201,160,255,.6)); }
+  .tkBar .tkMain{ flex:1; min-width:0; }
+  .tkBar .tkNum{ font-family:var(--mono); font-size:26px; font-weight:800; color:#d9b3ff;
+    line-height:1.1; font-variant-numeric:tabular-nums; }
+  .tkBar .tkLbl{ font-family:var(--mono); font-size:10.5px; color:var(--muted); letter-spacing:1px; }
+  .tkBar .tkSide{ text-align:right; font-family:var(--mono); font-size:10.5px; color:var(--muted); line-height:1.8; }
+
+  .tree{
+    position:relative; border-radius:12px; padding:15px 16px; margin-bottom:12px;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
+    border:1px solid var(--line-soft);
+  }
+  .tree.max{ border-color:rgba(201,160,255,.5); box-shadow:0 0 16px rgba(154,106,224,.14); }
+  .tree .thd{ display:flex; align-items:center; gap:9px; }
+  .tree .tic{ font-size:22px; }
+  .tree .tnm{ font-size:16px; font-weight:900; }
+  .tree .tlv{ font-family:var(--mono); font-size:11px; font-weight:800; color:#1a1206;
+    background:linear-gradient(180deg,#d9b3ff,#9a6ae0); padding:2px 8px; border-radius:5px; }
+  .tree .teff{ margin-left:auto; font-family:var(--mono); font-size:14px; font-weight:800; color:#d9b3ff; }
+  .pips{ display:flex; gap:5px; margin:12px 0 10px; }
+  .pip{ flex:1; height:8px; border-radius:3px; background:#141826; border:1px solid var(--line-soft); }
+  .pip.on{ background:linear-gradient(180deg,#d9b3ff,#9a6ae0); border-color:transparent;
+    box-shadow:0 0 8px rgba(154,106,224,.5); }
+  .tree .tfoot{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .tree .tnext{ font-family:var(--mono); font-size:11.5px; color:var(--muted); }
+  .tree .tnext b{ color:#d9b3ff; }
+  .btn.talent{ background:linear-gradient(180deg,#d9b3ff,#9a6ae0); color:#1a1206;
+    box-shadow:0 0 0 1px rgba(154,106,224,.4), 0 6px 16px rgba(154,106,224,.22); }
+  .btn.talent:disabled{ background:#181a24; color:var(--dim); box-shadow:none; }
+
+  .poolBox{ border:1px dashed var(--line); border-radius:10px; padding:13px 15px; margin-top:6px; }
+  .poolRow{ display:flex; justify-content:space-between; font-family:var(--mono); font-size:12px;
+    color:var(--muted); padding:4px 0; }
+  .poolRow b{ color:var(--text); font-weight:800; }
+  .poolRow.total{ border-top:1px solid var(--line); margin-top:6px; padding-top:8px; }
+  .poolRow.total b{ color:var(--gold); font-size:14px; }
+
   /* ===== 禁閉 / 罰單 ===== */
   .lockCard{
     position:relative; border-radius:12px; padding:16px; margin-bottom:14px;
@@ -707,6 +904,7 @@
 <main>
   <!-- 任務頁 -->
   <div class="page on" id="page-tasks">
+    <div id="evtBanner"></div>
     <div id="lockZone"></div>
     <h2 id="h2-daily">每日任務</h2>
     <div id="dailyTasks"></div>
@@ -769,6 +967,27 @@
     <div id="titleShopList"></div>
   </div>
 
+  <!-- 天賦頁 -->
+  <div class="page" id="page-talent">
+    <div id="talentBody"></div>
+  </div>
+
+  <!-- 卡包商店 -->
+  <div class="page" id="page-packshop">
+    <button class="btn gray" style="margin-bottom:14px" onclick="goTab('shop')">← 回商店</button>
+    <div id="packShopBody"></div>
+  </div>
+
+  <!-- 卡片圖鑑 -->
+  <div class="page" id="page-cards">
+    <div id="cardsBody"></div>
+  </div>
+
+  <!-- Boss -->
+  <div class="page" id="page-boss">
+    <div id="bossBody"></div>
+  </div>
+
   <!-- 罰單頁 -->
   <div class="page" id="page-penalty">
     <h2>我的罰單</h2>
@@ -820,8 +1039,42 @@
     <div class="drawerItem" data-p="rank"><span class="dic">🏆</span><span class="dname">排行</span></div>
     <div class="drawerItem" data-p="log"><span class="dic">📜</span><span class="dname">紀錄</span></div>
     <div class="drawerItem" data-p="titles"><span class="dic">🏷️</span><span class="dname">稱號</span></div>
+    <div class="drawerItem" data-p="talent" id="drawerTalent"><span class="dic">🌳</span><span class="dname">天賦</span></div>
+    <div class="drawerItem" data-p="cards"><span class="dic">🎴</span><span class="dname">卡片</span></div>
+    <div class="drawerItem" data-p="boss"><span class="dic">⚔️</span><span class="dname">Boss</span></div>
     <div class="drawerItem" data-p="penalty"><span class="dic">🔒</span><span class="dname">我的罰單</span></div>
   </div>
+</div>
+
+<!-- 活動開場動畫 -->
+<div id="evtIntro">
+  <div class="luRay"></div>
+  <div class="eiIcon" id="eiIcon">⚡</div>
+  <div class="eiName" id="eiName"></div>
+  <div class="eiEf" id="eiEf"></div>
+  <div class="eiTip">點一下關閉</div>
+</div>
+<div id="coinRain"></div>
+
+<!-- 開包演出 -->
+<div id="packPop">
+  <div class="luRay"></div>
+  <div class="ppCard" id="ppCard">
+    <div class="ppRar" id="ppRar"></div>
+    <div class="ppImgBox" id="ppImgBox"></div>
+    <div class="ppName" id="ppName"></div>
+    <div class="ppMeta" id="ppMeta"></div>
+    <button class="pBtn" id="ppBtn">收下</button>
+  </div>
+</div>
+
+<!-- 擊殺演出 -->
+<div id="killPop">
+  <div class="luRay"></div>
+  <div class="kpTitle">BOSS 擊破！</div>
+  <div class="kpName" id="kpName"></div>
+  <div class="kpRewards" id="kpRewards"></div>
+  <button class="pBtn" id="kpBtn">收下獎勵</button>
 </div>
 
 <!-- 獎品彈窗 -->
@@ -866,11 +1119,12 @@
   </div>
 </div>
 
+<script src="./shared.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getFirestore, collection, doc, getDoc, setDoc, onSnapshot, updateDoc,
-  runTransaction, serverTimestamp, query, orderBy, increment, arrayUnion
+  runTransaction, serverTimestamp, query, orderBy, increment, arrayUnion, arrayRemove
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ====== firebaseConfig（沿用，不動） ====== */
@@ -884,6 +1138,26 @@ const firebaseConfig = {
 };
 /* ======================================= */
 
+
+/* ===== 共用常數與純函式（唯一真實來源：shared.js） ===== */
+const {
+  TICKET_PRICE, PRIZES, MAT_IDX, COIN_IDX, MAT_BASE, LUCK_MAX, POS, PITY_MAX, AGAIN_LIMIT,
+  MATERIALS, CRAFT_TITLES, SHOP_TITLES, TIERS, TITLES, titleFromLevel, equippedTitle,
+  xpThreshold, levelFromXp,
+  TALENT_ICON, TALENT_NAME, TALENT_MAX_LV, RESPEC_COST, TALENT_TREES,
+  talentLv, talentSpent, talentEarned, talentAvail, talentAdd,
+  ACHIEVEMENTS,
+  EVENTS, setRuntime, eventOn, eventExpired, eventAdd, eventUntil, activeEvents, ticketPrice,
+  r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
+  getWeights, todayKey, prevKey,
+  EP_START_LV, epTotal, epAvail,
+  PACKS, RARITIES, PACK_TIERS, PACK_PITY_MAX, CARDS,
+  EQUIP_MAX, EQUIP_LOCK_MS, BUFF_MULT, ZONE_MULT, ZONE_MS, DOT_HOURS,
+  cardById, packById, tierById, skillOf, cardOfPack, tierBetter,
+  rollRarity, rollTier, skillDamage, dmgMult,
+  BOSSES, MILESTONES, bossOfStage, bossImg,
+} = window.GAME;
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -896,130 +1170,20 @@ let dailyTemplates = [];
 let penalties = [];
 let penaltiesLoaded = false;
 
-/* ==================================================================
-   抽獎機常數（全部寫死，後台不可調）
-================================================================== */
-const TICKET_PRICE = 500;
-
 /* ===== 記帳（ledger）：玩家端零感知，只新增紀錄不影響任何既有邏輯 ===== */
 function ledgerData(kind, delta, label, meta){
   return { playerId: me, kind, delta, label: label || '', meta: meta || {}, createdAt: serverTimestamp() };
 }
 const ledgerRef = () => doc(collection(db,'ledger'));
 
-// 順時針 16 格（基礎機率，總和 100）
-const PRIZES = [
-  { type:'coin', icon:'🪙', name:'金幣 200',  value:200,           prob:13 },
-  { type:'coin', icon:'🪙', name:'金幣 200',  value:200,           prob:13 },
-  { type:'coin', icon:'🪙', name:'金幣 200',  value:200,           prob:13 },
-  { type:'coin', icon:'🪙', name:'金幣 200',  value:200,           prob:13 },
-  { type:'again',icon:'🔄', name:'AGAIN',     value:0,             prob:3.5 },
-  { type:'again',icon:'🔄', name:'AGAIN',     value:0,             prob:3.5 },
-  { type:'coin', icon:'💰', name:'金幣 1000', value:1000,          prob:1.5 },
-  { type:'coin', icon:'💰', name:'金幣 1000', value:1000,          prob:1.5 },
-  { type:'mat',  icon:'🟣', name:'紫晶碎片 ×1', key:'purple', n:1,  prob:7.5 },
-  { type:'mat',  icon:'🟣', name:'紫晶碎片 ×3', key:'purple', n:3,  prob:3 },
-  { type:'mat',  icon:'⬜', name:'長白玉石 ×1', key:'jade',   n:1,  prob:7.5 },
-  { type:'mat',  icon:'⬜', name:'長白玉石 ×3', key:'jade',   n:3,  prob:3 },
-  { type:'mat',  icon:'🟦', name:'靈青石 ×1',  key:'azure',  n:1,  prob:7.5 },
-  { type:'mat',  icon:'🟦', name:'靈青石 ×3',  key:'azure',  n:3,  prob:3 },
-  { type:'mat',  icon:'💎', name:'鑽粉 ×1',    key:'dust',   n:1,  prob:5.5 },
-  { type:'mat',  icon:'🫧', name:'魂源泉水 ×1', key:'soul',   n:1,  prob:1 },
-];
-const MAT_IDX  = [8,9,10,11,12,13,14,15];   // 材料格，合計 38%
-const COIN_IDX = [0,1,2,3];                 // 金幣 200 四格，吸收差額
-const MAT_BASE = 38;                        // 材料格基礎合計
-const LUCK_MAX = 2.3;                       // 幸運上限（90 - 38×2.3 = 2.6 > 0）
-
 /* 幸運：材料格 ×L，金幣200 吸收差額，AGAIN 與金幣1000 完全不受影響
    抽獎與機率公示共用這個函式 */
-function getWeights(luck){
-  const L = Math.max(1, Math.min(LUCK_MAX, Number(luck) || 1));
-  const w = PRIZES.map(p => p.prob);
-  MAT_IDX.forEach(i => { w[i] = PRIZES[i].prob * L; });
-  const coinTotal = 90 - MAT_BASE * L;              // 200 四格總機率
-  COIN_IDX.forEach(i => { w[i] = coinTotal / COIN_IDX.length; });
-  // 浮點誤差補回索引 0，確保加權抽獎不漏邊界
-  const sum = w.reduce((a,b)=>a+b, 0);
-  w[0] += 100 - sum;
-  return w;
-}
-// 5×5 外圈順時針座標（row, col），對應 PRIZES 索引
-const POS = [
-  [1,1],[1,2],[1,3],[1,4],[1,5],
-  [2,5],[3,5],[4,5],[5,5],
-  [5,4],[5,3],[5,2],[5,1],
-  [4,1],[3,1],[2,1],
-];
-const PITY_MAX = 70;          // 第 70 抽保底
-const AGAIN_LIMIT = 10;       // 連續 AGAIN 上限
-
-const MATERIALS = [
-  { key:'purple', icon:'🟣', name:'紫晶碎片', need:5 },
-  { key:'jade',   icon:'⬜', name:'長白玉石', need:5 },
-  { key:'azure',  icon:'🟦', name:'靈青石',  need:5 },
-  { key:'dust',   icon:'💎', name:'鑽粉',    need:2 },
-  { key:'soul',   icon:'🫧', name:'魂源泉水', need:2 },
-];
-const CRAFT_TITLES = [
-  { id:'shadow', icon:'🌑', name:'暗影使者', mult:1.1,  prob:52 },
-  { id:'ghost',  icon:'👻', name:'幽靈冠王', mult:1.15, prob:30 },
-  { id:'sky',    icon:'☁️', name:'蒼天使者', mult:1.2,  prob:15 },
-  { id:'chosen', icon:'✨', name:'天選之人', mult:1.5, prob:3 },
-];
 
 /* ===== 稱號商店（寫死，35 個） =====
    幸運倍率：D 1.05 / C 1.07 / B 1.1 / A 1.15 / S 1.5
    價格：    D 500  / C 1500 / B 4000 / A 10000 / S 30000 */
-const SHOP_TITLES = [
-  // ===== D 級 =====
-  { id:'d01', tier:'D', name:'擺爛之王' },
-  { id:'d02', tier:'D', name:'睡到自然醒' },
-  { id:'d03', tier:'D', name:'三分鐘熱度' },
-  { id:'d04', tier:'D', name:'已讀不回' },
-  { id:'d05', tier:'D', name:'明天的事明天再說' },
-  { id:'d06', tier:'D', name:'沙發長期租戶' },
-  { id:'d07', tier:'D', name:'我媽叫我' },
-  { id:'d08', tier:'D', name:'隨便啦' },
-  { id:'d09', tier:'D', name:'裝忙專家' },
-  { id:'d10', tier:'D', name:'廢到笑' },
-  // ===== C 級 =====
-  { id:'c01', tier:'C', name:'碗盤終結者' },
-  { id:'c02', tier:'C', name:'拖地小當家' },
-  { id:'c03', tier:'C', name:'手速還行' },
-  { id:'c04', tier:'C', name:'假日限定勤勞' },
-  { id:'c05', tier:'C', name:'微波爐工程師' },
-  { id:'c06', tier:'C', name:'遙控器守護神' },
-  { id:'c07', tier:'C', name:'剛好路過' },
-  { id:'c08', tier:'C', name:'有做就好' },
-  { id:'c09', tier:'C', name:'半夜找食物的人' },
-  { id:'c10', tier:'C', name:'一日限定認真' },
-  // ===== B 級 =====
-  { id:'b01', tier:'B', name:'家務老手' },
-  { id:'b02', tier:'B', name:'說到做到' },
-  { id:'b03', tier:'B', name:'連續紀錄保持人' },
-  { id:'b04', tier:'B', name:'深夜清潔隊' },
-  { id:'b05', tier:'B', name:'效率至上' },
-  { id:'b06', tier:'B', name:'沒在怕的' },
-  { id:'b07', tier:'B', name:'誰都攔不住' },
-  // ===== A 級 =====
-  { id:'a01', tier:'A', name:'不敗神話' },
-  { id:'a02', tier:'A', name:'一擊必殺' },
-  { id:'a03', tier:'A', name:'領域展開' },
-  { id:'a04', tier:'A', name:'無人能及' },
-  { id:'a05', tier:'A', name:'逆風翻盤' },
-  // ===== S 級 =====
-  { id:'s01', tier:'S', name:'君臨天下' },
-  { id:'s02', tier:'S', name:'命運支配者' },
-  { id:'s03', tier:'S', name:'萬象歸一' },
-];
-const TIERS = {
-  D:{ luck:1.05, price:500   },
-  C:{ luck:1.07, price:1500  },
-  B:{ luck:1.10, price:4000  },
-  A:{ luck:1.15, price:10000 },
-  S:{ luck:1.50, price:30000 },
-};
+
+
 const TIER_ORDER = ['D','C','B','A','S'];
 
 const $ = id => document.getElementById(id);
@@ -1038,69 +1202,22 @@ function toast(msg){
    門檻（累計 XP 才能到 Lv n）= 50 × (n-1) × (n+2)
    → Lv1:0  Lv2:200  Lv3:500  Lv4:900  Lv5:1400 ...
 ================================================================== */
-function xpThreshold(lv){ return 50 * (lv - 1) * (lv + 2); }
-function levelFromXp(xp){
-  let lv = 1;
-  while (xp >= xpThreshold(lv + 1)) lv++;
-  return lv;
-}
-const TITLES = [
-  { lv:1,  name:'見習生' },
-  { lv:3,  name:'打工仔' },
-  { lv:5,  name:'老手' },
-  { lv:7,  name:'家務戰神' },
-  { lv:10, name:'傳說 ✨' },
-];
-function titleFromLevel(lv){
-  let t = TITLES[0].name;
-  for(const x of TITLES){ if(lv >= x.lv) t = x.name; }
-  return t;
-}
+
 console.assert(levelFromXp(0)===1 && levelFromXp(199)===1 && levelFromXp(200)===2 && levelFromXp(499)===2 && levelFromXp(500)===3, 'levelFromXp 邊界錯誤');
 
 /* ===== 裝備制：全站只能裝一個稱號（合成或商店） ===== */
-function equippedTitle(p){
-  const id = p && p.equippedTitle;
-  if(!id) return null;
-  const c = CRAFT_TITLES.find(t => t.id === id);
-  if(c) return { kind:'craft', id, icon:c.icon, name:c.name, mult:c.mult, luck:1.0 };
-  const s = SHOP_TITLES.find(t => t.id === id);
-  if(s) return { kind:'shop', id, icon:'', name:s.name, tier:s.tier, mult:1.0, luck:TIERS[s.tier].luck };
-  return null;   // 資料裡有不認識的 id → 當沒裝
-}
-// 金幣倍率只看裝備中的合成稱號
-function titleBonus(p){ return equippedTitle(p)?.mult || 1.0; }
-// 幸運只看裝備中的商店稱號
-function luckOf(p){ return equippedTitle(p)?.luck || 1.0; }
-// 成就全解 ×1.1（自動生效，不佔裝備欄；成就總數變多就自動失效）
-function achievementBonus(p){
-  const got = ((p && p.achievements) || []).length;
-  return got >= ACHIEVEMENTS.length ? 1.1 : 1.0;
-}
-function finalMultiplier(p){
-  return Math.round(achievementBonus(p) * titleBonus(p) * 1000) / 1000;
-}
 
+// 金幣倍率只看裝備中的合成稱號
 /* ==================================================================
-   成就
+   天賦系統（🔮 天賦結晶）
+   所有加成一律走「加法池」：總倍率 = 1 + 成就 + 稱號 + 天賦
+   好處：以後再加系統只是往池子丟一個數字，上限一眼看得懂、不會乘爆
 ================================================================== */
-const ACHIEVEMENTS = [
-  { id:'first_task',  icon:'🐣', name:'第一滴血',   desc:'完成第 1 個任務',      check: s => s.tasksDone >= 1 },
-  { id:'task_10',     icon:'💪', name:'勞動模範',   desc:'完成 10 個任務',       check: s => s.tasksDone >= 10 },
-  { id:'task_50',     icon:'🏭', name:'血汗工廠',   desc:'完成 50 個任務',       check: s => s.tasksDone >= 50 },
-  { id:'earn_500',    icon:'💰', name:'小有積蓄',   desc:'累計賺 500 金幣',      check: s => s.totalEarned >= 500 },
-  { id:'earn_2000',   icon:'🤑', name:'小富翁',     desc:'累計賺 2000 金幣',     check: s => s.totalEarned >= 2000 },
-  { id:'earn_10000',  icon:'👑', name:'家裡蹲首富', desc:'累計賺 10000 金幣',    check: s => s.totalEarned >= 10000 },
-  { id:'first_buy',   icon:'🛍️', name:'剁手初體驗', desc:'第一次購買',           check: s => s.buyCount >= 1 },
-  { id:'buy_10',      icon:'💸', name:'月光族',     desc:'購買 10 次',           check: s => s.buyCount >= 10 },
-  { id:'hoard_1000',  icon:'🏦', name:'守財奴',     desc:'同時持有 1000 金幣',   check: s => s.coins >= 1000 },
-  { id:'grab_king',   icon:'⚡', name:'手速之王',   desc:'搶到 10 個開放任務',   check: s => s.tasksGrabbed >= 10 },
-  { id:'streak_7',    icon:'🔥', name:'燃燒吧',     desc:'任一每日任務連續達成 7 天', check: s => s.maxStreak >= 7 },
-  { id:'lottery_30',  icon:'🎰', name:'賭場常客',   desc:'抽獎 30 次',           check: s => s.lotteryCount >= 30 },
-  { id:'lv_20',       icon:'🏅', name:'資深工人',   desc:'等級達到 Lv.20',       check: s => s.level >= 20 },
-  { id:'lv_30',       icon:'💎', name:'家務大師',   desc:'等級達到 Lv.30',       check: s => s.level >= 30 },
-  { id:'clean_30',    icon:'😇', name:'清白之身',   desc:'連續 30 天沒有任何罰單', check: s => s.cleanDays >= 30 },
-];
+
+// 已花費 = 從 L1 升到目前等級的累計成本（不另存欄位，永遠不會對不上）
+
+// 衍生式：可用 = 等級 + 已解鎖成就數 + 活動加碼 − 已花費（回溯自動生效、不會重複發）
+
 let localUnlocked = null;
 
 // 連續無罰單天數：起算日 = 最後一張罰單日期（不分類型/狀態），從未被罰則用註冊日
@@ -1235,6 +1352,28 @@ function animateNumber(el, from, to, dur=600){
   requestAnimationFrame(step);
 }
 
+// 雙倍金幣日入帳：數字先到一半，閃出 ×2 後再暴衝到最終值
+function doubleGainShow(from, to){
+  const half = Math.round(from + (to - from) / 2);
+  animateNumber($('myCoins'), from, half, 420);
+  setTimeout(()=>{
+    const box = $('coinBox');
+    const tag = document.createElement('div');
+    tag.textContent = '×2';
+    tag.style.cssText = 'position:absolute;right:-6px;top:-16px;font-family:var(--mono);'
+      + 'font-size:17px;font-weight:800;color:#ff9d5c;text-shadow:0 0 12px rgba(255,157,92,.8);'
+      + 'pointer-events:none;z-index:60';
+    box.style.position = 'relative';
+    box.appendChild(tag);
+    tag.animate([
+      { transform:'scale(.4) translateY(6px)', opacity:0 },
+      { transform:'scale(1.25) translateY(-4px)', opacity:1, offset:.45 },
+      { transform:'scale(1) translateY(-14px)', opacity:0 },
+    ], { duration:900, easing:'cubic-bezier(.3,1.4,.5,1)' }).onfinish = ()=> tag.remove();
+    animateNumber($('myCoins'), half, to, 520);
+  }, 460);
+}
+
 function flyCoins(n=4){
   const box = $('coinBox').getBoundingClientRect();
   const tx = box.left + box.width/2, ty = box.top + box.height/2;
@@ -1360,6 +1499,10 @@ function goTab(name){
   if(name === 'penalty') renderPenalty();
   if(name === 'titles') renderTitles();
   if(name === 'titleshop') renderTitleShop();
+  if(name === 'talent') renderTalent();
+  if(name === 'packshop'){ ensureDailyPacks(); renderPackShop(); }
+  if(name === 'cards') renderCards();
+  if(name === 'boss'){ settleBoss(); renderBoss(); }
 }
 window.goTab = goTab;   // 供 inline onclick 使用（背包的「去抽獎」）
 document.querySelectorAll('nav button[data-p]').forEach(b=>{
@@ -1390,13 +1533,9 @@ document.querySelectorAll('.rankTabs button').forEach(b=>{
    每日任務：懶重置
 ================================================================== */
 // 一律用台灣日期，不要用裝置本地日期拼字串
-function todayKey(){
-  return new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Taipei' });
-}
+
 // dateKey 的前一天（轉 Date 減一天再轉回，避免手拆字串）
-function prevKey(dateKey){
-  return new Date(new Date(dateKey).getTime() - 86400000).toISOString().slice(0,10);
-}
+
 
 // 只為自己(me)生成當日每日任務 + 過期處理
 async function ensureDailyTasks(){
@@ -1473,6 +1612,13 @@ onSnapshot(query(collection(db,'purchases'), orderBy('createdAt','desc')), snap=
   renderShop();
   renderLottery();
   checkAchievements();
+});
+
+onSnapshot(doc(db,'config','system'), snap=>{
+  const cfg = snap.exists() ? (snap.data() || {}) : {};
+  setRuntime({ events: cfg.events || {} });     // 活動設定注入 shared.js
+  onEventsChanged();
+  renderAll();
 });
 
 onSnapshot(query(collection(db,'penalties'), orderBy('createdAt','desc')), snap=>{
@@ -1569,20 +1715,22 @@ function myTickets(){
 /* 買券（券寫死 500，不存在 shop collection） */
 window.buyTicket = async ()=>{
   if(lockGuard()) return;
-  if(!confirm(`要用 ${TICKET_PRICE} 金幣買「抽獎券」嗎？`)) return;
+  const shown = ticketPrice();
+  if(!confirm(`要用 ${shown} 金幣買「抽獎券」嗎？${shown < TICKET_PRICE ? '\n🎰 抽獎特賣中！' : ''}`)) return;
   try {
     await runTransaction(db, async tx=>{
+      const price = ticketPrice();          // 重新取當下價，避免活動剛好在按下時結束
       const pRef = doc(db,'players',me);
       const s = await tx.get(pRef);
       const coins = s.data().coins || 0;
-      if(coins < TICKET_PRICE) throw new Error('金幣不夠，先去做任務吧 💪');
-      tx.update(pRef, { coins: coins - TICKET_PRICE });
+      if(coins < price) throw new Error('金幣不夠，先去做任務吧 💪');
+      tx.update(pRef, { coins: coins - price });
       const buyRef = doc(collection(db,'purchases'));
       tx.set(buyRef, {
-        playerId: me, itemName: '抽獎券', price: TICKET_PRICE,
+        playerId: me, itemName: '抽獎券', price,
         status: 'owned', isTicket: true, createdAt: serverTimestamp()
       });
-      tx.set(ledgerRef(), ledgerData('ticket', -TICKET_PRICE, '抽獎券'));
+      tx.set(ledgerRef(), ledgerData('ticket', -price, '抽獎券', price < TICKET_PRICE ? { sale:true } : {}));
     });
     sfxBuy();
     toast('抽獎券已放進背包 🎟️');
@@ -1902,6 +2050,745 @@ window.buyTitle = async (id)=>{
 };
 
 /* ==================================================================
+   天賦：升級 / 洗點 / 畫面
+================================================================== */
+window.upTalent = async (key)=>{
+  if(lockGuard()) return;
+  const tree = TALENT_TREES.find(t=>t.key===key);
+  const p = players[me] || {};
+  const lv = talentLv(p, key);
+  if(lv >= TALENT_MAX_LV){ toast('已經滿級了 ✨'); return; }
+  const cost = tree.cost[lv-1];
+  const avail = talentAvail(p);
+  if(avail < cost){ sfxError(); toast(`${TALENT_NAME}不夠，還差 ${cost - avail} 顆`); return; }
+  if(!confirm(`要花 ${cost} 顆 ${TALENT_ICON}${TALENT_NAME} 把「${tree.name}」升到 L${lv+1} 嗎？\n${tree.unit} 加成 +${Math.round(tree.add[lv]*100)}%`)) return;
+  try {
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'players',me);
+      const s = await tx.get(ref);
+      const cur = s.data() || {};
+      if(talentLv(cur, key) !== lv) throw new Error('狀態已變更，請重試');
+      if(talentAvail(cur) < cost) throw new Error(`${TALENT_NAME}不夠`);
+      tx.update(ref, { ['talents.' + key]: lv + 1 });
+      tx.set(ledgerRef(), ledgerData('talent', 0, `${tree.name} L${lv+1}`, { key, lv: lv+1, cost }));
+    });
+    sfxLevelUp();
+    toast(`${tree.icon} ${tree.name} 升到 L${lv+1}！`);
+  } catch(e){ sfxError(); toast(e.message); }
+};
+
+window.respecTalent = async ()=>{
+  if(lockGuard()) return;
+  const p = players[me] || {};
+  const spent = talentSpent(p);
+  if(spent === 0){ toast('還沒點過天賦'); return; }
+  if(!confirm(`要花 🪙 ${RESPEC_COST} 洗掉全部天賦嗎？\n三系會回到 L1，${spent} 顆${TALENT_NAME}全部退回重點`)) return;
+  try {
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'players',me);
+      const s = await tx.get(ref);
+      const cur = s.data() || {};
+      if((cur.coins || 0) < RESPEC_COST) throw new Error('金幣不夠，洗點要 ' + RESPEC_COST);
+      tx.update(ref, { coins: increment(-RESPEC_COST), talents: { coin:1, luck:1, xp:1 } });
+      tx.set(ledgerRef(), ledgerData('talent', -RESPEC_COST, '天賦洗點', { refunded: spent }));
+    });
+    sfxBuy();
+    toast(`已重置，退回 ${spent} 顆${TALENT_NAME} 🔄`);
+  } catch(e){ sfxError(); toast(e.message); }
+};
+
+function renderTalent(){
+  if(!me || !players[me]) return;
+  const p = players[me];
+  const avail = talentAvail(p), spent = talentSpent(p), earned = talentEarned(p);
+  const lv = levelFromXp(p.xp ?? 0), achN = ((p.achievements)||[]).length;
+
+  const trees = TALENT_TREES.map(t=>{
+    const cur = talentLv(p, t.key);
+    const isMax = cur >= TALENT_MAX_LV;
+    const cost = isMax ? 0 : t.cost[cur-1];
+    const nextAdd = isMax ? null : t.add[cur];
+    const can = !isMax && avail >= cost;
+    return `<div class="tree ${isMax?'max':''}">
+      <div class="thd">
+        <span class="tic">${t.icon}</span>
+        <span class="tnm">${t.name}</span>
+        <span class="tlv">L${cur}</span>
+        <span class="teff">${t.unit} +${Math.round(t.add[cur-1]*100)}%</span>
+      </div>
+      <div class="pips">${
+        Array.from({length:TALENT_MAX_LV}, (_,i)=>`<div class="pip ${i<cur?'on':''}"></div>`).join('')
+      }</div>
+      <div class="tfoot">
+        <span class="tnext">${isMax
+          ? '✨ 已滿級'
+          : `下一級 <b>${TALENT_ICON}${cost}</b> → ${t.unit} +${Math.round(nextAdd*100)}%`}</span>
+        <button class="btn talent" onclick="upTalent('${t.key}')" ${(isMax||!can)?'disabled':''}>
+          ${isMax ? '滿級' : (can ? '升級' : '結晶不足')}
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // 加法池明細（讓玩家自己看得懂錢怎麼算的）
+  const a = achAdd(p), tc = titleCoinAdd(p), tl = titleLuckAdd(p);
+  const gc = talentAdd(p,'coin'), gx = talentAdd(p,'xp'), gl = talentAdd(p,'luck');
+  const pct = n => (n>=0?'+':'') + Math.round(n*100) + '%';
+
+  $('talentBody').innerHTML = `
+    <div class="tkBar">
+      <span class="tkIc">${TALENT_ICON}</span>
+      <div class="tkMain">
+        <div class="tkNum">${avail}</div>
+        <div class="tkLbl">可用${TALENT_NAME}</div>
+      </div>
+      <div class="tkSide">
+        累計獲得 ${earned}<br>已投入 ${spent}
+      </div>
+    </div>
+    <div class="sub" style="font-family:var(--mono);font-size:11px;color:var(--muted);margin:-6px 0 14px;line-height:1.8">
+      來源：等級 ${lv} 顆　+　成就 ${achN} 顆${(p.bonusTokens??0)>0?`　+　活動 ${p.bonusTokens} 顆`:''}
+      <br>每升 1 級、每解鎖 1 個成就各得 1 顆，回溯計算
+    </div>
+
+    <h2>天賦樹</h2>
+    ${trees}
+
+    <h2>目前加成總覽</h2>
+    <div class="poolBox">
+      <div class="poolRow"><span>基礎</span><b>100%</b></div>
+      <div class="poolRow"><span>成就全解</span><b>${pct(a)}</b></div>
+      <div class="poolRow"><span>裝備稱號（金幣）</span><b>${pct(tc)}</b></div>
+      <div class="poolRow"><span>天賦・財富</span><b>${pct(gc)}</b></div>
+      <div class="poolRow total"><span>任務金幣總倍率</span><b>×${coinMultOf(p)}</b></div>
+    </div>
+    <div class="poolBox" style="margin-top:10px">
+      <div class="poolRow"><span>基礎 + 成就 + 稱號</span><b>${pct(a+tc)}</b></div>
+      <div class="poolRow"><span>天賦・經驗</span><b>${pct(gx)}</b></div>
+      <div class="poolRow total"><span>任務 XP 總倍率</span><b>×${xpMultOf(p)}</b></div>
+    </div>
+    <div class="poolBox" style="margin-top:10px">
+      <div class="poolRow"><span>裝備稱號（幸運）</span><b>${pct(tl)}</b></div>
+      <div class="poolRow"><span>天賦・幸運</span><b>${pct(gl)}</b></div>
+      <div class="poolRow total"><span>抽獎幸運</span><b>×${luckOf(p)}</b></div>
+    </div>
+
+    <h2>重置</h2>
+    <button class="btn talent" style="width:100%" onclick="respecTalent()" ${spent?'':'disabled'}>
+      🔄 洗點（🪙 ${RESPEC_COST}）
+    </button>
+    <div class="sub" style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px;line-height:1.7">
+      洗點會把三系歸零並退回全部${TALENT_NAME}，可以換流派重點。
+    </div>`;
+}
+
+/* ==================================================================
+   活動系統（玩家端）
+================================================================== */
+// 倒數字串：剩 2天5時 / 剩 3小時 / 剩 12分
+function evtLeft(until){
+  if(!until) return '';
+  const ms = new Date(until).getTime() - Date.now();
+  if(isNaN(ms) || ms <= 0) return '';
+  const d = Math.floor(ms/86400000), h = Math.floor(ms/3600000) % 24, m = Math.floor(ms/60000) % 60;
+  if(d > 0) return `剩 ${d}天${h}時`;
+  if(h > 0) return `剩 ${h}小時`;
+  return `剩 ${m}分`;
+}
+
+function renderEventBanner(){
+  const list = activeEvents();
+  const box = $('evtBanner');
+  if(!list.length){ box.classList.remove('show'); box.innerHTML = ''; return; }
+  box.classList.add('show');
+  box.innerHTML = `<div class="evtBar">
+    <div class="evtHd"><span class="evtDot"></span><span class="t">活動進行中</span></div>
+    <div class="evtList">${list.map(e=>{
+      const left = evtLeft(eventUntil(e.key));
+      return `<span class="evtPill"><span>${e.icon}</span><span class="en">${esc(e.name)}</span>${
+        left ? `<span class="ec">${left}</span>` : ''}</span>`;
+    }).join('')}</div>
+  </div>`;
+}
+
+/* ===== 開場動畫：只播沒看過的，依序播放 ===== */
+let introQueue = [], introShowing = false;
+function queueEventIntros(){
+  const list = activeEvents();
+  list.forEach(e=>{
+    const stamp = String(eventUntil(e.key) || 'forever');
+    if(localStorage.getItem('evtSeen_' + e.key) === stamp) return;   // until 當版本號
+    localStorage.setItem('evtSeen_' + e.key, stamp);
+    introQueue.push(e);
+  });
+  if(!introShowing) nextIntro();
+}
+function nextIntro(){
+  if(!introQueue.length){ introShowing = false; return; }
+  introShowing = true;
+  const e = introQueue.shift();
+  $('eiIcon').textContent = e.icon;
+  $('eiName').textContent = e.name;
+  $('eiEf').textContent = e.ef;
+  const el = $('evtIntro');
+  el.classList.add('show');
+  sfxLevelUp();
+  const close = ()=>{
+    clearTimeout(el._tm);
+    el.classList.remove('show');
+    el.onclick = null;
+    setTimeout(nextIntro, 260);
+  };
+  el.onclick = close;
+  el._tm = setTimeout(close, 2000);
+}
+
+/* ===== 金幣雨：doubleCoin 期間，最多 8 顆，不擋點擊 ===== */
+let rainOn = false;
+function updateCoinRain(){
+  const on = eventOn('doubleCoin');
+  const box = $('coinRain');
+  if(on === rainOn) return;
+  rainOn = on;
+  if(!on){ box.innerHTML = ''; return; }              // 活動結束 → 移除元素不空跑
+  box.innerHTML = Array.from({length:8}, ()=>{
+    const dur = (6 + Math.random()*3).toFixed(1);
+    return `<span style="left:${(Math.random()*96).toFixed(1)}%;
+      animation-duration:${dur}s; animation-delay:-${(Math.random()*dur).toFixed(1)}s">🪙</span>`;
+  }).join('');
+}
+
+function onEventsChanged(){
+  renderEventBanner();
+  updateCoinRain();
+  if(me && players[me]) queueEventIntros();
+}
+// 倒數每 30 秒更新一次（活動到期也會自然消失）
+setInterval(()=>{ renderEventBanner(); updateCoinRain(); }, 30000);
+
+/* ==================================================================
+   卡牌系統：卡包商店
+================================================================== */
+// 圖片 fallback：圖還沒放上去也不能破版
+function imgWithFb(src, cls, fbCls, fbTxt, style){
+  return `<img src="${src}" class="${cls}" style="${style||''}"
+      onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+    <div class="${fbCls} imgFallback" style="${style||''}">${fbTxt}</div>`;
+}
+const rarColor  = r => (RARITIES.find(x=>x.id===r) || RARITIES[3]).color;
+const cardImg   = id => `assets/cards/${id}.png`;
+const packImg   = id => `assets/packs/${id}.png`;
+
+/* 每日 4 包：台灣時間 00:00 換新，用懶重置 */
+async function ensureDailyPacks(){
+  if(!me || !players[me]) return;
+  const dp = players[me].dailyPacks;
+  if(dp && dp.date === todayKey()) return;
+  const offers = Array.from({length:4}, ()=>({
+    packId: PACKS[Math.floor(Math.random()*PACKS.length)].id,
+    tierId: rollTier(),
+  }));
+  try {
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'players',me);
+      const s = await tx.get(ref);
+      const cur = s.data() || {};
+      if(cur.dailyPacks && cur.dailyPacks.date === todayKey()) return;   // 別台裝置已產生
+      tx.update(ref, { dailyPacks: { date: todayKey(), offers, bought:[false,false,false,false] } });
+    });
+  } catch(e){}
+}
+
+/* 開包共用：抽卡 → 寫入 → 演出 */
+function applyCardGain(cur, upd, cardId, tierId){
+  const owned = (cur.cards || {})[cardId];
+  let dup = false, count = 1, finalTier = tierId;
+  if(owned){
+    dup = true;
+    count = (owned.count || 1) + 1;
+    upd['cards.' + cardId + '.count'] = increment(1);
+    // 只有更好才覆蓋，低等級不會蓋掉高等級
+    if(tierBetter(tierId, owned.tier || 'normal')) upd['cards.' + cardId + '.tier'] = tierId;
+    else finalTier = owned.tier || 'normal';
+  } else {
+    upd['cards.' + cardId] = { tier: tierId, count: 1 };
+  }
+  return { dup, count, finalTier };
+}
+
+window.buyPack = async (idx)=>{
+  if(lockGuard()) return;
+  const dp = players[me]?.dailyPacks;
+  if(!dp || dp.date !== todayKey()) { toast('卡包還在補貨，稍後再試'); return; }
+  const offer = dp.offers[idx];
+  if(!offer || dp.bought[idx]) return;
+  const tier = tierById(offer.tierId), pack = packById(offer.packId);
+  if(!confirm(`要用 🪙 ${tier.price} 買「${pack.name}・${tier.name}包」嗎？\n傷害倍率 ×${tier.mult}`)) return;
+
+  let result = null;
+  try {
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'players',me);
+      const s = await tx.get(ref);
+      const cur = s.data() || {};
+      const cdp = cur.dailyPacks;
+      if(!cdp || cdp.date !== todayKey()) throw new Error('卡包已更新，請重新整理');
+      if(cdp.bought[idx]) throw new Error('這包已經買過了');
+      if((cur.coins || 0) < tier.price) throw new Error('金幣不夠，先去做任務吧 💪');
+
+      const pity = cur.packPity ?? 0;
+      const rar  = rollRarity(pity);                        // 30 包保底
+      const card = cardOfPack(offer.packId, rar);
+      const bought = [...cdp.bought]; bought[idx] = true;
+
+      const upd = {
+        coins: increment(-tier.price),
+        'dailyPacks.bought': bought,
+        packPity: (rar === 'S') ? 0 : increment(1),
+      };
+      const g = applyCardGain(cur, upd, card.id, offer.tierId);
+      tx.update(ref, upd);
+      tx.set(ledgerRef(), ledgerData('pack', -tier.price, `${pack.name} ${tier.name}`,
+        { cardId: card.id, rar, tier: offer.tierId, dup: g.dup }));
+      result = { card, rar, tierId: offer.tierId, ...g };
+    });
+    if(result) showPackResult(result);
+  } catch(e){ sfxError(); toast(e.message); }
+};
+
+/* 卡包券：免費開一包，等級隨機，不佔當日 4 包額度 */
+window.openFreePack = async ()=>{
+  if(lockGuard()) return;
+  if((players[me]?.packTickets ?? 0) <= 0){ toast('沒有卡包券'); return; }
+  const packId = PACKS[Math.floor(Math.random()*PACKS.length)].id;
+  const tierId = rollTier();
+  if(!confirm(`要使用 1 張卡包券開「${packById(packId).name}」嗎？\n等級隨機`)) return;
+  let result = null;
+  try {
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'players',me);
+      const s = await tx.get(ref);
+      const cur = s.data() || {};
+      if((cur.packTickets ?? 0) <= 0) throw new Error('沒有卡包券');
+      const pity = cur.packPity ?? 0;
+      const rar  = rollRarity(pity);
+      const card = cardOfPack(packId, rar);
+      const upd = { packTickets: increment(-1), packPity: (rar === 'S') ? 0 : increment(1) };
+      const g = applyCardGain(cur, upd, card.id, tierId);
+      tx.update(ref, upd);
+      tx.set(ledgerRef(), ledgerData('pack', 0, `${packById(packId).name} ${tierById(tierId).name}（券）`,
+        { cardId: card.id, rar, tier: tierId, dup: g.dup, free: true }));
+      result = { card, rar, tierId, ...g };
+    });
+    if(result) showPackResult(result);
+  } catch(e){ sfxError(); toast(e.message); }
+};
+
+function showPackResult(r){
+  const tier = tierById(r.tierId);
+  const el = $('packPop'), box = $('ppCard');
+  box.className = 'ppCard' + (r.rar === 'S' ? ' sRar' : '') + (r.tierId === 'rainbow' ? ' rainbowBorder' : '');
+  box.style.borderColor = r.tierId === 'rainbow' ? 'transparent' : tier.color;
+  $('ppRar').textContent = `${r.rar} 級`;
+  $('ppRar').style.color = rarColor(r.rar);
+  $('ppImgBox').innerHTML = imgWithFb(cardImg(r.card.id), '', 'fb', '🎴',
+    `background:${rarColor(r.rar)}22;border:1px solid ${rarColor(r.rar)}`);
+  $('ppName').textContent = r.card.name + (r.dup ? ` ×${r.count}` : '');
+  $('ppMeta').innerHTML = `${esc(packById(r.card.pack).name)}・${tier.name}包　傷害 ×${tier.mult}` +
+    (r.dup ? `<br><span style="color:var(--muted)">（重複，可留給未來的合成系統）</span>` : '');
+  el.classList.add('show');
+  if(r.rar === 'S') sfxRare(); else sfxBuy();
+}
+$('ppBtn').onclick = ()=> $('packPop').classList.remove('show');
+
+function renderPackShop(){
+  if(!me || !players[me]) return;
+  const p = players[me];
+  const dp = p.dailyPacks;
+  const pity = p.packPity ?? 0;
+  const left = PACK_PITY_MAX - pity;
+  const tks = p.packTickets ?? 0;
+
+  const offers = (dp && dp.date === todayKey()) ? dp.offers : [];
+  $('packShopBody').innerHTML = `
+    <div class="lotBox" style="margin-bottom:14px">
+      <div class="lbl">距離保底 S 卡還有</div>
+      <div class="val">${left} 包</div>
+      <div class="pityBar"><div class="pityFill" style="width:${Math.min(100, pity/PACK_PITY_MAX*100)}%"></div></div>
+    </div>
+
+    ${tks > 0 ? `<div class="card">
+      <div class="title">🎟️ 卡包券 ×${tks}</div>
+      <div class="sub">打 Boss 得到的獎勵，可免費開一包（等級隨機，不佔今日 4 包額度）</div>
+      <div class="row"><div class="reward">免費</div>
+        ${actionBtn('<button class="btn gold" onclick="openFreePack()">開包</button>')}</div>
+    </div>` : ''}
+
+    <h2>今日卡包</h2>
+    ${offers.length ? `<div class="packGrid">${offers.map((o,i)=>{
+      const t = tierById(o.tierId), pk = packById(o.packId);
+      const bought = dp.bought[i];
+      return `<div class="packCard ${bought?'bought':''} ${o.tierId==='rainbow'?'rainbowBorder':''}"
+          style="${o.tierId==='rainbow'?'':`border-color:${t.color}`}">
+        ${imgWithFb(packImg(o.packId), 'pImg', 'pFb', '🎁', `background:${t.color}22`)}
+        <div class="pTier" style="background:${t.color}22;color:${t.color};border:1px solid ${t.color}">${t.name}包 ×${t.mult}</div>
+        <div class="pNm">${esc(pk.name)}</div>
+        <div class="pPr">🪙 ${t.price}</div>
+        ${bought ? '<button class="btn gray" disabled style="width:100%">已購買</button>'
+          : actionBtn(`<button class="btn gold" style="width:100%" onclick="buyPack(${i})">購買</button>`)}
+      </div>`;
+    }).join('')}</div>` : '<div class="empty">正在補貨⋯</div>'}
+
+    <h2>機率公示</h2>
+    <div class="poolBox">
+      <div class="poolRow"><span style="color:var(--gold)">稀有度</span><b></b></div>
+      ${RARITIES.map(r=>`<div class="poolRow"><span style="color:${r.color}">${r.id} 級</span><b>${r.prob}%</b></div>`).join('')}
+      <div class="poolRow"><span style="color:var(--gold)">卡包等級</span><b></b></div>
+      ${PACK_TIERS.map(t=>`<div class="poolRow"><span style="color:${t.color}">${t.name}（傷害 ×${t.mult}）</span><b>${t.prob}%</b></div>`).join('')}
+      <div class="poolRow total"><span>保底</span><b>每 ${PACK_PITY_MAX} 包必出 S 卡</b></div>
+    </div>`;
+}
+
+/* ==================================================================
+   卡片圖鑑與裝備
+================================================================== */
+const equippedList = p => (p && p.equipped) || [];
+const cardOwned    = (p, id) => ((p && p.cards) || {})[id] || null;
+function equipLockLeft(p){
+  const t = (p && p.equipSlotReadyAt) || 0;
+  return Math.max(0, t - Date.now());
+}
+function msLeftTxt(ms){
+  if(ms <= 0) return '';
+  const h = Math.floor(ms/3600000), m = Math.floor(ms/60000) % 60;
+  return h > 0 ? `${h} 小時 ${m} 分` : `${m} 分`;
+}
+
+window.equipCard = async (id)=>{
+  if(lockGuard()) return;
+  const p = players[me] || {};
+  const left = equipLockLeft(p);
+  if(left > 0){ sfxError(); toast(`換卡冷卻中，還要 ${msLeftTxt(left)}`); return; }
+  if(equippedList(p).includes(id)) return;
+  if(equippedList(p).length >= EQUIP_MAX){ sfxError(); toast(`最多裝 ${EQUIP_MAX} 張，要先卸下一張`); return; }
+  try {
+    await updateDoc(doc(db,'players',me), { equipped: arrayUnion(id) });
+    sfxGrab(); toast(`已裝備 ${cardById(id).name}`);
+  } catch(e){ sfxError(); toast(e.message); }
+};
+
+window.unequipCard = async (id)=>{
+  if(lockGuard()) return;
+  if(!confirm(`要卸下「${cardById(id).name}」嗎？\n卸下後 12 小時內不能裝任何卡`)) return;
+  try {
+    // 只動 equipped 與換卡鎖；skillReady 完全不碰 → 卸下再裝上不會重置 CD
+    await updateDoc(doc(db,'players',me), {
+      equipped: arrayRemove(id),
+      equipSlotReadyAt: Date.now() + EQUIP_LOCK_MS,
+    });
+    toast('已卸下，換卡冷卻 12 小時');
+  } catch(e){ sfxError(); toast(e.message); }
+};
+
+function renderCards(){
+  if(!me || !players[me]) return;
+  const p = players[me];
+  const eq = equippedList(p);
+  const lockLeft = equipLockLeft(p);
+
+  const groups = PACKS.map(pk=>{
+    const list = ['S','A','B','C'].map(r => cardOfPack(pk.id, r));
+    return `<h2>${esc(pk.name)}</h2>` + list.map(c=>{
+      const own = cardOwned(p, c.id);
+      const tier = tierById(own?.tier || 'normal');
+      const isEq = eq.includes(c.id);
+      if(!own){
+        return `<div class="cardTile locked">
+          ${imgWithFb(cardImg(c.id), 'cImg', 'cFb', '🎴', 'background:#12141d')}
+          <div class="cBody">
+            <div class="cTop"><span class="cNm" style="color:var(--dim)">???</span>
+              <span class="rarPill" style="background:${rarColor(c.rar)}">${c.rar}</span></div>
+            <div class="skRow">可從「${esc(pk.name)}」卡包獲得</div>
+          </div></div>`;
+      }
+      const skills = c.skills.map(k=>{
+        const real = skillDamage(k.dmg, own.tier, {});
+        const tag = k.sp === 'DOT' ? '<span class="sTag">持續 10 小時</span>'
+                  : k.sp === 'BUFF' ? '<span class="sTag">下次傷害 +35%</span>'
+                  : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>' : '';
+        return `<div class="skRow"><b>${esc(k.name)}</b> ${tag}<br>
+          EP ${k.ep}　傷害 <span class="dmgv">${k.dmg > 0 ? real : '—'}</span>　CD ${k.cd}h</div>`;
+      }).join('');
+      return `<div class="cardTile ${isEq?'eq':''}" style="border-color:${isEq?'var(--gold)':tier.color}">
+        ${imgWithFb(cardImg(c.id), 'cImg', 'cFb', '🎴', `background:${rarColor(c.rar)}22`)}
+        <div class="cBody">
+          <div class="cTop">
+            <span class="cNm">${esc(c.name)}</span>
+            <span class="rarPill" style="background:${rarColor(c.rar)}">${c.rar}</span>
+            <span class="tierPill" style="background:${tier.color}22;color:${tier.color};border:1px solid ${tier.color}">${tier.name} ×${tier.mult}</span>
+            ${own.count > 1 ? `<span class="tierPill" style="background:#1a1d28;color:var(--muted)">×${own.count}</span>` : ''}
+          </div>
+          ${skills}
+          <div style="margin-top:9px">
+            ${isEq
+              ? `<button class="btn no" onclick="unequipCard('${c.id}')">卸下</button>`
+              : `<button class="btn gold" onclick="equipCard('${c.id}')"
+                   ${(lockLeft > 0 || eq.length >= EQUIP_MAX) ? 'disabled' : ''}>裝備</button>`}
+          </div>
+        </div></div>`;
+    }).join('');
+  }).join('');
+
+  $('cardsBody').innerHTML = `
+    <div class="tkBar" style="background:linear-gradient(160deg,#1a2230,#0b0f18);border-color:rgba(95,240,220,.4)">
+      <span class="tkIc">🎴</span>
+      <div class="tkMain">
+        <div class="tkNum" style="color:#5ff0dc">${eq.length}/${EQUIP_MAX}</div>
+        <div class="tkLbl">已裝備</div>
+      </div>
+      <div class="tkSide">
+        ⚡ EP ${epAvail(p).toLocaleString()}<br>
+        ${lockLeft > 0 ? `<span style="color:var(--pink)">換卡冷卻 ${msLeftTxt(lockLeft)}</span>` : '可自由換卡'}
+      </div>
+    </div>
+    <div class="sub" style="font-family:var(--mono);font-size:11px;color:var(--muted);margin:-6px 0 14px;line-height:1.8">
+      卸下任何一張卡會進入 12 小時換卡冷卻。技能 CD 不受裝卸影響，卸下再裝上不會重置。
+    </div>
+    ${groups}`;
+}
+
+/* ==================================================================
+   Boss 系統
+   DOT 一律「懶結算」：關掉 app 也要繼續掉血，不用 setInterval 即時扣
+================================================================== */
+function defaultBoss(){
+  return { stage:1, hp: BOSSES[0].hp, dots:[], milestones:[], lastTickAt: Date.now(), buff:false, zoneUntil:0 };
+}
+function bossOf(p){
+  const b = (p && p.boss) || null;
+  return b ? { ...defaultBoss(), ...b } : defaultBoss();
+}
+// 計算距上次結算之間，所有 DOT 應該造成的傷害
+function dotDamage(b, now){
+  const last = b.lastTickAt || now;
+  let dmg = 0;
+  const alive = [];
+  for(const d of (b.dots || [])){
+    const from = Math.max(last, d.startAt || last);
+    const to   = Math.min(now, d.endAt);
+    if(to > from) dmg += d.dmgPerHour * ((to - from) / 3600000);
+    if(d.endAt > now) alive.push(d);
+  }
+  return { dmg: Math.floor(dmg), dots: alive };
+}
+// 開頁時把離線期間的 DOT 補算進去
+async function settleBoss(){
+  if(!me || !players[me]) return;
+  const b = bossOf(players[me]);
+  if(!(b.dots || []).length) return;
+  const now = Date.now();
+  const r = dotDamage(b, now);
+  if(r.dmg <= 0 && r.dots.length === (b.dots||[]).length) return;
+  try {
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'players',me);
+      const s = await tx.get(ref);
+      const cb = bossOf(s.data() || {});
+      const rr = dotDamage(cb, now);
+      const hp = Math.max(0, cb.hp - rr.dmg);
+      tx.update(ref, { boss: { ...cb, hp, dots: rr.dots, lastTickAt: now } });
+    });
+  } catch(e){}
+}
+
+window.useSkill = async (cardId, skillId)=>{
+  if(lockGuard()) return;
+  const k = skillOf(cardId, skillId);
+  const p = players[me] || {};
+  const own = cardOwned(p, cardId);
+  if(!k || !own) return;
+  if(bossOf(p).stage > BOSSES.length){ toast('目前沒有可挑戰的 Boss'); return; }
+
+  let killed = null, msGot = [];
+  try {
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'players',me);
+      const s = await tx.get(ref);
+      const cur = s.data() || {};
+      const now = Date.now();
+
+      if(epAvail(cur) < k.ep) throw new Error(`EP 不夠，還差 ${k.ep - epAvail(cur)}`);
+      const readyKey = cardId + '.' + skillId;
+      const ready = (cur.skillReady || {})[readyKey] || 0;
+      if(now < ready) throw new Error(`冷卻中，還要 ${msLeftTxt(ready - now)}`);
+
+      const b = bossOf(cur);
+      const boss = bossOfStage(b.stage);
+      if(!boss) throw new Error('目前沒有可挑戰的 Boss');
+
+      // 先把離線期間的 DOT 補算
+      const settled = dotDamage(b, now);
+      let hp = Math.max(0, b.hp - settled.dmg);
+      let dots = settled.dots;
+      let buff = b.buff, zoneUntil = b.zoneUntil || 0;
+
+      const tierId = own.tier || 'normal';
+      const zoneOn = zoneUntil > now;
+      const upd = {
+        epSpent: increment(k.ep),
+        ['skillReady.' + readyKey]: now + k.cd * 3600000,
+      };
+
+      let dealt = 0;
+      if(k.sp === 'BUFF'){
+        buff = true;                                        // 下一個傷害技能 +35%
+      } else if(k.sp === 'ZONE'){
+        zoneUntil = now + ZONE_MS;                          // 8 小時內 +35%
+      } else if(k.sp === 'DOT'){
+        const total = skillDamage(k.dmg, tierId, { buff, zone: zoneOn });
+        dots = [...dots, { dmgPerHour: total / DOT_HOURS, startAt: now, endAt: now + DOT_HOURS*3600000 }];
+        if(buff) buff = false;
+        dealt = total;                                      // 只用於顯示，血是之後每小時扣
+      } else {
+        dealt = skillDamage(k.dmg, tierId, { buff, zone: zoneOn });
+        if(buff) buff = false;
+        hp = Math.max(0, hp - dealt);
+      }
+
+      // 血量里程碑：75/50/25% 各給該關 coin 的 20%，每關只領一次
+      const ms = [...(b.milestones || [])];
+      let msCoin = 0;
+      for(const m of MILESTONES){
+        if(!ms.includes(m) && hp <= boss.hp * m / 100){ ms.push(m); msCoin += Math.round(boss.coin * 0.2); msGot.push(m); }
+      }
+      if(msCoin > 0){
+        upd.coins = increment(msCoin);
+        tx.set(ledgerRef(), ledgerData('boss', msCoin, `${boss.name} 里程碑`, { stage:b.stage, ms:msGot }));
+      }
+
+      if(hp <= 0){
+        // 擊殺：獎勵直接讀 BOSSES 欄位
+        const next = bossOfStage(b.stage + 1);
+        upd.coins        = increment((msCoin || 0) + boss.coin);   // 不加 totalEarned / xp
+        upd.bonusTokens  = increment(boss.token);
+        upd.packTickets  = increment(boss.ticket);
+        upd.epBonus      = increment(boss.ep);                     // ⚠️ 絕不可寫進 xp
+        upd.boss = { stage: b.stage + 1, hp: next ? next.hp : 0,
+                     dots: [], milestones: [], lastTickAt: now, buff:false, zoneUntil:0 };
+        tx.set(ledgerRef(), ledgerData('boss', boss.coin, `擊破 ${boss.name}`,
+          { stage:b.stage, token:boss.token, ticket:boss.ticket, ep:boss.ep }));
+        killed = boss;
+      } else {
+        upd.boss = { stage: b.stage, hp, dots, milestones: ms, lastTickAt: now, buff, zoneUntil };
+        tx.set(ledgerRef(), ledgerData('boss', 0, k.name, { dmg: dealt, stage: b.stage }));
+      }
+      tx.update(ref, upd);
+    });
+
+    if(killed){ showKill(killed); }
+    else {
+      sfxGrab();
+      if(msGot.length) toast(`里程碑達成 ${msGot.join('%・')}%，金幣入帳 🪙`);
+    }
+  } catch(e){ sfxError(); toast(e.message); }
+};
+
+function showKill(boss){
+  $('kpName').textContent = boss.name;
+  $('kpRewards').innerHTML = `🪙 ${boss.coin}<br>${TALENT_ICON} ${boss.token}<br>🎟️ 卡包券 ${boss.ticket}<br>⚡ EP ${boss.ep}`;
+  $('killPop').classList.add('show');
+  sfxRare(); flyCoins(8);
+}
+$('kpBtn').onclick = ()=> $('killPop').classList.remove('show');
+
+function renderBoss(){
+  if(!me || !players[me]) return;
+  const p = players[me];
+  const b = bossOf(p);
+  const boss = bossOfStage(b.stage);
+
+  if(!boss){
+    $('bossBody').innerHTML = `<div class="card" style="text-align:center;padding:34px 18px">
+      <div style="font-size:44px">🏆</div>
+      <div class="title" style="margin-top:10px">⚔️ 目前最終關已通關</div>
+      <div class="sub" style="margin-top:6px">敬請期待下一批 Boss</div>
+    </div>`;
+    return;
+  }
+
+  const now = Date.now();
+  const preview = dotDamage(b, now);
+  const hp = Math.max(0, b.hp - preview.dmg);
+  const pct = Math.max(0, Math.min(100, hp / boss.hp * 100));
+  const eq = equippedList(p);
+  const ep = epAvail(p), epMax = Math.max(ep, 1);
+  const zoneOn = (b.zoneUntil || 0) > now;
+  const dmgX = dmgMult();
+
+  const skills = eq.length ? eq.map(id=>{
+    const c = cardById(id), own = cardOwned(p, id);
+    if(!c || !own) return '';
+    const tier = tierById(own.tier || 'normal');
+    return `<div class="card" style="border-color:${tier.color}">
+      <div class="title">${esc(c.name)} <span class="tierPill" style="background:${tier.color}22;color:${tier.color};border:1px solid ${tier.color}">${tier.name} ×${tier.mult}</span></div>
+      ${c.skills.map(k=>{
+        const ready = (p.skillReady || {})[id + '.' + k.id] || 0;
+        const cding = now < ready;
+        const real = skillDamage(k.dmg, own.tier, { buff: b.buff, zone: zoneOn });
+        const noEp = ep < k.ep;
+        const tag = k.sp === 'DOT' ? '<span class="sTag">10 小時持續</span>'
+                  : k.sp === 'BUFF' ? '<span class="sTag">下次 +35%</span>'
+                  : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>' : '';
+        return `<button class="skillBtn" onclick="useSkill('${id}','${k.id}')"
+            ${(cding || noEp || isLocked()) ? 'disabled' : ''}>
+          <div class="sTop2"><span class="sN">${esc(k.name)}</span>${tag}</div>
+          <div class="sInfo">
+            ⚡ ${k.ep}　${k.dmg > 0
+              ? `傷害 <span class="dm ${dmgX > 1 ? 'evt' : ''}">${real}${dmgX > 1 ? ' ⚔️×2' : ''}</span>`
+              : '無傷害'}　
+            ${cding ? `<span style="color:var(--pink)">冷卻 ${msLeftTxt(ready - now)}</span>` : `CD ${k.cd}h`}
+            ${noEp ? '　<span style="color:var(--pink)">EP 不足</span>' : ''}
+          </div>
+        </button>`;
+      }).join('')}
+    </div>`;
+  }).join('') : `<div class="empty">還沒裝備卡片，先去「🎴 卡片」裝備最多 ${EQUIP_MAX} 張</div>`;
+
+  $('bossBody').innerHTML = `
+    <div class="bossWrap">
+      ${imgWithFb(bossImg(b.stage), 'bossImg', 'bossFb', '👹', '')}
+      <div class="title" style="font-size:19px;margin-top:10px">第 ${b.stage} 關・${esc(boss.name)}</div>
+      <div class="sub" style="font-family:var(--mono);font-size:11.5px">出自《${esc(boss.from)}》</div>
+      <div class="hpBar">
+        <div class="hpFill" style="width:${pct}%"></div>
+        ${MILESTONES.map(m=>`<div class="msTick" style="left:${m}%"></div>`).join('')}
+        <div class="hpTxt">${hp.toLocaleString()} / ${boss.hp.toLocaleString()}　${pct.toFixed(1)}%</div>
+      </div>
+      <div class="sub" style="font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.8">
+        擊破獎勵：🪙 ${boss.coin}　${TALENT_ICON} ${boss.token}　🎟️ ${boss.ticket}　⚡ ${boss.ep}<br>
+        里程碑 75/50/25% 各得 🪙 ${Math.round(boss.coin*0.2)}
+        ${(b.milestones||[]).length ? `（已領 ${b.milestones.join('%・')}%）` : ''}
+      </div>
+    </div>
+
+    <h2>能量</h2>
+    <div class="epBar"><div class="epFill" style="width:${Math.min(100, ep/Math.max(epMax,1)*100)}%"></div></div>
+    <div class="sub" style="font-family:var(--mono);font-size:11.5px;margin-top:6px">
+      ⚡ 可用 EP <b style="color:var(--cyan)">${ep.toLocaleString()}</b>
+      　<span style="color:var(--muted)">Lv.${EP_START_LV} 之後累積的經驗值就是 EP</span>
+    </div>
+
+    ${(preview.dots.length || b.buff || zoneOn) ? `<div class="sub" style="font-family:var(--mono);font-size:11px;color:var(--gold);margin-top:8px;line-height:1.8">
+      ${preview.dots.length ? `🔥 持續傷害 ${preview.dots.length} 層進行中（每小時約 ${Math.round(preview.dots.reduce((a,d)=>a+d.dmgPerHour,0))}）<br>` : ''}
+      ${b.buff ? '✨ 幻影傳球生效中：下一個傷害技能 +35%<br>' : ''}
+      ${zoneOn ? `🔵 ZONE 生效中：${msLeftTxt(b.zoneUntil - now)}內所有技能 +35%` : ''}
+    </div>` : ''}
+
+    <h2>技能</h2>
+    ${skills}`;
+}
+
+/* ==================================================================
    畫面
 ================================================================== */
 const seen = {};
@@ -1927,8 +2814,12 @@ let lastCoins = null;
 
 // 獎勵顯示：倍率 > 1 時加小標，讓弟弟知道錢為什麼比較多
 function rewardHtml(reward){
-  const m = finalMultiplier(players[me]);
-  return `<div class="reward">🪙 ${reward}${m > 1 ? `<span class="multPill">⭐×${m}</span>` : ''}</div>`;
+  const m = coinMultOf(players[me]);
+  if(m <= 1) return `<div class="reward">🪙 ${reward}</div>`;
+  const real = Math.round(reward * m);
+  const evt = eventAdd('coin') > 0;
+  return `<div class="reward"><span class="saleOld">🪙 ${reward}</span>🪙 ${real}` +
+         `<span class="multPill">⭐×${m}${evt ? ' ⚡' : ''}</span></div>`;
 }
 // 禁閉中所有操作按鈕變 disabled
 function actionBtn(html){
@@ -1985,8 +2876,15 @@ function renderHeader(){
   if(lastCoins === null){
     $('myCoins').textContent = coins;
   } else if(coins !== lastCoins){
-    animateNumber($('myCoins'), lastCoins, coins);
-    if(coins > lastCoins){ flyCoins(4); if(!muted) sfxCoin(); }
+    const gain = coins - lastCoins;
+    if(gain > 0 && eventOn('doubleCoin')){
+      doubleGainShow(lastCoins, coins);       // 雙倍金幣日：先跑一半 → 閃 ×2 → 暴衝
+      flyCoins(8);                            // 粒子加倍
+      if(!muted) sfxCoin();
+    } else {
+      animateNumber($('myCoins'), lastCoins, coins);
+      if(gain > 0){ flyCoins(4); if(!muted) sfxCoin(); }
+    }
   }
   lastCoins = coins;
 }
@@ -1999,6 +2897,10 @@ function renderAll(){
   renderLottery();     // 材料/保底/按鈕狀態跟著 players、penalties 更新
   renderTitles();
   renderTitleShop();
+  renderTalent();
+  renderPackShop();
+  renderCards();
+  renderBoss();
 
   const mine = tasks.filter(t => !t.isDaily && (
     (t.status==='open' && t.assignee===me) ||
@@ -2072,7 +2974,9 @@ function renderShop(){
       <div class="title">🎟️ 抽獎券</div>
       <div class="sub">一張抽一次，可抽金幣、材料與稀有獎品${own ? `・持有 ${own} 張` : ''}</div>
       <div class="row">
-        <div class="reward">🪙 ${TICKET_PRICE}</div>
+        <div class="reward">${ticketPrice() < TICKET_PRICE
+          ? `<span class="saleOld">🪙 ${TICKET_PRICE}</span>🪙 ${ticketPrice()}<span class="saleTag">特賣中</span>`
+          : `🪙 ${TICKET_PRICE}`}</div>
         ${actionBtn('<button class="btn gold" onclick="buyTicket()">購買</button>')}
       </div>
     </div>`;
@@ -2082,6 +2986,14 @@ function renderShop(){
       <div>
         <div class="seT">稱號商店</div>
         <div class="seS">用金幣購買專屬稱號，提升抽獎幸運</div>
+      </div>
+      <span class="seGo">進入 →</span>
+    </div>
+    <div class="shopEntry" onclick="goTab('packshop')" style="border-color:rgba(95,240,220,.45)">
+      <span class="seIc">🎴</span>
+      <div>
+        <div class="seT">卡包商店</div>
+        <div class="seS">每天 4 包，抽動漫角色卡去打 Boss（S 卡 30 包保底）</div>
       </div>
       <span class="seGo">進入 →</span>
     </div>`;
