@@ -177,6 +177,42 @@
     background:linear-gradient(160deg,#141722,#0c0e15); }
   .pcard .pn{ font-size:15px; font-weight:900; margin-bottom:8px; }
 
+  /* ===== 活動控制台 ===== */
+  .buffGrid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px; }
+  .buffCell{ padding:12px; border-radius:10px; text-align:center;
+    background:linear-gradient(160deg,#141722,#0c0e15); border:1px solid var(--line-soft); }
+  .buffCell.on{ border-color:rgba(233,196,106,.6); box-shadow:0 0 16px rgba(233,196,106,.18);
+    background:linear-gradient(160deg,#241d0e,#14100a); }
+  .buffCell .bk{ font-family:var(--mono); font-size:10px; color:var(--muted); letter-spacing:1px; }
+  .buffCell .bv{ font-family:var(--mono); font-size:20px; font-weight:800; color:var(--dim); margin-top:4px; }
+  .buffCell.on .bv{ color:var(--gold); }
+
+  .evRow{ padding:13px 14px; border-radius:10px; margin-bottom:10px;
+    background:linear-gradient(160deg,#141722,#0c0e15); border:1px solid var(--line-soft); }
+  .evRow.live{ border-color:rgba(233,196,106,.65); box-shadow:0 0 20px rgba(233,196,106,.2); }
+  .evRow.expired{ border-color:rgba(255,107,129,.5); }
+  .evTop{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+  .evTop .ei{ font-size:20px; }
+  .evTop .en{ font-size:15px; font-weight:900; }
+  .evTop .ef{ font-family:var(--mono); font-size:11px; color:var(--muted); }
+  .evSt{ margin-left:auto; font-family:var(--mono); font-size:10.5px; font-weight:800;
+    padding:3px 9px; border-radius:5px; }
+  .evSt.off{ background:#1a1d28; color:var(--dim); border:1px solid var(--line-soft); }
+  .evSt.live{ background:rgba(233,196,106,.14); color:var(--gold); border:1px solid rgba(233,196,106,.4); }
+  .evSt.exp{ background:rgba(255,107,129,.14); color:var(--pink); border:1px solid rgba(255,107,129,.4); }
+  .evCtl{ display:flex; align-items:center; gap:7px; margin-top:11px; flex-wrap:wrap; }
+  .evCtl .dur{ display:flex; gap:5px; flex-wrap:wrap; }
+  .evCtl .dur button{ padding:5px 11px; border:1px solid var(--line); border-radius:7px; cursor:pointer;
+    background:#0d0f17; color:var(--muted); font-family:var(--mono); font-size:11px; font-weight:700; }
+  .evCtl .dur button.on{ background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep));
+    color:#1a1206; border-color:transparent; }
+  .evCtl input[type=datetime-local]{ background:#0d0f17; color:var(--text); border:1px solid var(--line);
+    border-radius:7px; padding:5px 8px; font-family:var(--mono); font-size:11px; }
+  .evBtn{ margin-left:auto; padding:8px 16px; border:none; border-radius:8px; cursor:pointer;
+    font-family:var(--mono); font-size:12.5px; font-weight:800; }
+  .evBtn.go{ background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206; }
+  .evBtn.stop{ background:rgba(255,107,129,.15); color:var(--pink); border:1px solid rgba(255,107,129,.4); }
+
   @media (max-width:640px){
     main{ padding:12px; }
     section{ padding:14px; }
@@ -203,6 +239,15 @@
 
 <main>
   <div class="notice" id="notice">載入中⋯</div>
+
+  <!-- 🎛️ 系統控制台 -->
+  <section>
+    <h2>🎛️ 系統控制台<span style="margin-left:auto;font-size:10px;color:var(--dim)">只有這裡能改活動</span></h2>
+    <h3>目前生效中的加成</h3>
+    <div class="buffGrid" id="buffGrid"></div>
+    <h3>活動</h3>
+    <div id="evList"></div>
+  </section>
 
   <!-- ① 系統總覽 -->
   <section>
@@ -259,10 +304,11 @@
   </section>
 </main>
 
+<script src="./shared.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, collection, onSnapshot, query, orderBy, limit
+  getFirestore, collection, doc, onSnapshot, query, orderBy, limit, setDoc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ====== firebaseConfig（與 index/admin 同一份） ====== */
@@ -278,6 +324,18 @@ const STATS_PASSWORD = "chen0414";
 const LEDGER_LIMIT = 3000;
 /* ================================================== */
 
+
+/* ===== 共用常數與純函式（唯一真實來源：shared.js） ===== */
+const {
+  PRIZES, MATERIALS, CRAFT_TITLES, SHOP_TITLES, TIERS, ACHIEVEMENTS, PITY_MAX,
+  TALENT_ICON, TALENT_NAME, TALENT_MAX_LV, TALENT_TREES,
+  talentLv, talentSpent, talentEarned, talentAvail, talentAdd,
+  equippedTitle, xpThreshold, levelFromXp,
+  EVENTS, setRuntime, eventOn, eventExpired, eventAdd, eventUntil, activeEvents,
+  r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
+  todayKey, getWeights, TICKET_PRICE, SALE_TICKET_PRICE, LUCK_MAX,
+} = window.GAME;
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -285,86 +343,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const nf = n => (Math.round(n) || 0).toLocaleString('en-US');
 
-/* ⚠️ 以下常數必須與 index.html 保持一致（唯讀對照用） */
-const PRIZES = [
-  { icon:'🪙', name:'金幣 200',   prob:13 },
-  { icon:'🪙', name:'金幣 200',   prob:13 },
-  { icon:'🪙', name:'金幣 200',   prob:13 },
-  { icon:'🪙', name:'金幣 200',   prob:13 },
-  { icon:'🔄', name:'AGAIN',      prob:3.5 },
-  { icon:'🔄', name:'AGAIN',      prob:3.5 },
-  { icon:'💰', name:'金幣 1000',  prob:1.5 },
-  { icon:'💰', name:'金幣 1000',  prob:1.5 },
-  { icon:'🟣', name:'紫晶碎片 ×1', prob:7.5 },
-  { icon:'🟣', name:'紫晶碎片 ×3', prob:3 },
-  { icon:'⬜', name:'長白玉石 ×1', prob:7.5 },
-  { icon:'⬜', name:'長白玉石 ×3', prob:3 },
-  { icon:'🟦', name:'靈青石 ×1',  prob:7.5 },
-  { icon:'🟦', name:'靈青石 ×3',  prob:3 },
-  { icon:'💎', name:'鑽粉 ×1',    prob:5.5 },
-  { icon:'🫧', name:'魂源泉水 ×1', prob:1 },
-];
-const MATERIALS = [
-  { key:'purple', icon:'🟣', name:'紫晶碎片', need:5 },
-  { key:'jade',   icon:'⬜', name:'長白玉石', need:5 },
-  { key:'azure',  icon:'🟦', name:'靈青石',  need:5 },
-  { key:'dust',   icon:'💎', name:'鑽粉',    need:2 },
-  { key:'soul',   icon:'🫧', name:'魂源泉水', need:2 },
-];
-const CRAFT_TITLES = [
-  { id:'shadow', icon:'🌑', name:'暗影使者', mult:1.1 },
-  { id:'ghost',  icon:'👻', name:'幽靈冠王', mult:1.15 },
-  { id:'sky',    icon:'☁️', name:'蒼天使者', mult:1.2 },
-  { id:'chosen', icon:'✨', name:'天選之人', mult:1.5 },
-];
-const SHOP_TITLES = [
-  { id:'d01', tier:'D', name:'擺爛之王' },      { id:'d02', tier:'D', name:'睡到自然醒' },
-  { id:'d03', tier:'D', name:'三分鐘熱度' },    { id:'d04', tier:'D', name:'已讀不回' },
-  { id:'d05', tier:'D', name:'明天的事明天再說' },{ id:'d06', tier:'D', name:'沙發長期租戶' },
-  { id:'d07', tier:'D', name:'我媽叫我' },      { id:'d08', tier:'D', name:'隨便啦' },
-  { id:'d09', tier:'D', name:'裝忙專家' },      { id:'d10', tier:'D', name:'廢到笑' },
-  { id:'c01', tier:'C', name:'碗盤終結者' },    { id:'c02', tier:'C', name:'拖地小當家' },
-  { id:'c03', tier:'C', name:'手速還行' },      { id:'c04', tier:'C', name:'假日限定勤勞' },
-  { id:'c05', tier:'C', name:'微波爐工程師' },  { id:'c06', tier:'C', name:'遙控器守護神' },
-  { id:'c07', tier:'C', name:'剛好路過' },      { id:'c08', tier:'C', name:'有做就好' },
-  { id:'c09', tier:'C', name:'半夜找食物的人' },{ id:'c10', tier:'C', name:'一日限定認真' },
-  { id:'b01', tier:'B', name:'家務老手' },      { id:'b02', tier:'B', name:'說到做到' },
-  { id:'b03', tier:'B', name:'連續紀錄保持人' },{ id:'b04', tier:'B', name:'深夜清潔隊' },
-  { id:'b05', tier:'B', name:'效率至上' },      { id:'b06', tier:'B', name:'沒在怕的' },
-  { id:'b07', tier:'B', name:'誰都攔不住' },
-  { id:'a01', tier:'A', name:'不敗神話' },      { id:'a02', tier:'A', name:'一擊必殺' },
-  { id:'a03', tier:'A', name:'領域展開' },      { id:'a04', tier:'A', name:'無人能及' },
-  { id:'a05', tier:'A', name:'逆風翻盤' },
-  { id:'s01', tier:'S', name:'君臨天下' },      { id:'s02', tier:'S', name:'命運支配者' },
-  { id:'s03', tier:'S', name:'萬象歸一' },
-];
-const TIERS = {
-  D:{ luck:1.05, price:500   }, C:{ luck:1.07, price:1500  },
-  B:{ luck:1.10, price:4000  }, A:{ luck:1.15, price:10000 },
-  S:{ luck:1.50, price:30000 },
-};
-const ACHIEVEMENT_TOTAL = 15;
-const PITY_MAX = 70;
-
-function xpThreshold(lv){ return 50 * (lv - 1) * (lv + 2); }
-function levelFromXp(xp){ let lv=1; while(xp >= xpThreshold(lv+1)) lv++; return lv; }
-function equippedOf(p){
-  const id = p && p.equippedTitle;
-  if(!id) return null;
-  const c = CRAFT_TITLES.find(t=>t.id===id);
-  if(c) return { kind:'craft', name:c.icon+' '+c.name, mult:c.mult, luck:1.0 };
-  const s = SHOP_TITLES.find(t=>t.id===id);
-  if(s) return { kind:'shop', name:s.name, tier:s.tier, mult:1.0, luck:TIERS[s.tier].luck };
-  return null;
-}
-const achBonus  = p => (((p&&p.achievements)||[]).length >= ACHIEVEMENT_TOTAL) ? 1.1 : 1.0;
-const titleMult = p => equippedOf(p)?.mult || 1.0;
-const luckOf    = p => equippedOf(p)?.luck || 1.0;
-const finalMult = p => Math.round(achBonus(p) * titleMult(p) * 1000) / 1000;
-
-/* ===== 台灣日期 ===== */
 const tzKey = d => d.toLocaleDateString('en-CA', { timeZone:'Asia/Taipei' });
-const todayKey = () => tzKey(new Date());
 function lastNDays(n){
   const base = new Date(todayKey()).getTime();
   const out = [];
@@ -404,6 +383,12 @@ onSnapshot(collection(db,'purchases'), s=>{
 });
 onSnapshot(collection(db,'penalties'), s=>{
   penalties = []; s.forEach(d=> penalties.push({id:d.id, ...d.data()})); mark('penalties');
+});
+onSnapshot(doc(db,'config','system'), d=>{
+  sysCfg = d.exists() ? (d.data() || {}) : {};
+  setRuntime({ events: sysCfg.events || {} });
+  renderConsole();
+  renderAll();
 });
 onSnapshot(query(collection(db,'ledger'), orderBy('createdAt','desc'), limit(LEDGER_LIMIT)), s=>{
   ledger = []; s.forEach(d=> ledger.push({id:d.id, ...d.data()}));
@@ -853,10 +838,13 @@ function renderCompare(){
       ${row('累計賺取', p=>nf(p.totalEarned ?? 0))}
       ${row('等級', p=>'Lv.'+levelFromXp(p.xp ?? 0))}
       ${row('XP', p=>{const lv=levelFromXp(p.xp??0);return `${nf(p.xp??0)} <span style="color:var(--dim)">/ ${nf(xpThreshold(lv+1))}</span>`;})}
-      ${row('成就', p=>`${((p.achievements)||[]).length} / ${ACHIEVEMENT_TOTAL}`)}
-      ${row('金幣倍率', p=>`⭐×${finalMult(p)} <span style="color:var(--dim)">(成就×${achBonus(p)} 稱號×${titleMult(p)})</span>`)}
+      ${row('成就', p=>`${((p.achievements)||[]).length} / ${ACHIEVEMENTS.length}`)}
+      ${row('金幣倍率', p=>`⭐×${coinMultOf(p)} <span style="color:var(--dim)">(成就+${Math.round(achAdd(p)*100)}% 稱號+${Math.round(titleCoinAdd(p)*100)}% 天賦+${Math.round(talentAdd(p,'coin')*100)}%)</span>`)}
+      ${row('XP 倍率', p=>`📈×${xpMultOf(p)} <span style="color:var(--dim)">(天賦+${Math.round(talentAdd(p,'xp')*100)}%)</span>`)}
+      ${row('天賦結晶', p=>`${TALENT_ICON} 可用 ${talentAvail(p)} / 累計 ${talentEarned(p)}`)}
+      ${row('天賦配點', p=>TALENT_TREES.map(t=>`${t.icon}L${talentLv(p,t.key)}`).join(' '))}
       ${row('幸運', p=>`🍀 ×${luckOf(p)}`)}
-      ${row('裝備中稱號', p=>{const e=equippedOf(p);return e?esc(e.name):'<span style="color:var(--dim)">未裝備</span>';})}
+      ${row('裝備中稱號', p=>{const e=equippedTitle(p);return e?esc(e.name):'<span style="color:var(--dim)">未裝備</span>';})}
       ${row('商店稱號數', p=>`${((p.shopTitles)||[]).length} / ${SHOP_TITLES.length}`)}
       ${row('合成稱號', p=>{const c=p.craftedTitles||{};const n=Object.values(c).reduce((a,b)=>a+b,0);
         return n?`${Object.keys(c).length} 種 / 共 ${n} 次`:'無';})}
@@ -874,6 +862,117 @@ function renderCompare(){
         ? '<b style="color:var(--pink)">🔒 禁閉中</b>' : '正常')}
     </tbody></table>`;
 }
+
+/* ==================================================================
+   🎛️ 活動控制台
+   ⚠️⚠️ 全檔唯一許可的寫入：只准寫 config/system，且只准用 setDoc(..., {merge:true})
+   對 players / tasks / purchases / penalties / ledger / shop 的寫入一律禁止。
+================================================================== */
+let sysCfg = {};
+let durChoice = {};          // { key: '1'|'3'|'7'|'custom' }
+let durCustom = {};          // { key: datetime-local 字串 }
+
+async function saveSystemConfig(patch){
+  // 這是本檔案唯一的 setDoc 呼叫點，目標固定為 config/system
+  return setDoc(doc(db,'config','system'), patch, { merge:true });
+}
+
+// 倒數：進行中・剩 2 天 5 小時
+function leftText(until){
+  if(!until) return '無期限';
+  const ms = new Date(until).getTime() - Date.now();
+  if(isNaN(ms) || ms <= 0) return '';
+  const d = Math.floor(ms/86400000), h = Math.floor(ms/3600000)%24, m = Math.floor(ms/60000)%60;
+  if(d > 0) return `剩 ${d} 天 ${h} 小時`;
+  if(h > 0) return `剩 ${h} 小時 ${m} 分`;
+  return `剩 ${m} 分`;
+}
+// datetime-local → 含 +08:00 的 ISO 字串
+function toTaipeiIso(local){
+  return local ? local.replace('T',' ').replace(' ','T') + ':00+08:00' : null;
+}
+function daysLaterIso(n){
+  const d = new Date(Date.now() + n*86400000);
+  const p = x => String(x).padStart(2,'0');
+  // 以台灣時間表示
+  const t = new Date(d.toLocaleString('en-US',{ timeZone:'Asia/Taipei' }));
+  return `${t.getFullYear()}-${p(t.getMonth()+1)}-${p(t.getDate())}T${p(t.getHours())}:${p(t.getMinutes())}:00+08:00`;
+}
+
+window.setDur = (key, v)=>{ durChoice[key] = v; renderConsole(); };
+window.setCustom = (key, v)=>{ durCustom[key] = v; };
+
+window.toggleEvent = async (key)=>{
+  const e = EVENTS.find(x=>x.key===key);
+  const live = eventOn(key);
+  if(live){
+    if(!confirm(`要關閉「${e.name}」嗎？\n關閉後加成立即失效。`)) return;
+    try { await saveSystemConfig({ events: { [key]: { on:false, until:null } } }); }
+    catch(err){ alert('關閉失敗：' + err.message); }
+    return;
+  }
+  const c = durChoice[key] || '1';
+  let until;
+  if(c === 'custom'){
+    if(!durCustom[key]){ alert('請先選結束時間'); return; }
+    until = toTaipeiIso(durCustom[key]);
+  } else {
+    until = daysLaterIso(Number(c));
+  }
+  const d = new Date(until);
+  if(isNaN(d)){ alert('時間格式不正確'); return; }
+  if(d.getTime() <= Date.now()){ alert('結束時間必須在未來'); return; }
+  if(!confirm(`要開啟「${e.name}」嗎？\n效果：${e.ef}\n結束時間：${d.toLocaleString('zh-TW',{ timeZone:'Asia/Taipei' })}`)) return;
+  try { await saveSystemConfig({ events: { [key]: { on:true, until } } }); }
+  catch(err){ alert('開啟失敗：' + err.message); }
+};
+
+function renderConsole(){
+  // 生效中的加成總覽
+  const buffs = [
+    { k:'金幣加成', v:eventAdd('coin') },
+    { k:'XP 加成',  v:eventAdd('xp') },
+    { k:'幸運加成', v:eventAdd('luck') },
+  ];
+  $('buffGrid').innerHTML = buffs.map(b=>`
+    <div class="buffCell ${b.v>0?'on':''}">
+      <div class="bk">${b.k}</div>
+      <div class="bv">+${Math.round(b.v*100)}%</div>
+    </div>`).join('');
+
+  $('evList').innerHTML = EVENTS.map(e=>{
+    const live = eventOn(e.key), exp = eventExpired(e.key);
+    const until = eventUntil(e.key);
+    const st = live ? `<span class="evSt live">進行中・${leftText(until)}</span>`
+             : exp  ? `<span class="evSt exp">已結束（記得關閉）</span>`
+             :        `<span class="evSt off">未啟用</span>`;
+    const cur = durChoice[e.key] || '1';
+    // 進行中或已結束 → 隱藏期間選擇（要改期限得先關閉）
+    const picker = (live || exp) ? '' : `
+      <div class="dur">
+        ${['1','3','7'].map(n=>`<button class="${cur===n?'on':''}" onclick="setDur('${e.key}','${n}')">${n} 天</button>`).join('')}
+        <button class="${cur==='custom'?'on':''}" onclick="setDur('${e.key}','custom')">自訂</button>
+        ${cur==='custom' ? `<input type="datetime-local" value="${esc(durCustom[e.key]||'')}"
+           onchange="setCustom('${e.key}', this.value)">` : ''}
+      </div>`;
+    return `<div class="evRow ${live?'live':''} ${exp?'expired':''}">
+      <div class="evTop">
+        <span class="ei">${e.icon}</span>
+        <span class="en">${esc(e.name)}</span>
+        <span class="ef">${esc(e.ef)}</span>
+        ${st}
+      </div>
+      <div class="evCtl">
+        ${picker}
+        <button class="evBtn ${(live||exp)?'stop':'go'}" onclick="toggleEvent('${e.key}')">
+          ${(live||exp) ? '關閉活動' : '開啟活動'}
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+}
+// 倒數每 30 秒更新
+setInterval(renderConsole, 30000);
 
 /* ===== 總繪製 ===== */
 let raf = null;
