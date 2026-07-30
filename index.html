@@ -65,9 +65,19 @@
 
   /* ===== 登入遮罩 ===== */
   #pickOverlay {
-    position:fixed; inset:0; background:var(--bg); z-index:100;
-    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:24px;
+    position:fixed; inset:0;
+    height:100dvh;                          /* iOS 動態網址列：100vh 會算錯 */
+    min-height:-webkit-fill-available;      /* 舊版 iOS fallback */
+    width:100vw;
+    background:var(--bg);                   /* 必須完全不透明 */
+    z-index:1000;                           /* 高於 nav(20) 與所有分頁 */
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+    padding:24px calc(24px + env(safe-area-inset-right))
+            calc(24px + env(safe-area-inset-bottom))
+            calc(24px + env(safe-area-inset-left));
+    overflow-y:auto;                        /* 鍵盤彈出/橫向時可捲，不外溢 */
   }
+  body.locked main{ overflow:hidden; }      /* 遮罩顯示時底層不可捲 */
   #pickOverlay .logo{ font-size:50px; filter:drop-shadow(0 4px 20px rgba(233,196,106,.4)); animation:bob 3s ease-in-out infinite; }
   @keyframes bob{ 50%{ transform:translateY(-8px);} }
   #pickOverlay h1 { font-family:var(--mono); font-size:26px; font-weight:800; letter-spacing:6px; color:var(--gold); }
@@ -725,6 +735,17 @@
     animation:eiPop .6s cubic-bezier(.2,1.5,.4,1) both; }
   .kpRewards{ font-family:var(--mono); font-size:14px; color:var(--gold); line-height:2; text-align:center; }
 
+  .winBar{
+    font-family:var(--mono); font-size:13px; font-weight:800; text-align:center;
+    padding:12px 14px; border-radius:11px; margin-bottom:14px; letter-spacing:.5px;
+  }
+  .winBar.open{ color:var(--gold); background:rgba(233,196,106,.12);
+    border:1px solid rgba(233,196,106,.55); box-shadow:0 0 18px rgba(233,196,106,.16); }
+  .winBar.urgent{ color:#fff; background:rgba(255,60,90,.18);
+    border:1px solid rgba(255,60,90,.7); animation:winPulse 1.1s ease-in-out infinite; }
+  @keyframes winPulse{ 0%,100%{ box-shadow:0 0 10px rgba(255,60,90,.3); } 50%{ box-shadow:0 0 26px rgba(255,60,90,.7); } }
+  .winBar.closed{ color:var(--muted); background:#12141d; border:1px solid var(--line-soft); }
+
   /* ===== 戰鬥特效（全部 transform/opacity 為主，尊重 reduced-motion） ===== */
   .bossStage{ position:relative; display:inline-block; width:100%; max-width:520px; }
   .bossStage.hit{ animation:bossShake .35s ease; }
@@ -1300,6 +1321,7 @@ const {
   cardById, packById, tierById, skillOf, cardOfPack, tierBetter,
   rollRarity, rollTier, skillDamage, dmgMult,
   BOSSES, MILESTONES, bossOfStage, bossImg,
+  ATTACK_WINDOW_MIN, windowId, inAttackWindow, windowEdge, skillKey, castUsed,
 } = window.GAME;
 
 const app = initializeApp(firebaseConfig);
@@ -1331,6 +1353,11 @@ const ledgerRef = () => doc(collection(db,'ledger'));
 const TIER_ORDER = ['D','C','B','A','S'];
 
 const $ = id => document.getElementById(id);
+// 登入遮罩顯示/隱藏統一走這裡，順便鎖住底層捲動
+function showLogin(on){
+  $('pickOverlay').style.display = on ? 'flex' : 'none';
+  document.body.classList.toggle('locked', on);
+}
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function toast(msg){
@@ -1605,7 +1632,7 @@ $('loginBtn').onclick = async ()=>{
     tutChecked = false;
     Object.keys(seen).forEach(k => seen[k].clear());
     $('loginPw').value = ''; loginMsg('');
-    $('pickOverlay').style.display = 'none';
+    showLogin(false);
     renderAll();
     maybeStartTutorial();
     scheduleEnsureDaily();
@@ -1622,7 +1649,7 @@ $('switchBtn').onclick = ()=>{
   tutChecked = false; closeTutorial();
   Object.keys(seen).forEach(k => seen[k].clear());
   $('idInput').value = ''; $('loginPw').value = ''; loginMsg('');
-  $('pickOverlay').style.display = 'flex';
+  showLogin(true);
 };
 
 /* ===== tabs（nav 4 格 + 抽屜共用同一個切換函式） ===== */
@@ -1720,9 +1747,9 @@ onSnapshot(collection(db,'players'), snap=>{
   snap.forEach(d=> players[d.id] = d.data());
   if(!me || !players[me]){
     me = null;
-    $('pickOverlay').style.display = 'flex';
+    showLogin(true);
   } else {
-    $('pickOverlay').style.display = 'none';
+    showLogin(false);
   }
   renderAll();
   checkAchievements();
@@ -2713,11 +2740,10 @@ function renderCards(){
         const tag = k.sp === 'DOT' ? '<span class="sTag">持續 10 小時</span>'
                   : k.sp === 'BUFF' ? '<span class="sTag">下次傷害 +35%</span>'
                   : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>' : '';
-        const rdy = (p.skillReady || {})[c.id + '.' + k.id] || 0;
-        const onCd = Date.now() < rdy;
+        const usedNow = castUsed(bossOf(p), c.id, k.id);
         return `<div class="skRow"><b>${esc(k.name)}</b> ${tag}<br>
           EP ${k.ep}　傷害 <span class="dmgv">${k.dmg > 0 ? real : '—'}</span>　
-          ${onCd ? `<span style="color:var(--pink)">冷卻 ${tickSpan(rdy, { rerender:true, done:'可施放' })}</span>` : `CD ${k.cd}h`}</div>`;
+          ${usedNow ? '<span style="color:var(--pink)">本時段已使用</span>' : '<span style="color:var(--muted)">每時段可用一次</span>'}</div>`;
       }).join('');
       return `<div class="cardTile ${isEq?'eq':''}" style="border-color:${isEq?'var(--gold)':tier.color}">
         ${imgWithFb(cardImg(c.id), 'cImg', 'cFb', '🎴', `background:${rarColor(c.rar)}22`)}
@@ -2826,7 +2852,8 @@ function skillNope(btn, msg){
    DOT 一律「懶結算」：關掉 app 也要繼續掉血，不用 setInterval 即時扣
 ================================================================== */
 function defaultBoss(){
-  return { stage:1, hp: BOSSES[0].hp, dots:[], milestones:[], lastTickAt: Date.now(), buff:false, zoneUntil:0 };
+  return { stage:1, hp: BOSSES[0].hp, dots:[], milestones:[], lastTickAt: Date.now(),
+           buff:false, zoneUntil:0, lastCastWindow:{} };
 }
 function bossOf(p){
   const b = (p && p.boss) || null;
@@ -2875,8 +2902,9 @@ window.useSkill = async (cardId, skillId, ev)=>{
   // 前置檢查：不可用時要讓玩家知道為什麼（抖動 + 音效 + 說明）
   if(isLocked())  return skillNope(btn, '🔒 禁閉中，先完成贖罪任務');
   if(bossOf(p).stage > BOSSES.length) return skillNope(btn, '目前沒有可挑戰的 Boss');
-  const rdyAt = (p.skillReady || {})[cardId + '.' + skillId] || 0;
-  if(Date.now() < rdyAt) return skillNope(btn, `冷卻中，還要 ${msLeftTxt(rdyAt - Date.now())}`);
+  if(!inAttackWindow()) return skillNope(btn,
+    `⏰ 攻擊時段已結束，下次開放還有 ${msLeftTxt(windowEdge() - Date.now())}`);
+  if(castUsed(bossOf(p), cardId, skillId)) return skillNope(btn, '這招本時段已經用過了');
   if(epAvail(p) < k.ep)  return skillNope(btn, `EP 不夠，還差 ${k.ep - epAvail(p)}`);
 
   if(btn && !REDUCED){ btn.classList.remove('fire'); void btn.offsetWidth; btn.classList.add('fire'); }
@@ -2890,11 +2918,10 @@ window.useSkill = async (cardId, skillId, ev)=>{
       const now = Date.now();
 
       if(epAvail(cur) < k.ep) throw new Error(`EP 不夠，還差 ${k.ep - epAvail(cur)}`);
-      const readyKey = cardId + '.' + skillId;
-      const ready = (cur.skillReady || {})[readyKey] || 0;
-      if(now < ready) throw new Error(`冷卻中，還要 ${msLeftTxt(ready - now)}`);
+      if(!inAttackWindow(now)) throw new Error('攻擊時段已結束');
 
       const b = bossOf(cur);
+      if(castUsed(b, cardId, skillId, now)) throw new Error('這招本時段已經用過了');
       const boss = bossOfStage(b.stage);
       if(!boss) throw new Error('目前沒有可挑戰的 Boss');
 
@@ -2906,10 +2933,9 @@ window.useSkill = async (cardId, skillId, ev)=>{
 
       const tierId = own.tier || 'normal';
       const zoneOn = zoneUntil > now;
-      const upd = {
-        epSpent: increment(k.ep),
-        ['skillReady.' + readyKey]: now + k.cd * 3600000,
-      };
+      const upd = { epSpent: increment(k.ep) };   // 舊的 skillReady 不再讀寫
+      const castMap = { ...(b.lastCastWindow || {}) };
+      castMap[skillKey(cardId, skillId)] = windowId(now);
 
       let dealt = 0;
       if(k.sp === 'BUFF'){
@@ -2946,12 +2972,14 @@ window.useSkill = async (cardId, skillId, ev)=>{
         upd.packTickets  = increment(boss.ticket);
         upd.epBonus      = increment(boss.ep);                     // ⚠️ 絕不可寫進 xp
         upd.boss = { stage: b.stage + 1, hp: next ? next.hp : 0,
-                     dots: [], milestones: [], lastTickAt: now, buff:false, zoneUntil:0 };
+                     dots: [], milestones: [], lastTickAt: now, buff:false, zoneUntil:0,
+                     lastCastWindow: castMap };
         tx.set(ledgerRef(), ledgerData('boss', boss.coin, `擊破 ${boss.name}`,
           { stage:b.stage, token:boss.token, ticket:boss.ticket, ep:boss.ep }));
         killed = boss;
       } else {
-        upd.boss = { stage: b.stage, hp, dots, milestones: ms, lastTickAt: now, buff, zoneUntil };
+        upd.boss = { stage: b.stage, hp, dots, milestones: ms, lastTickAt: now, buff, zoneUntil,
+                     lastCastWindow: castMap };
         tx.set(ledgerRef(), ledgerData('boss', 0, k.name, { dmg: dealt, stage: b.stage }));
       }
       tx.update(ref, upd);
@@ -2997,7 +3025,7 @@ $('kpBtn').onclick = ()=>{
   renderBoss();                             // 關閉後載入下一關
 };
 
-let bossGhostHp = null, bossGhostStage = null;
+let bossGhostHp = null, bossGhostStage = null, lastWinOpen = null;
 function renderBoss(){
   if(!me || !players[me]) return;
   const p = players[me];
@@ -3022,6 +3050,17 @@ function renderBoss(){
   const zoneOn = (b.zoneUntil || 0) > now;
   const dmgX = dmgMult();
   // 血條殘影：先畫在「上一次的血量」，下一幀才追上 → 看得出這一擊打掉多少
+  const winOpen = inAttackWindow(now);
+  const winEdge = windowEdge(now);
+  const winLeft = winEdge - now;
+  const nh = new Date(winEdge);
+  const nextHourTxt = `${String(nh.getHours()).padStart(2,'0')}:00`;
+  // 時段剛開始的瞬間給提示（狀態切換 + 一次音效）
+  if(lastWinOpen !== null && lastWinOpen === false && winOpen){
+    sfxLevelUp(); toast('⚔️ 攻擊時段開始！');
+  }
+  lastWinOpen = winOpen;
+
   if(bossGhostHp === null || bossGhostStage !== b.stage) bossGhostHp = hp;
   bossGhostStage = b.stage;
   const ghostPct = Math.max(0, Math.min(100, bossGhostHp / boss.hp * 100));
@@ -3034,31 +3073,35 @@ function renderBoss(){
     return `<div class="card" style="border-color:${tier.color}">
       <div class="title">${esc(c.name)} <span class="tierPill" style="background:${tier.color}22;color:${tier.color};border:1px solid ${tier.color}">${tier.name} ×${tier.mult}</span></div>
       ${c.skills.map(k=>{
-        const ready = (p.skillReady || {})[id + '.' + k.id] || 0;
-        const cding = now < ready;
+        const used = castUsed(b, id, k.id, now);
         const real = skillDamage(k.dmg, own.tier, { buff: b.buff, zone: zoneOn });
         const noEp = ep < k.ep;
         const tag = k.sp === 'DOT' ? '<span class="sTag">10 小時持續</span>'
                   : k.sp === 'BUFF' ? '<span class="sTag">下次 +35%</span>'
                   : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>' : '';
-        const unusable = cding || noEp || isLocked();
+        const unusable = used || noEp || isLocked() || !winOpen;
         return `<button class="skillBtn ${unusable ? 'dis' : ''}" onclick="useSkill('${id}','${k.id}', event)">
           <div class="sTop2"><span class="sN">${esc(k.name)}</span>${tag}</div>
           <div class="sInfo">
             ⚡ ${k.ep}　${k.dmg > 0
               ? `傷害 <span class="dm ${dmgX > 1 ? 'evt' : ''}">${real}${dmgX > 1 ? ' ⚔️×2' : ''}</span>`
-              : '無傷害'}　
-            ${cding ? `<span style="color:var(--pink)">冷卻 ${tickSpan(ready, { rerender:true, done:'可施放' })}</span>` : `CD ${k.cd}h`}
+              : '無傷害'}
+            ${used ? '　<span style="color:var(--pink)">本時段已使用</span>' : ''}
+            ${!winOpen && !used ? '　<span style="color:var(--muted)">等下個時段</span>' : ''}
             ${noEp ? '　<span style="color:var(--pink)">EP 不足</span>' : ''}
           </div>
-          ${cding ? `<div class="cdbar" data-until="${ready}" data-total="${k.cd*3600000}"
-            style="transform:scaleX(${Math.max(0,(ready-now)/(k.cd*3600000)).toFixed(3)})"></div>` : ''}
         </button>`;
       }).join('')}
     </div>`;
   }).join('') : `<div class="empty">還沒裝備卡片，先去「🎴 卡片」裝備最多 ${EQUIP_MAX} 張</div>`;
 
   $('bossBody').innerHTML = `
+    <div class="winBar ${winOpen ? (winLeft <= 180000 ? 'urgent' : 'open') : 'closed'}">
+      ${winOpen
+        ? `⚔️ 攻擊時段進行中　剩 ${tickSpan(winEdge, { rerender:true, done:'已結束' })}`
+        : `⏰ 攻擊時段已結束　下次開放 ${nextHourTxt}（還有 ${tickSpan(winEdge, { rerender:true, done:'開放中！' })}）`}
+    </div>
+
     <div class="bossWrap">
       <div class="bossStage" id="bossStage">
         ${imgWithFb(bossImg(b.stage), 'bossImg', 'bossFb', '👹', '')}
