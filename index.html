@@ -110,7 +110,7 @@
   }
   .idblock{ flex:1; min-width:0; }
   .nameRow{ display:flex; align-items:center; gap:8px; }
-  #myName{ font-size:16px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:88px; }
+  #myName{ font-size:16px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:none; }
   .lvPill{
     flex-shrink:0; font-family:var(--mono); font-size:11px; font-weight:800; letter-spacing:.5px;
     padding:3px 9px; border-radius:5px; color:#1a1206;
@@ -143,10 +143,17 @@
   }
   .xpTxt{ font-family:var(--mono); font-size:10px; color:var(--muted); font-weight:700; flex-shrink:0; }
 
-  .hdr-right{
-    display:flex; flex-direction:column; align-items:flex-end; gap:6px;
-    flex-shrink:0;                    /* 不准被 idblock 壓縮 */
+  .drawerSet{ margin-top:14px; padding-top:13px; border-top:1px solid var(--line-soft); }
+  .drawerSet .dsT{ font-family:var(--mono); font-size:11px; color:var(--gold-dim);
+    letter-spacing:1.5px; margin-bottom:9px; }
+  .drawerSet .dsBtns{ display:flex; gap:9px; }
+  .dsBtn{
+    flex:1; min-height:44px; border-radius:11px; cursor:pointer;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
+    border:1px solid var(--line-soft); color:var(--text);
+    font-family:var(--mono); font-size:12.5px; font-weight:700;
   }
+  .dsBtn:active{ transform:scale(.96); }
   #coinBox {
     display:flex; align-items:center; gap:6px;
     background:linear-gradient(145deg,#12141d,#0c0e15);
@@ -388,6 +395,17 @@
     box-shadow:0 0 0 1px rgba(233,196,106,.4), 0 6px 16px rgba(233,196,106,.2);
   }
   #tutBubble .tNext:active{ transform:translateY(2px) scale(.97); }
+  #tutBubble .tSkip{
+    position:absolute; top:8px; right:8px; width:30px; height:30px; border-radius:8px; cursor:pointer;
+    background:none; border:1px solid var(--line-soft); color:var(--muted);
+    font-family:var(--mono); font-size:14px; line-height:1;
+  }
+  .helpBtn{
+    min-width:44px; min-height:44px; border-radius:11px; cursor:pointer;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
+    border:1px solid var(--line-soft); color:var(--gold); font-size:17px;
+  }
+  .pageHd{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
 
   /* ===== 抽屜選單 ===== */
   #drawerMask{
@@ -419,7 +437,7 @@
 
   /* ===== 合成稱號 pill ===== */
   .titlePill{
-    flex-shrink:1; max-width:96px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    flex-shrink:1; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
     font-family:var(--mono); font-size:10.5px; font-weight:800; letter-spacing:.3px;
     padding:3px 8px; border-radius:5px; color:#1a1206;
     background:linear-gradient(180deg,#d9b3ff,#9a6ae0); box-shadow:0 0 12px rgba(154,106,224,.35);
@@ -615,6 +633,9 @@
   .saleTag{ font-family:var(--mono); font-size:10px; font-weight:800; color:#1a1206;
     background:linear-gradient(180deg,#ff9d5c,#e0632c); padding:2px 7px; border-radius:5px; margin-left:6px; }
 
+  .tick{ font-variant-numeric:tabular-nums; }
+  .tick.tickDone{ color:var(--cyan); }
+
   /* ===== 卡牌 / Boss ===== */
   .imgFallback{ align-items:center; justify-content:center; font-size:34px; }
   .packGrid{ display:grid; grid-template-columns:repeat(2,1fr); gap:11px; }
@@ -703,6 +724,100 @@
   .kpName{ font-size:38px; font-weight:900; color:#fff; margin:6px 0 10px;
     animation:eiPop .6s cubic-bezier(.2,1.5,.4,1) both; }
   .kpRewards{ font-family:var(--mono); font-size:14px; color:var(--gold); line-height:2; text-align:center; }
+
+  /* ===== 戰鬥特效（全部 transform/opacity 為主，尊重 reduced-motion） ===== */
+  .bossStage{ position:relative; display:inline-block; width:100%; max-width:520px; }
+  .bossStage.hit{ animation:bossShake .35s ease; }
+  @keyframes bossShake{
+    0%,100%{ transform:translateX(0) rotate(0); }
+    15%{ transform:translateX(-6px) rotate(-1.5deg); }
+    35%{ transform:translateX(6px) rotate(1.5deg); }
+    55%{ transform:translateX(-4px) rotate(-1deg); }
+    75%{ transform:translateX(4px) rotate(.8deg); }
+  }
+  .bossFlash{
+    position:absolute; inset:0; border-radius:12px; pointer-events:none;
+    background:#ff2b46; opacity:0;
+  }
+  .bossFlash.on{ animation:bossFlash .25s ease; }
+  @keyframes bossFlash{ 0%{opacity:0;} 40%{opacity:.35;} 100%{opacity:0;} }
+  .bossStage.dotcast::after{
+    content:''; position:absolute; inset:-6px; border-radius:16px; pointer-events:none;
+    box-shadow:0 0 34px 6px rgba(154,106,224,.75); animation:dotGlow 1.5s ease;
+  }
+  @keyframes dotGlow{ 0%,100%{ opacity:0; } 30%,60%{ opacity:1; } }
+
+  .dmgNum{
+    position:fixed; z-index:300; pointer-events:none; will-change:transform,opacity;
+    font-family:var(--mono); font-weight:800; font-size:30px; color:var(--pink);
+    text-shadow:0 2px 10px rgba(0,0,0,.9), 0 0 18px rgba(255,107,129,.6);
+  }
+  .dmgNum.boon{ color:var(--gold); text-shadow:0 2px 10px rgba(0,0,0,.9), 0 0 20px rgba(233,196,106,.75); }
+  .dmgNum small{ font-size:14px; margin-left:4px; opacity:.9; }
+
+  .fxBar{
+    position:fixed; left:50%; z-index:300; transform:translateX(-50%);
+    font-family:var(--mono); font-size:12.5px; font-weight:700; padding:9px 16px; border-radius:99px;
+    pointer-events:none; white-space:nowrap; box-shadow:0 8px 24px rgba(0,0,0,.5);
+  }
+  .fxBar.dot{ background:linear-gradient(180deg,#2a1c46,#180f2c); color:#d9b3ff;
+    border:1px solid rgba(201,160,255,.6); }
+  .fxBar.buff{ background:linear-gradient(180deg,#2e2712,#1a1509); color:var(--gold);
+    border:1px solid rgba(233,196,106,.6); }
+
+  /* 血條殘影（白條） */
+  .hpGhost{ position:absolute; left:0; top:0; bottom:0; background:rgba(255,180,190,.45);
+    transition:width .6s ease .35s; }
+  .hpFill{ position:relative; z-index:1; }
+  .hpBar.low .hpFill{ animation:hpDanger 1.4s ease-in-out infinite; }
+  @keyframes hpDanger{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.55); } }
+
+  /* ZONE 全畫面青光 */
+  #zoneAura{ position:fixed; inset:0; z-index:2; pointer-events:none; display:none;
+    box-shadow:inset 0 0 90px rgba(95,240,220,.30); }
+  #zoneAura.on{ display:block; animation:zoneBreath 3s ease-in-out infinite; }
+  @keyframes zoneBreath{ 0%,100%{ opacity:.55; } 50%{ opacity:1; } }
+
+  /* BUFF 橫幅 */
+  .buffBanner{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    font-family:var(--mono); font-size:12.5px; font-weight:800; color:var(--gold);
+    background:linear-gradient(180deg,rgba(233,196,106,.16),rgba(233,196,106,.06));
+    border:1px solid rgba(233,196,106,.5); border-radius:10px; padding:10px; margin-bottom:11px;
+    animation:popIn .4s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  @keyframes popIn{ from{ transform:scale(.85); opacity:0; } }
+  .dotPill{ animation:popIn .4s cubic-bezier(.34,1.56,.64,1) both; }
+
+  /* 技能按鈕：按壓、冷卻條、不可用抖動 */
+  .skillBtn{ position:relative; overflow:hidden; min-height:56px; }
+  .skillBtn:active{ transform:scale(.94); }
+  .skillBtn.fire{ animation:btnFire .45s ease; }
+  @keyframes btnFire{ 0%{ box-shadow:0 0 0 0 rgba(233,196,106,.9); } 100%{ box-shadow:0 0 0 14px rgba(233,196,106,0); } }
+  .skillBtn.nope{ animation:nope .3s ease; }
+  @keyframes nope{ 0%,100%{transform:translateX(0);} 25%{transform:translateX(-7px);} 75%{transform:translateX(7px);} }
+  .skillBtn.dis{ opacity:.45; }
+  .cdbar{
+    position:absolute; left:0; bottom:0; height:3px; width:100%; transform-origin:left center;
+    background:linear-gradient(90deg,var(--pink),#ff9d5c); will-change:transform;
+  }
+
+  /* 擊殺演出 */
+  #killPop .kpBoss{ width:min(320px,74vw); aspect-ratio:16/9; object-fit:cover; border-radius:12px;
+    animation:kpBreak 1.2s ease forwards; }
+  @keyframes kpBreak{
+    0%{ transform:scale(1) rotate(0); opacity:1; filter:brightness(1); }
+    22%{ transform:scale(1.06) rotate(-2deg); filter:brightness(2.4) saturate(0); }
+    45%{ transform:scale(.98) rotate(2.5deg); }
+    100%{ transform:scale(.72) rotate(-6deg); opacity:0; filter:blur(6px); }
+  }
+  .kpRewards .rw{ opacity:0; animation:rwIn .5s cubic-bezier(.34,1.56,.64,1) forwards; }
+  @keyframes rwIn{ from{ opacity:0; transform:translateY(14px) scale(.8); } to{ opacity:1; transform:none; } }
+
+  @media (prefers-reduced-motion: reduce){
+    .bossStage.hit, .bossFlash.on, .skillBtn.nope, .skillBtn.fire{ animation:none !important; }
+    .dmgNum{ animation-duration:.35s !important; }
+  }
 
   /* ===== 天賦系統 ===== */
   .tkBar{
@@ -871,10 +986,10 @@
   @media (max-width: 400px){
     header{ padding:11px 10px 9px; gap:8px; }
     #coinBox{ padding:6px 9px; }
-    #coinBox .amt{ font-size:15px; }
+    #coinBox .amt{ font-size:16px; }
     .avatar{ width:34px; height:34px; font-size:17px; }
-    #myName{ max-width:70px; }
-    .titlePill{ max-width:78px; }
+    #myName{ max-width:100px; }
+    .titlePill{ max-width:84px; }
     .xpTxt{ font-size:9px; }
   }
 
@@ -903,18 +1018,13 @@
       <span id="myName">—</span>
       <span class="lvPill" id="lvPill">Lv.1</span>
       <span class="titlePill" id="titlePill" style="display:none"></span>
-      <button id="switchBtn">換人</button>
-      <button id="replayBtn" class="iconBtn" style="padding:2px 6px">📖</button>
     </div>
     <div class="xpWrap">
       <div class="xpBar"><div class="xpFill" id="xpFill"></div></div>
       <span class="xpTxt" id="xpTxt">0 / 200</span>
     </div>
   </div>
-  <div class="hdr-right">
-    <button id="muteBtn" class="iconBtn">🔊</button>
-    <div id="coinBox">🪙 <span class="amt" id="myCoins">0</span><span class="debtTag" id="debtTag" style="display:none">負債</span></div>
-  </div>
+  <div id="coinBox">🪙 <span class="amt" id="myCoins">0</span><span class="debtTag" id="debtTag" style="display:none">負債</span></div>
 </header>
 
 <main>
@@ -985,6 +1095,10 @@
 
   <!-- 天賦頁 -->
   <div class="page" id="page-talent">
+    <div class="pageHd">
+      <h2 style="margin:0">天賦樹</h2>
+      <button class="helpBtn" onclick="replayTut('talent')" title="教學">❓</button>
+    </div>
     <div id="talentBody"></div>
   </div>
 
@@ -1001,6 +1115,10 @@
 
   <!-- Boss -->
   <div class="page" id="page-boss">
+    <div class="pageHd">
+      <h2 style="margin:0">Boss 挑戰</h2>
+      <button class="helpBtn" onclick="replayTut('boss')" title="教學">❓</button>
+    </div>
     <div id="bossBody"></div>
   </div>
 
@@ -1060,6 +1178,13 @@
     <div class="drawerItem" data-p="boss"><span class="dic">⚔️</span><span class="dname">Boss</span></div>
     <div class="drawerItem" data-p="penalty"><span class="dic">🔒</span><span class="dname">我的罰單</span></div>
   </div>
+  <div class="drawerSet">
+    <div class="dsT">⚙️ 設定</div>
+    <div class="dsBtns">
+      <button class="dsBtn" id="muteBtn">🔊 音效：開</button>
+      <button class="dsBtn" id="switchBtn">🔄 換人</button>
+    </div>
+  </div>
 </div>
 
 <!-- 活動開場動畫 -->
@@ -1071,6 +1196,7 @@
   <div class="eiTip">點一下關閉</div>
 </div>
 <div id="coinRain"></div>
+<div id="zoneAura"></div>
 
 <!-- 開包演出 -->
 <div id="packPop">
@@ -1087,6 +1213,7 @@
 <!-- 擊殺演出 -->
 <div id="killPop">
   <div class="luRay"></div>
+  <div class="kpImgBox" id="kpImgBox"></div>
   <div class="kpTitle">BOSS 擊破！</div>
   <div class="kpName" id="kpName"></div>
   <div class="kpRewards" id="kpRewards"></div>
@@ -1128,6 +1255,7 @@
   <div id="tutBubble">
     <div class="tTitle" id="tutTitle"></div>
     <div class="tText" id="tutText"></div>
+    <button class="tSkip" id="tutSkip" title="跳過">✕</button>
     <div class="tFoot">
       <span class="tProg" id="tutProg"></span>
       <button class="tNext" id="tutNext">下一步</button>
@@ -1342,7 +1470,7 @@ const sfxTick    = (p)=>{ tone(520 + Math.max(0,Math.min(1,p)) * 900, 0.045, 'sq
 const sfxRare    = ()=>{ [523,659,784,1047,1319].forEach((f,i)=> tone(f,0.3,'sine',0.2,i*0.11)); };
 const sfxCraft   = ()=>{ noiseBurst(0.09,0.2); [392,523,659,880].forEach((f,i)=> tone(f,0.25,'triangle',0.18,0.05+i*0.08)); };
 
-function updateMuteBtn(){ $('muteBtn').textContent = muted ? '🔇' : '🔊'; }
+function updateMuteBtn(){ $('muteBtn').textContent = muted ? '🔇 音效：關' : '🔊 音效：開'; }
 $('muteBtn').onclick = ()=>{
   muted = !muted;
   localStorage.setItem('tb_muted', muted ? '1' : '0');
@@ -1459,7 +1587,7 @@ $('loginBtn').onclick = async ()=>{
       }
       await setDoc(ref, {
         name:id, coins:0, xp:0, totalEarned:0, tasksDone:0, tasksGrabbed:0,
-        achievements:[], tutorialDone:false,
+        achievements:[],
         pw: await hashPw(pw), createdAt: serverTimestamp()
       });
     } else if(!s.data().pw){
@@ -1515,10 +1643,10 @@ function goTab(name){
   if(name === 'penalty') renderPenalty();
   if(name === 'titles') renderTitles();
   if(name === 'titleshop') renderTitleShop();
-  if(name === 'talent') renderTalent();
+  if(name === 'talent'){ renderTalent(); maybeAutoTut('talent'); }
   if(name === 'packshop'){ ensureDailyPacks(); renderPackShop(); }
   if(name === 'cards') renderCards();
-  if(name === 'boss'){ settleBoss(); renderBoss(); }
+  if(name === 'boss'){ settleBoss(); renderBoss(); maybeAutoTut('boss'); }
 }
 window.goTab = goTab;   // 供 inline onclick 使用（背包的「去抽獎」）
 document.querySelectorAll('nav button[data-p]').forEach(b=>{
@@ -2125,7 +2253,7 @@ function renderTalent(){
     const cost = isMax ? 0 : t.cost[cur-1];
     const nextAdd = isMax ? null : t.add[cur];
     const can = !isMax && avail >= cost;
-    return `<div class="tree ${isMax?'max':''}">
+    return `<div class="tree ${isMax?'max':''}" id="tree-${t.key}">
       <div class="thd">
         <span class="tic">${t.icon}</span>
         <span class="tnm">${t.name}</span>
@@ -2152,7 +2280,7 @@ function renderTalent(){
   const pct = n => (n>=0?'+':'') + Math.round(n*100) + '%';
 
   $('talentBody').innerHTML = `
-    <div class="tkBar">
+    <div class="tkBar" id="talentAvailBox">
       <span class="tkIc">${TALENT_ICON}</span>
       <div class="tkMain">
         <div class="tkNum">${avail}</div>
@@ -2190,7 +2318,7 @@ function renderTalent(){
     </div>
 
     <h2>重置</h2>
-    <button class="btn talent" style="width:100%" onclick="respecTalent()" ${spent?'':'disabled'}>
+    <button class="btn talent" id="respecBtn" style="width:100%" onclick="respecTalent()" ${spent?'':'disabled'}>
       🔄 洗點（🪙 ${RESPEC_COST}）
     </button>
     <div class="sub" style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px;line-height:1.7">
@@ -2220,9 +2348,9 @@ function renderEventBanner(){
   box.innerHTML = `<div class="evtBar">
     <div class="evtHd"><span class="evtDot"></span><span class="t">活動進行中</span></div>
     <div class="evtList">${list.map(e=>{
-      const left = evtLeft(eventUntil(e.key));
+      const u = eventUntil(e.key);
       return `<span class="evtPill"><span>${e.icon}</span><span class="en">${esc(e.name)}</span>${
-        left ? `<span class="ec">${left}</span>` : ''}</span>`;
+        u ? `<span class="ec">剩 ${tickSpan(new Date(u).getTime(), { done:'已結束' })}</span>` : ''}</span>`;
     }).join('')}</div>
   </div>`;
 }
@@ -2474,11 +2602,64 @@ function equipLockLeft(p){
   const t = (p && p.equipSlotReadyAt) || 0;
   return Math.max(0, t - Date.now());
 }
+// 不到一分鐘要顯示秒數，不能顯示「0 分」
 function msLeftTxt(ms){
   if(ms <= 0) return '';
-  const h = Math.floor(ms/3600000), m = Math.floor(ms/60000) % 60;
-  return h > 0 ? `${h} 小時 ${m} 分` : `${m} 分`;
+  const s = Math.ceil(ms/1000);
+  const h = Math.floor(s/3600), m = Math.floor(s/60) % 60, sec = s % 60;
+  if(h > 0) return `${h}小時${m}分`;
+  if(m > 0) return `${m}分${sec}秒`;
+  return `${sec}秒`;
 }
+
+/* ==================================================================
+   輕量倒數計時器
+   只更新文字節點，不重繪整頁 → 不會打斷轉盤/飛幣動畫，也不閃爍
+   用法：<span class="tick" data-until="時間戳" data-suffix="" data-done="" data-rerender="1">
+================================================================== */
+function tickSpan(until, opt){
+  const o = opt || {};
+  const left = until - Date.now();
+  const txt = left > 0 ? msLeftTxt(left) + (o.suffix || '') : (o.done || '');
+  return `<span class="tick ${left <= 0 ? 'tickDone' : ''} ${o.cls || ''}"
+    data-until="${until}" data-suffix="${esc(o.suffix || '')}"
+    data-done="${esc(o.done || '')}" ${o.rerender ? 'data-rerender="1"' : ''}>${esc(txt)}</span>`;
+}
+
+function tickUpdate(){
+  const now = Date.now();
+  let expired = false;
+  document.querySelectorAll('.tick').forEach(el=>{
+    const until = Number(el.dataset.until || 0);
+    const left = until - now;
+    if(left <= 0){
+      if(!el.classList.contains('tickDone')){
+        el.textContent = el.dataset.done || '';
+        el.classList.add('tickDone');
+        if(el.dataset.rerender === '1') expired = true;   // 有東西歸零才重繪一次
+      }
+    } else {
+      el.textContent = msLeftTxt(left) + (el.dataset.suffix || '');
+    }
+  });
+  document.querySelectorAll('.cdbar').forEach(el=>{
+    const until = Number(el.dataset.until || 0), total = Number(el.dataset.total || 0);
+    const left = Math.max(0, until - now);
+    el.style.transform = `scaleX(${total ? (left/total).toFixed(4) : 0})`;
+  });
+  if(expired) refreshTimedPage();
+}
+// 只重繪「當下這一頁」，而且只在真的有東西歸零時
+function refreshTimedPage(){
+  const on = document.querySelector('.page.on');
+  if(!on) return;
+  if(on.id === 'page-boss')       renderBoss();
+  else if(on.id === 'page-cards') renderCards();
+  else if(on.id === 'page-lottery') renderLottery();
+}
+setInterval(()=>{ if(!document.hidden) tickUpdate(); }, 1000);
+// 回到前景立刻補正，不會落後
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) tickUpdate(); });
 
 window.equipCard = async (id)=>{
   if(lockGuard()) return;
@@ -2532,8 +2713,11 @@ function renderCards(){
         const tag = k.sp === 'DOT' ? '<span class="sTag">持續 10 小時</span>'
                   : k.sp === 'BUFF' ? '<span class="sTag">下次傷害 +35%</span>'
                   : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>' : '';
+        const rdy = (p.skillReady || {})[c.id + '.' + k.id] || 0;
+        const onCd = Date.now() < rdy;
         return `<div class="skRow"><b>${esc(k.name)}</b> ${tag}<br>
-          EP ${k.ep}　傷害 <span class="dmgv">${k.dmg > 0 ? real : '—'}</span>　CD ${k.cd}h</div>`;
+          EP ${k.ep}　傷害 <span class="dmgv">${k.dmg > 0 ? real : '—'}</span>　
+          ${onCd ? `<span style="color:var(--pink)">冷卻 ${tickSpan(rdy, { rerender:true, done:'可施放' })}</span>` : `CD ${k.cd}h`}</div>`;
       }).join('');
       return `<div class="cardTile ${isEq?'eq':''}" style="border-color:${isEq?'var(--gold)':tier.color}">
         ${imgWithFb(cardImg(c.id), 'cImg', 'cFb', '🎴', `background:${rarColor(c.rar)}22`)}
@@ -2564,13 +2748,77 @@ function renderCards(){
       </div>
       <div class="tkSide">
         ⚡ EP ${epAvail(p).toLocaleString()}<br>
-        ${lockLeft > 0 ? `<span style="color:var(--pink)">換卡冷卻 ${msLeftTxt(lockLeft)}</span>` : '可自由換卡'}
+        ${lockLeft > 0 ? `<span style="color:var(--pink)">換卡冷卻 ${tickSpan(p.equipSlotReadyAt || 0, { rerender:true, done:'已解除' })}</span>` : '可自由換卡'}
       </div>
     </div>
     <div class="sub" style="font-family:var(--mono);font-size:11px;color:var(--muted);margin:-6px 0 14px;line-height:1.8">
       卸下任何一張卡會進入 12 小時換卡冷卻。技能 CD 不受裝卸影響，卸下再裝上不會重置。
     </div>
     ${groups}`;
+}
+
+/* ==================================================================
+   戰鬥特效
+   元素一律掛 body 並用 fixed 定位，這樣 snapshot 重繪不會把動畫洗掉
+================================================================== */
+const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const dmgNodes = [];                 // 同時存在的傷害數字，上限 8
+
+function bossRect(){
+  const el = $('bossStage');
+  return el ? el.getBoundingClientRect() : null;
+}
+// ① 傷害數字彈出
+function dmgPop(amount, boonTxt){
+  const r = bossRect(); if(!r) return;
+  const el = document.createElement('div');
+  el.className = 'dmgNum' + (boonTxt ? ' boon' : '');
+  el.innerHTML = `-${amount.toLocaleString()}${boonTxt ? `<small>${esc(boonTxt)}</small>` : ''}`;
+  const jx = (Math.random() - .5) * 40;                 // ±20px 隨機偏移，避免完全重疊
+  el.style.left = (r.left + r.width/2 + jx) + 'px';
+  el.style.top  = (r.top + r.height*0.32) + 'px';
+  document.body.appendChild(el);
+  dmgNodes.push(el);
+  while(dmgNodes.length > 8) dmgNodes.shift().remove();  // 超過就移除最舊的
+  el.animate([
+    { transform:'translate(-50%,0) scale(.4)', opacity:0 },
+    { transform:'translate(-50%,-10px) scale(1.15)', opacity:1, offset:.3 },
+    { transform:'translate(-50%,-22px) scale(1)', opacity:1, offset:.55 },
+    { transform:'translate(-50%,-40px) scale(1)', opacity:0 },
+  ], { duration: REDUCED ? 350 : 800, easing:'cubic-bezier(.2,.9,.3,1)' })
+    .onfinish = ()=>{ el.remove(); const i = dmgNodes.indexOf(el); if(i>=0) dmgNodes.splice(i,1); };
+}
+// ② Boss 受擊震動 + 紅閃
+function bossHit(){
+  if(REDUCED) return;
+  const st = $('bossStage'), fl = $('bossFlash');
+  if(st){ st.classList.remove('hit'); void st.offsetWidth; st.classList.add('hit'); }
+  if(fl){ fl.classList.remove('on'); void fl.offsetWidth; fl.classList.add('on'); }
+}
+// ⑤⑥ 浮出提示條
+function fxBar(text, kind){
+  const r = bossRect();
+  const el = document.createElement('div');
+  el.className = 'fxBar ' + (kind || 'dot');
+  el.textContent = text;
+  el.style.top = (r ? r.bottom + 10 : window.innerHeight * .5) + 'px';
+  document.body.appendChild(el);
+  el.animate([
+    { transform:'translateX(-50%) translateY(10px)', opacity:0 },
+    { transform:'translateX(-50%) translateY(0)', opacity:1, offset:.15 },
+    { transform:'translateX(-50%) translateY(0)', opacity:1, offset:.75 },
+    { transform:'translateX(-50%) translateY(-12px)', opacity:0 },
+  ], { duration:2200, easing:'ease' }).onfinish = ()=> el.remove();
+}
+function dotCast(text){
+  const st = $('bossStage');
+  if(st && !REDUCED){ st.classList.remove('dotcast'); void st.offsetWidth; st.classList.add('dotcast'); }
+  fxBar(text, 'dot');
+}
+// ⑧ 不可用的技能：抖動 + 音效 + 說明
+function skillNope(btn, msg){
+  if(btn && !REDUCED){ btn.classList.remove('nope'); void btn.offsetWidth; btn.classList.add('nope'); }
+  sfxError(); toast(msg);
 }
 
 /* ==================================================================
@@ -2617,15 +2865,23 @@ async function settleBoss(){
   } catch(e){}
 }
 
-window.useSkill = async (cardId, skillId)=>{
-  if(lockGuard()) return;
+window.useSkill = async (cardId, skillId, ev)=>{
+  const btn = ev && ev.currentTarget ? ev.currentTarget : null;
   const k = skillOf(cardId, skillId);
   const p = players[me] || {};
   const own = cardOwned(p, cardId);
   if(!k || !own) return;
-  if(bossOf(p).stage > BOSSES.length){ toast('目前沒有可挑戰的 Boss'); return; }
 
-  let killed = null, msGot = [];
+  // 前置檢查：不可用時要讓玩家知道為什麼（抖動 + 音效 + 說明）
+  if(isLocked())  return skillNope(btn, '🔒 禁閉中，先完成贖罪任務');
+  if(bossOf(p).stage > BOSSES.length) return skillNope(btn, '目前沒有可挑戰的 Boss');
+  const rdyAt = (p.skillReady || {})[cardId + '.' + skillId] || 0;
+  if(Date.now() < rdyAt) return skillNope(btn, `冷卻中，還要 ${msLeftTxt(rdyAt - Date.now())}`);
+  if(epAvail(p) < k.ep)  return skillNope(btn, `EP 不夠，還差 ${k.ep - epAvail(p)}`);
+
+  if(btn && !REDUCED){ btn.classList.remove('fire'); void btn.offsetWidth; btn.classList.add('fire'); }
+
+  let killed = null, fx = null;
   try {
     await runTransaction(db, async tx=>{
       const ref = doc(db,'players',me);
@@ -2670,22 +2926,22 @@ window.useSkill = async (cardId, skillId)=>{
         if(buff) buff = false;
         hp = Math.max(0, hp - dealt);
       }
+      // 演出用資訊（倍率標記：BUFF / ZONE / 活動加倍）
+      const marks = [];
+      if(k.sp !== 'BUFF' && k.sp !== 'ZONE'){
+        if(zoneOn) marks.push('×1.35');
+        if(b.buff) marks.push('×1.35');
+        if(dmgMult() > 1) marks.push('×2');
+      }
+      fx = { sp:k.sp, dealt, marks: marks.join(' '), perHour: Math.round(dealt / DOT_HOURS), name:k.name };
 
-      // 血量里程碑：75/50/25% 各給該關 coin 的 20%，每關只領一次
-      const ms = [...(b.milestones || [])];
-      let msCoin = 0;
-      for(const m of MILESTONES){
-        if(!ms.includes(m) && hp <= boss.hp * m / 100){ ms.push(m); msCoin += Math.round(boss.coin * 0.2); msGot.push(m); }
-      }
-      if(msCoin > 0){
-        upd.coins = increment(msCoin);
-        tx.set(ledgerRef(), ledgerData('boss', msCoin, `${boss.name} 里程碑`, { stage:b.stage, ms:msGot }));
-      }
+      // v1.4：血量里程碑獎勵已移除（boss.milestones 欄位保留但不再讀取與發放）
+      const ms = b.milestones || [];
 
       if(hp <= 0){
         // 擊殺：獎勵直接讀 BOSSES 欄位
         const next = bossOfStage(b.stage + 1);
-        upd.coins        = increment((msCoin || 0) + boss.coin);   // 不加 totalEarned / xp
+        upd.coins        = increment(boss.coin);                   // 不加 totalEarned / xp
         upd.bonusTokens  = increment(boss.token);
         upd.packTickets  = increment(boss.ticket);
         upd.epBonus      = increment(boss.ep);                     // ⚠️ 絕不可寫進 xp
@@ -2702,21 +2958,46 @@ window.useSkill = async (cardId, skillId)=>{
     });
 
     if(killed){ showKill(killed); }
-    else {
-      sfxGrab();
-      if(msGot.length) toast(`里程碑達成 ${msGot.join('%・')}%，金幣入帳 🪙`);
+    else if(fx){
+      if(fx.sp === 'DOT'){
+        dotCast(`☠️ 每小時 ${fx.perHour} 傷害・持續 ${DOT_HOURS} 小時`);
+        sfxGrab();
+      } else if(fx.sp === 'BUFF'){
+        fxBar('✨ 下一招 +35%', 'buff'); sfxGrab();
+      } else if(fx.sp === 'ZONE'){
+        fxBar('🔵 ZONE 啟動・8 小時內 +35%', 'buff'); sfxGrab();
+      } else {
+        dmgPop(fx.dealt, fx.marks); bossHit(); sfxGrab();
+      }
     }
   } catch(e){ sfxError(); toast(e.message); }
 };
 
 function showKill(boss){
+  const stage = BOSSES.indexOf(boss) + 1;
   $('kpName').textContent = boss.name;
-  $('kpRewards').innerHTML = `🪙 ${boss.coin}<br>${TALENT_ICON} ${boss.token}<br>🎟️ 卡包券 ${boss.ticket}<br>⚡ EP ${boss.ep}`;
+  // Boss 圖裂開／震動後淡出
+  $('kpImgBox').innerHTML = imgWithFb(bossImg(stage), 'kpBoss', 'kpBoss fb', '👹', 'background:#160a0e');
+  // 獎勵逐項飛出，每項間隔 150ms
+  const rw = [
+    `🪙 ${boss.coin.toLocaleString()}`,
+    `${TALENT_ICON} ${boss.token}`,
+    `🎟️ 卡包券 ${boss.ticket}`,
+    `⚡ EP ${boss.ep.toLocaleString()}`,
+  ];
+  $('kpRewards').innerHTML = rw.map((t,i)=>
+    `<div class="rw" style="animation-delay:${600 + i*150}ms">${t}</div>`).join('');
   $('killPop').classList.add('show');
-  sfxRare(); flyCoins(8);
+  sfxLevelUp();
+  setTimeout(()=> flyCoins(8), 700);
+  bossGhostHp = null;                       // 下一關重新計算殘影基準
 }
-$('kpBtn').onclick = ()=> $('killPop').classList.remove('show');
+$('kpBtn').onclick = ()=>{
+  $('killPop').classList.remove('show');
+  renderBoss();                             // 關閉後載入下一關
+};
 
+let bossGhostHp = null, bossGhostStage = null;
 function renderBoss(){
   if(!me || !players[me]) return;
   const p = players[me];
@@ -2740,6 +3021,11 @@ function renderBoss(){
   const ep = epAvail(p), epMax = Math.max(ep, 1);
   const zoneOn = (b.zoneUntil || 0) > now;
   const dmgX = dmgMult();
+  // 血條殘影：先畫在「上一次的血量」，下一幀才追上 → 看得出這一擊打掉多少
+  if(bossGhostHp === null || bossGhostStage !== b.stage) bossGhostHp = hp;
+  bossGhostStage = b.stage;
+  const ghostPct = Math.max(0, Math.min(100, bossGhostHp / boss.hp * 100));
+  const za = $('zoneAura'); if(za) za.classList.toggle('on', zoneOn);
 
   const skills = eq.length ? eq.map(id=>{
     const c = cardById(id), own = cardOwned(p, id);
@@ -2755,16 +3041,18 @@ function renderBoss(){
         const tag = k.sp === 'DOT' ? '<span class="sTag">10 小時持續</span>'
                   : k.sp === 'BUFF' ? '<span class="sTag">下次 +35%</span>'
                   : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>' : '';
-        return `<button class="skillBtn" onclick="useSkill('${id}','${k.id}')"
-            ${(cding || noEp || isLocked()) ? 'disabled' : ''}>
+        const unusable = cding || noEp || isLocked();
+        return `<button class="skillBtn ${unusable ? 'dis' : ''}" onclick="useSkill('${id}','${k.id}', event)">
           <div class="sTop2"><span class="sN">${esc(k.name)}</span>${tag}</div>
           <div class="sInfo">
             ⚡ ${k.ep}　${k.dmg > 0
               ? `傷害 <span class="dm ${dmgX > 1 ? 'evt' : ''}">${real}${dmgX > 1 ? ' ⚔️×2' : ''}</span>`
               : '無傷害'}　
-            ${cding ? `<span style="color:var(--pink)">冷卻 ${msLeftTxt(ready - now)}</span>` : `CD ${k.cd}h`}
+            ${cding ? `<span style="color:var(--pink)">冷卻 ${tickSpan(ready, { rerender:true, done:'可施放' })}</span>` : `CD ${k.cd}h`}
             ${noEp ? '　<span style="color:var(--pink)">EP 不足</span>' : ''}
           </div>
+          ${cding ? `<div class="cdbar" data-until="${ready}" data-total="${k.cd*3600000}"
+            style="transform:scaleX(${Math.max(0,(ready-now)/(k.cd*3600000)).toFixed(3)})"></div>` : ''}
         </button>`;
       }).join('')}
     </div>`;
@@ -2772,18 +3060,20 @@ function renderBoss(){
 
   $('bossBody').innerHTML = `
     <div class="bossWrap">
-      ${imgWithFb(bossImg(b.stage), 'bossImg', 'bossFb', '👹', '')}
+      <div class="bossStage" id="bossStage">
+        ${imgWithFb(bossImg(b.stage), 'bossImg', 'bossFb', '👹', '')}
+        <div class="bossFlash" id="bossFlash"></div>
+      </div>
       <div class="title" style="font-size:19px;margin-top:10px">第 ${b.stage} 關・${esc(boss.name)}</div>
       <div class="sub" style="font-family:var(--mono);font-size:11.5px">出自《${esc(boss.from)}》</div>
-      <div class="hpBar">
+      <div class="hpBar ${pct <= 25 ? 'low' : ''}">
+        <div class="hpGhost" id="hpGhost" style="width:${ghostPct}%"></div>
         <div class="hpFill" style="width:${pct}%"></div>
         ${MILESTONES.map(m=>`<div class="msTick" style="left:${m}%"></div>`).join('')}
         <div class="hpTxt">${hp.toLocaleString()} / ${boss.hp.toLocaleString()}　${pct.toFixed(1)}%</div>
       </div>
-      <div class="sub" style="font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.8">
-        擊破獎勵：🪙 ${boss.coin}　${TALENT_ICON} ${boss.token}　🎟️ ${boss.ticket}　⚡ ${boss.ep}<br>
-        里程碑 75/50/25% 各得 🪙 ${Math.round(boss.coin*0.2)}
-        ${(b.milestones||[]).length ? `（已領 ${b.milestones.join('%・')}%）` : ''}
+      <div class="sub" id="bossReward" style="font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.8">
+        擊破獎勵：🪙 ${boss.coin}　${TALENT_ICON} ${boss.token}　🎟️ ${boss.ticket}　⚡ ${boss.ep}
       </div>
     </div>
 
@@ -2795,13 +3085,21 @@ function renderBoss(){
     </div>
 
     ${(preview.dots.length || b.buff || zoneOn) ? `<div class="sub" style="font-family:var(--mono);font-size:11px;color:var(--gold);margin-top:8px;line-height:1.8">
-      ${preview.dots.length ? `🔥 持續傷害 ${preview.dots.length} 層進行中（每小時約 ${Math.round(preview.dots.reduce((a,d)=>a+d.dmgPerHour,0))}）<br>` : ''}
-      ${b.buff ? '✨ 幻影傳球生效中：下一個傷害技能 +35%<br>' : ''}
-      ${zoneOn ? `🔵 ZONE 生效中：${msLeftTxt(b.zoneUntil - now)}內所有技能 +35%` : ''}
+      ${preview.dots.length ? `🔥 持續傷害 ${preview.dots.length} 層（每小時約 ${Math.round(preview.dots.reduce((a,d)=>a+d.dmgPerHour,0))}）・最久還有 ${tickSpan(Math.max(...preview.dots.map(d=>d.endAt)), { rerender:true, done:'已結束' })}<br>` : ''}
+      ${b.buff ? '<span class="dotPill">✨ 幻影傳球生效中：下一個傷害技能 +35%</span><br>' : ''}
+      ${zoneOn ? `🔵 ZONE 生效中：${tickSpan(b.zoneUntil, { rerender:true, done:'已結束' })}內所有技能 +35%` : ''}
     </div>` : ''}
 
+    ${b.buff ? '<div class="buffBanner">✨ 下一招 +35%</div>' : ''}
     <h2>技能</h2>
-    ${skills}`;
+    <div id="bossSkills">${skills}</div>`;
+
+  // 讓殘影條在下一幀才追上目前血量（CSS 有 .35s 延遲 + .6s 過場）
+  requestAnimationFrame(()=>{
+    const g = $('hpGhost');
+    if(g) g.style.width = pct + '%';
+    bossGhostHp = hp;
+  });
 }
 
 /* ==================================================================
@@ -3277,40 +3575,49 @@ function renderLottery(){
    新手教學（spotlight 導覽，不可跳過）
    target 找不到（該版本沒此功能）→ 自動略過該步
 ================================================================== */
-const TUT_STEPS = [
-  { target:null,           tab:null,      title:'歡迎來到任務板 🎮', text:'跟著教學走一遍，最後有新手禮包 🎁' },
-  { target:'#coinBox',     tab:null,      title:'你的金幣 🪙',       text:'做任務賺金幣，買東西、抽獎都靠它。' },
-  { target:'.lvPill',      tab:null,      title:'等級',              text:'完成任務會獲得經驗值，等級越高稱號越猛。' },
-  { target:'#h2-daily',    tab:'tasks',   title:'每日任務 📅',       text:'每天午夜刷新，記得天天來做，連續達成有 🔥 紀錄。' },
-  { target:'#h2-open',     tab:'tasks',   title:'搶任務 ⚡',         text:'這種任務誰先按誰的，手速決定一切。' },
-  { target:'#h2-pending',  tab:'tasks',   title:'重要！',            text:'按完成回報後要等媽媽審核通過，金幣才會入帳。' },
-  { target:'#shopList',    tab:'shop',    title:'商店 🛒',          text:'金幣在這裡花，買到的東西會進背包。' },
-  { target:'#ownedList',   tab:'bag',     title:'背包 🎒',          text:'要用的時候按「使用」，然後拿手機給媽媽核銷才算數。' },
-  { target:'#lotteryMain', tab:'lottery', title:'抽獎 🎁',          text:'商店買抽獎券來抽，有稱號、金幣、實體獎品。' },
-  { target:'#rankList',    tab:'rank',    title:'排行榜 🏆',         text:'看看誰才是這個家最強的打工仔。' },
-  { target:null,           tab:null,      title:'教學完成！',        text:'按下按鈕領取你的新手禮包，開始賺金幣吧！' },
+/* ===== 教學步驟（引擎與 v0.6.2 的 clamp 定位完全沿用，只換內容） ===== */
+const TUT_BOSS = [
+  { target:null,          tab:'boss', title:'打倒 Boss ⚔️',  text:'用卡片技能打倒 Boss，可以拿金幣、天賦結晶和卡包券。' },
+  { target:'.hpBar',      tab:'boss', title:'血條',          text:'打到血量歸零就過關，進入下一隻更強的 Boss。' },
+  { target:'#coinBox',    tab:'boss', title:'EP 是攻擊能量 ⚡', text:'EP 來自等級 20 之後累積的經驗值。做任務才會增加，用完只能等。' },
+  { target:'#bossSkills', tab:'boss', title:'技能',          text:'每招消耗 EP、有自己的冷卻時間，冷卻中不能再放。' },
+  { target:'#bossSkills', tab:'boss', title:'持續傷害 ☠️',    text:'有些大招是持續傷害，放完後每小時自動扣血，關掉 app 也會繼續。' },
+  { target:'#bossReward', tab:'boss', title:'獎勵',          text:'打倒後拿獎勵並進入下一關。結晶可以拿去點天賦樹。' },
 ];
+const TUT_TALENT = [
+  { target:'#talentAvailBox', tab:'talent', title:'天賦結晶 🔮',   text:'來源：等級 21 之後每升一級 1 顆、每解一個成就 1 顆、打倒 Boss。' },
+  { target:'#tree-coin',      tab:'talent', title:'財富（最貴）',   text:'永久增加任務金幣，是最終目標，所以也最花點數。' },
+  { target:'#tree-luck',      tab:'talent', title:'幸運（最便宜）', text:'提高抽獎拿到材料的機率，前期最划算，建議先點。' },
+  { target:'#tree-xp',        tab:'talent', title:'經驗（加速）',   text:'增加任務 XP → 升級更快 → 拿到更多結晶。' },
+  { target:'#respecBtn',      tab:'talent', title:'洗點',          text:'花 3000 金幣可以把點數全退回重配，點錯不用怕。' },
+];
+let TUT_STEPS = TUT_BOSS;          // 目前播放中的那一套
 
 let tutStep = 0;
 let tutOpen = false;
-let tutReward = true;    // 首次 true 發獎；重看依 tutorialDone 決定
 let tutTarget = null;    // 當前聚光目標（resize 重定位用）
 let tutChecked = false;  // 本 session 是否已判斷過要不要自動教學
 
 // 一次性流程觸發：登入完成後主動呼叫（snapshot 裡也留一份做雙保險）
 // 嚴格 === false 才自動觸發：新帳號 false → 觸發；舊帳號 undefined → 不觸發；看完 true → 不觸發
-function maybeStartTutorial(){
-  if(me && players[me] && !tutChecked && !tutOpen){
-    tutChecked = true;
-    if(players[me].tutorialDone === false) startTutorial(true);
-  }
+// v1.4：舊的 11 步新手教學已移除；改成 Boss 與天賦兩套，各自首次進入時播一次
+let tutKind = null;
+function maybeStartTutorial(){ /* 舊入口保留但不再自動播 */ }
+function maybeAutoTut(kind){
+  if(!me || !players[me] || tutOpen) return;
+  const flag = kind === 'boss' ? 'tutBoss' : 'tutTalent';
+  if(players[me][flag] === true) return;
+  startTut(kind);
 }
-
-function startTutorial(reward){
-  tutReward = reward; tutOpen = true; tutStep = 0;
+function startTut(kind){
+  tutKind = kind;
+  TUT_STEPS = (kind === 'boss') ? TUT_BOSS : TUT_TALENT;
+  tutOpen = true; tutStep = 0;
   $('tutorial').classList.add('show');
   showTutStep();
 }
+
+
 function closeTutorial(){
   tutOpen = false; tutTarget = null;
   $('tutorial').classList.remove('show');
@@ -3388,7 +3695,7 @@ function layoutTut(target){
   $('tutTitle').textContent = step.title;
   $('tutText').textContent = step.text;
   $('tutProg').textContent = `${tutStep + 1} / ${TUT_STEPS.length}`;
-  $('tutNext').textContent = isLast ? (tutReward ? '領取新手禮包 🎁 +50' : '完成') : '下一步';
+  $('tutNext').textContent = isLast ? '完成' : '下一步';
 
   // 最終保險：文案長度會改氣泡高度，量測後夾整顆進視窗
   requestAnimationFrame(()=>{
@@ -3410,30 +3717,16 @@ function advanceTut(){
 }
 async function finishTutorial(){
   closeTutorial();
-  if(!tutReward) return;   // 重看不發獎
-  try {
-    let granted = false;
-    await runTransaction(db, async tx=>{
-      const ref = doc(db,'players',me);
-      const s = await tx.get(ref);
-      if(!s.exists()) return;
-      if(s.data().tutorialDone === true) return;   // 冪等：已領過只關閉
-      tx.update(ref, { coins: increment(50), tutorialDone: true });  // 不加 totalEarned/xp
-      tx.set(ledgerRef(), ledgerData('tutorial', 50, '新手禮包'));
-      granted = true;
-    });
-    if(granted){ sfxCoin(); flyCoins(5); toast('新手禮包已入帳 🪙'); }
-  } catch(e){}
+  if(!me || !tutKind) return;
+  const flag = tutKind === 'boss' ? 'tutBoss' : 'tutTalent';
+  try { await updateDoc(doc(db,'players',me), { [flag]: true }); } catch(e){}
 }
+$('tutSkip').onclick = ()=> finishTutorial();      // 跳過也算看過
 $('tutNext').onclick = ()=>{
   if(tutStep === TUT_STEPS.length - 1) finishTutorial();
   else advanceTut();
 };
-$('replayBtn').onclick = ()=>{
-  if(!me) return;
-  if(!confirm('要重看新手教學嗎？')) return;
-  startTutorial(players[me]?.tutorialDone !== true);  // 已完成過 → 重看不發獎
-};
+window.replayTut = (kind)=> startTut(kind);
 window.addEventListener('resize', ()=>{ if(tutOpen) positionTutStep(); });
 </script>
 </body>
