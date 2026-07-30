@@ -287,10 +287,10 @@
   ];
   // 卡包等級：傷害倍率只影響傷害，EP 與 CD 完全不變
   const PACK_TIERS = [
-    { id:'normal',  name:'普通', prob:70,  price:300,  mult:1.0, color:'#8a8f9e' },
-    { id:'gold',    name:'黃金', prob:22,  price:450,  mult:1.3, color:'#e9c46a' },
-    { id:'diamond', name:'鑽石', prob:7.5, price:750,  mult:1.7, color:'#5ff0dc' },
-    { id:'rainbow', name:'彩虹', prob:0.5, price:1500, mult:2.5, color:'#ff8fd4' },
+    { id:'normal',  name:'普通', prob:70,  price:500,  mult:1.0, color:'#8a8f9e' },
+    { id:'gold',    name:'黃金', prob:22,  price:750,  mult:1.3, color:'#e9c46a' },
+    { id:'diamond', name:'鑽石', prob:7.5, price:1250, mult:1.7, color:'#5ff0dc' },
+    { id:'rainbow', name:'彩虹', prob:0.5, price:2500, mult:2.5, color:'#ff8fd4' },
   ];
   const TIER_ORDER = ['normal','gold','diamond','rainbow'];
   const PACK_PITY_MAX = 30;          // 30 包保底必出 S
