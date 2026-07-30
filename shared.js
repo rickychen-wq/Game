@@ -406,6 +406,30 @@
     { id:'boss09', name:'佩恩',       from:'火影忍者', hp:24800, coin:600, token:2, ticket:2, ep:1100 },
     { id:'boss10', name:'多佛朗明哥', from:'海賊王',   hp:28600, coin:600, token:2, ticket:2, ep:1500 },
   ];
+  /* ===== 攻擊時段：每個整點的 00~15 分才能打 Boss =====
+     用 windowId 比對取代小時制 CD，不需要任何倒數就能判斷「這時段用過沒」 */
+  const ATTACK_WINDOW_MIN = 15;
+  const windowId = (t) => Math.floor((t ?? Date.now()) / 3600000);
+  function inAttackWindow(t){
+    const d = new Date(t ?? Date.now());
+    return d.getMinutes() < ATTACK_WINDOW_MIN;
+  }
+  // 時段內 → 距離時段結束；時段外 → 距離下個整點
+  function windowEdge(t){
+    const now = t ?? Date.now();
+    const d = new Date(now);
+    const top = new Date(d); top.setMinutes(0,0,0);          // 本小時整點
+    return inAttackWindow(now)
+      ? top.getTime() + ATTACK_WINDOW_MIN*60000              // 時段結束時刻
+      : top.getTime() + 3600000;                             // 下個整點
+  }
+  const skillKey = (cardId, sid) => cardId + '.' + sid;
+  // 這個技能在「目前時段」用過沒（舊的 skillReady 欄位不再讀寫）
+  function castUsed(boss, cardId, sid, t){
+    const m = (boss && boss.lastCastWindow) || {};
+    return m[skillKey(cardId, sid)] === windowId(t);
+  }
+
   const MILESTONES = [75, 50, 25];        // 血量里程碑，各給該關 coin 的 20%
   const bossOfStage = stage => BOSSES[(stage || 1) - 1] || null;   // 超出陣列 → null（已通關全部）
   const bossImg = stage => 'assets/bosses/boss' + String(stage).padStart(2,'0') + '.png';
@@ -475,6 +499,7 @@
     pickWeighted, rollRarity, rollTier, skillDamage, dmgMult,
     // Boss
     BOSSES, MILESTONES, bossOfStage, bossImg,
+    ATTACK_WINDOW_MIN, windowId, inAttackWindow, windowEdge, skillKey, castUsed,
     // 活動
     EVENTS, setRuntime, getRuntime, eventOn, eventExpired, eventAdd, eventUntil,
     activeEvents, ticketPrice,
