@@ -143,12 +143,17 @@
   }
   .xpTxt{ font-family:var(--mono); font-size:10px; color:var(--muted); font-weight:700; flex-shrink:0; }
 
-  .hdr-right{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+  .hdr-right{
+    display:flex; flex-direction:column; align-items:flex-end; gap:6px;
+    flex-shrink:0;                    /* 不准被 idblock 壓縮 */
+  }
   #coinBox {
     display:flex; align-items:center; gap:6px;
     background:linear-gradient(145deg,#12141d,#0c0e15);
     border:1px solid rgba(233,196,106,.5);
     border-radius:9px; padding:7px 12px;
+    flex-shrink:0;                    /* 金幣框不被壓 */
+    white-space:nowrap;               /* 七位數也不換行 */
     box-shadow:inset 0 0 12px rgba(233,196,106,.08), 0 3px 12px rgba(0,0,0,.4);
   }
   #coinBox.pulse{ animation:coinpulse .5s ease; }
@@ -860,6 +865,17 @@
     0%,100%{ opacity:0; transform:translate(0,0) scale(.6); }
     35%{ opacity:1; transform:translate(2px,-4px) scale(1); }
     70%{ opacity:0; transform:translate(-2px,-8px) scale(.5); }
+  }
+
+  /* 窄螢幕（≤400px）整體縮一階，避免 header 溢出 */
+  @media (max-width: 400px){
+    header{ padding:11px 10px 9px; gap:8px; }
+    #coinBox{ padding:6px 9px; }
+    #coinBox .amt{ font-size:15px; }
+    .avatar{ width:34px; height:34px; font-size:17px; }
+    #myName{ max-width:70px; }
+    .titlePill{ max-width:78px; }
+    .xpTxt{ font-size:9px; }
   }
 
   @media (prefers-reduced-motion: reduce){
