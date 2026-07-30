@@ -213,6 +213,54 @@
   .evBtn.go{ background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep)); color:#1a1206; }
   .evBtn.stop{ background:rgba(255,107,129,.15); color:var(--pink); border:1px solid rgba(255,107,129,.4); }
 
+  /* ===== ☢️ DEBUG ZONE（與統計區視覺明顯區隔）===== */
+  #debugZone{
+    border:2px solid rgba(255,107,129,.65); border-radius:14px; padding:18px; margin-top:34px;
+    background:
+      repeating-linear-gradient(45deg, rgba(255,107,129,.05) 0 12px, transparent 12px 24px),
+      linear-gradient(160deg,#1c1016,#0d0709);
+    box-shadow:0 0 30px rgba(255,107,129,.18);
+  }
+  #debugZone::before, #debugZone::after{ display:none; }
+  #debugZone h2{ color:var(--pink); border-bottom-color:rgba(255,107,129,.35); }
+  #debugZone h2::before{ content:'☢️'; }
+  #debugZone h3{ color:var(--pink); }
+  .dbgWarn{ font-family:var(--mono); font-size:11px; color:#ffb3bf; line-height:1.8;
+    background:rgba(255,107,129,.08); border:1px dashed rgba(255,107,129,.4);
+    border-radius:8px; padding:10px 12px; margin-bottom:14px; }
+  .dbgRow{ display:flex; align-items:center; gap:8px; padding:7px 0; flex-wrap:wrap;
+    border-bottom:1px solid rgba(255,255,255,.05); }
+  .dbgRow .dk{ font-family:var(--mono); font-size:11.5px; color:var(--muted); min-width:120px; }
+  .dbgRow .dv{ font-family:var(--mono); font-size:12.5px; color:var(--gold); font-weight:800;
+    min-width:74px; text-align:right; }
+  .dbgRow input[type=number], .dbgRow input[type=text]{
+    width:110px; background:#0d0f17; color:var(--text); border:1px solid var(--line);
+    border-radius:6px; padding:5px 8px; font-family:var(--mono); font-size:12px; }
+  .dbgRow select{ background:#0d0f17; color:var(--text); border:1px solid var(--line);
+    border-radius:6px; padding:5px 8px; font-family:var(--mono); font-size:12px; }
+  .dbgBtn{ padding:5px 11px; border:none; border-radius:6px; cursor:pointer;
+    font-family:var(--mono); font-size:11.5px; font-weight:800;
+    background:rgba(255,107,129,.16); color:#ffb3bf; border:1px solid rgba(255,107,129,.4); }
+  .dbgBtn:hover{ background:rgba(255,107,129,.26); }
+  .dbgBtn.mini{ padding:5px 9px; }
+  .dbgBtn.danger{ background:rgba(255,60,90,.22); color:#fff; border-color:rgba(255,60,90,.7); }
+  .dbgGrid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(178px,1fr)); gap:8px; }
+  .dbgPreview{ font-family:var(--mono); font-size:11px; color:var(--cyan); padding:6px 0 0; }
+  .dbgPreview.warn{ color:#ffb3bf; }
+  .achChips{ display:flex; flex-wrap:wrap; gap:6px; }
+  .achChip{ font-family:var(--mono); font-size:11px; padding:4px 9px; border-radius:6px; cursor:pointer;
+    background:#12141d; border:1px solid var(--line-soft); color:var(--muted); }
+  .achChip.on{ background:rgba(233,196,106,.16); color:var(--gold); border-color:rgba(233,196,106,.45); }
+  .ttList{ max-height:210px; overflow-y:auto; border:1px solid var(--line-soft); border-radius:8px; padding:8px; }
+  #dbgToast{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(8px);
+    background:linear-gradient(180deg,#141620,#0c0e15); color:var(--gold);
+    font-family:var(--mono); font-size:13px; font-weight:700; padding:11px 20px; border-radius:9px;
+    border:1px solid rgba(233,196,106,.5); z-index:500; opacity:0; pointer-events:none;
+    transition:opacity .25s, transform .25s; max-width:86vw; text-align:center; }
+  #dbgToast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  #dbgToast.bad{ color:var(--pink); border-color:rgba(255,107,129,.6); }
+
   @media (max-width:640px){
     main{ padding:12px; }
     section{ padding:14px; }
@@ -245,6 +293,9 @@
     <h2>🎛️ 系統控制台<span style="margin-left:auto;font-size:10px;color:var(--dim)">只有這裡能改活動</span></h2>
     <h3>目前生效中的加成</h3>
     <div class="buffGrid" id="buffGrid"></div>
+    <div id="killAllBox" style="display:none;margin-bottom:16px">
+      <button class="evBtn stop" id="killAllBtn" style="width:100%">🛑 全部關閉</button>
+    </div>
     <h3>活動</h3>
     <div id="evList"></div>
   </section>
@@ -302,13 +353,28 @@
     <h2>⑧ 玩家對照總表</h2>
     <div class="tblWrap" id="compare"></div>
   </section>
+  <!-- ☢️ DEBUG ZONE（唯一允許寫入的區域，上方統計區一律唯讀） -->
+  <section id="debugZone">
+    <h2>DEBUG ZONE</h2>
+    <div class="dbgWarn">
+      這是 Chen 專用的除錯／管理後台。所有寫入都會記進 ledger（kind:debug），統計不會說謊。<br>
+      刪除帳號與批次清理仍然只能在 admin.html 做，這裡不提供任何刪除功能。
+    </div>
+    <div class="dbgRow">
+      <span class="dk">選擇玩家</span>
+      <select id="dbgPick"><option value="">— 請選擇 —</option></select>
+    </div>
+    <div id="dbgBody"></div>
+  </section>
 </main>
+
+<div id="dbgToast"></div>
 
 <script src="./shared.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, collection, doc, onSnapshot, query, orderBy, limit, setDoc
+  getFirestore, collection, doc, onSnapshot, query, orderBy, limit, setDoc, updateDoc, addDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ====== firebaseConfig（與 index/admin 同一份） ====== */
@@ -367,7 +433,7 @@ if(sessionStorage.getItem('stats_ok')==='1') $('lock').style.display='none';
 /* ==================================================================
    資料（全部唯讀）
 ================================================================== */
-let players = {}, tasks = [], purchases = [], penalties = [], ledger = [];
+let players = {}, tasks = [], purchases = [], penalties = [], ledger = [], dailyTemplates = [];
 let ledgerCapped = false;
 const ready = { players:false, tasks:false, purchases:false, penalties:false, ledger:false };
 function mark(k){ ready[k] = true; renderAll(); }
@@ -383,6 +449,9 @@ onSnapshot(collection(db,'purchases'), s=>{
 });
 onSnapshot(collection(db,'penalties'), s=>{
   penalties = []; s.forEach(d=> penalties.push({id:d.id, ...d.data()})); mark('penalties');
+});
+onSnapshot(collection(db,'dailyTemplates'), s=>{
+  dailyTemplates = []; s.forEach(d=> dailyTemplates.push({id:d.id, ...d.data()})); renderAll();
 });
 onSnapshot(doc(db,'config','system'), d=>{
   sysCfg = d.exists() ? (d.data() || {}) : {};
@@ -865,8 +934,9 @@ function renderCompare(){
 
 /* ==================================================================
    🎛️ 活動控制台
-   ⚠️⚠️ 全檔唯一許可的寫入：只准寫 config/system，且只准用 setDoc(..., {merge:true})
-   對 players / tasks / purchases / penalties / ledger / shop 的寫入一律禁止。
+   ⚠️ v1.3 起權限規則：本檔為 Chen 專用除錯後台。
+   允許的寫入只有兩處：(1) 這裡的 config/system，(2) 最下方 DEBUG ZONE 的 players + ledger。
+   統計圖表區域一律不得有任何寫入；且全檔不提供任何刪除／批次刪除功能。
 ================================================================== */
 let sysCfg = {};
 let durChoice = {};          // { key: '1'|'3'|'7'|'custom' }
@@ -927,6 +997,22 @@ window.toggleEvent = async (key)=>{
   catch(err){ alert('開啟失敗：' + err.message); }
 };
 
+window.killAllEvents = async ()=>{
+  const live = activeEvents();
+  if(!live.length) return;
+  const lines = live.map(e=>{
+    const l = leftText(eventUntil(e.key));
+    return `・${e.icon} ${e.name}${l ? `（${l}）` : ''}`;
+  }).join('\n');
+  if(!confirm(`要關閉全部進行中的活動嗎？\n\n${lines}\n\n關閉後立即生效，玩家的加成會馬上消失。`)) return;
+  const patch = {};
+  EVENTS.forEach(e=>{ patch[e.key] = { on:false, until:null }; });
+  try {
+    await saveSystemConfig({ events: patch });     // 一次寫入全關
+    alert(`已關閉 ${live.length} 個活動`);
+  } catch(err){ alert('關閉失敗：' + err.message); }
+};
+
 function renderConsole(){
   // 生效中的加成總覽
   const buffs = [
@@ -939,6 +1025,10 @@ function renderConsole(){
       <div class="bk">${b.k}</div>
       <div class="bv">+${Math.round(b.v*100)}%</div>
     </div>`).join('');
+
+  // 至少一個活動進行中才顯示「全部關閉」
+  const live = activeEvents();
+  $('killAllBox').style.display = live.length ? '' : 'none';
 
   $('evList').innerHTML = EVENTS.map(e=>{
     const live = eventOn(e.key), exp = eventExpired(e.key);
@@ -972,7 +1062,498 @@ function renderConsole(){
   }).join('');
 }
 // 倒數每 30 秒更新
+$('killAllBtn').onclick = ()=> killAllEvents();
 setInterval(renderConsole, 30000);
+
+/* ==================================================================
+   ☢️ DEBUG ZONE
+   本區是全檔唯一允許寫 players 的地方；上方統計圖表區一律唯讀。
+   規範：每個寫入都 confirm、都記 ledger(kind:'debug')、不提供任何刪除功能。
+================================================================== */
+let dbgId = null;
+
+function dbgToast(msg, bad){
+  const t = $('dbgToast');
+  t.textContent = msg;
+  t.className = bad ? 'show bad' : 'show';
+  clearTimeout(t._tm);
+  t._tm = setTimeout(()=> t.className = '', 2600);
+}
+
+// 唯一的 players 寫入通道：寫入 + 記帳
+async function dbgWrite(patch, label, meta, coinDelta){
+  if(!dbgId) return;
+  try {
+    await updateDoc(doc(db,'players',dbgId), patch);
+    await addDoc(collection(db,'ledger'), {
+      playerId: dbgId, delta: coinDelta || 0, kind:'debug',
+      label, meta: meta || {}, createdAt: serverTimestamp(),
+    });
+    dbgToast('✅ ' + label);
+  } catch(e){
+    dbgToast('✗ 寫入失敗：' + e.message, true);
+  }
+}
+const dbgP = () => (dbgId && players[dbgId]) ? players[dbgId] : null;
+const dbgVal = id => { const el = $(id); return el ? el.value : ''; };
+const dbgNum = id => { const v = Number(dbgVal(id)); return isNaN(v) ? 0 : v; };
+const getPath = (o, path) => path.split('.').reduce((a,k)=> (a==null?a:a[k]), o);
+
+window.dbgPickPlayer = (id)=>{ dbgId = id || null; renderDebug(); };
+
+/* ---- 一般數值：設為 / 加減 ---- */
+window.dbgSet = async (path, inputId, label)=>{
+  const p = dbgP(); if(!p) return;
+  const from = getPath(p, path) ?? 0;
+  const to = dbgNum(inputId);
+  if(from === to){ dbgToast('值沒有變'); return; }
+  if(!confirm(`確定把「${p.name}」的 ${label} 從 ${from} 改成 ${to} 嗎？`)) return;
+  const coinDelta = (path === 'coins') ? (to - from) : 0;
+  await dbgWrite({ [path]: to }, `設定 ${label}`, { field:path, from, to }, coinDelta);
+};
+window.dbgAdd = async (path, n, label)=>{
+  const p = dbgP(); if(!p) return;
+  const from = getPath(p, path) ?? 0;
+  const to = from + n;
+  if(!confirm(`確定把「${p.name}」的 ${label} 從 ${from} 改成 ${to} 嗎？`)) return;
+  const coinDelta = (path === 'coins') ? n : 0;
+  await dbgWrite({ [path]: to }, `調整 ${label} ${n>0?'+':''}${n}`, { field:path, from, to }, coinDelta);
+};
+
+/* ---- xp 連鎖預覽 ---- */
+window.dbgXpPreview = ()=>{
+  const p = dbgP(); if(!p) return;
+  const nx = dbgNum('dbg_xp');
+  const before = { lv: levelFromXp(p.xp ?? 0), tk: talentEarned(p), ep: epAvail(p) };
+  const sim = { ...p, xp: nx };
+  const after  = { lv: levelFromXp(nx), tk: talentEarned(sim), ep: epAvail(sim) };
+  const spent = talentSpent(p);
+  const short = after.tk < spent;
+  $('dbg_xpPrev').className = 'dbgPreview' + (short ? ' warn' : '');
+  $('dbg_xpPrev').innerHTML =
+    `Lv.${before.lv} → Lv.${after.lv}　天賦點 ${before.tk} → ${after.tk}　EP ${before.ep.toLocaleString()} → ${after.ep.toLocaleString()}` +
+    (short ? `<br>⚠️ 這會讓可用天賦點變成 0，但已配的點不會被回收（規則如此）` : '');
+};
+
+/* ---- 成就 ---- */
+window.dbgToggleAch = async (achId)=>{
+  const p = dbgP(); if(!p) return;
+  const cur = [...((p.achievements) || [])];
+  const has = cur.includes(achId);
+  const next = has ? cur.filter(x=>x!==achId) : [...cur, achId];
+  const a = ACHIEVEMENTS.find(x=>x.id===achId);
+  const tkNow = talentEarned(p), tkNext = talentEarned({ ...p, achievements: next });
+  const bonusNow = achAdd(p), bonusNext = achAdd({ ...p, achievements: next });
+  if(!confirm(`確定${has?'取消':'給予'}「${p.name}」的成就「${a.name}」嗎？\n`
+    + `成就數 ${cur.length} → ${next.length}／${ACHIEVEMENTS.length}\n`
+    + `天賦點 ${tkNow} → ${tkNext}　全解加成 +${Math.round(bonusNow*100)}% → +${Math.round(bonusNext*100)}%`)) return;
+  await dbgWrite({ achievements: next }, `${has?'取消':'給予'}成就 ${a.name}`,
+    { field:'achievements', from:cur.length, to:next.length });
+};
+
+/* ---- 天賦等級 ---- */
+window.dbgSetTalent = async (key)=>{
+  const p = dbgP(); if(!p) return;
+  const lv = Math.max(1, Math.min(TALENT_MAX_LV, dbgNum('dbg_tal_'+key)));
+  const from = talentLv(p, key);
+  if(from === lv) return;
+  const t = TALENT_TREES.find(x=>x.key===key);
+  if(!confirm(`確定把「${p.name}」的天賦「${t.name}」從 L${from} 改成 L${lv} 嗎？`)) return;
+  await dbgWrite({ ['talents.'+key]: lv }, `設定天賦 ${t.name} L${lv}`,
+    { field:'talents.'+key, from, to:lv });
+};
+
+/* ---- 稱號 ---- */
+window.dbgToggleShopTitle = async (id)=>{
+  const p = dbgP(); if(!p) return;
+  const cur = [...((p.shopTitles) || [])];
+  const has = cur.includes(id);
+  const next = has ? cur.filter(x=>x!==id) : [...cur, id];
+  const t = SHOP_TITLES.find(x=>x.id===id);
+  if(!confirm(`確定${has?'收回':'給予'}「${p.name}」的稱號「${t.name}」嗎？`)) return;
+  const patch = { shopTitles: next };
+  if(has && p.equippedTitle === id) patch.equippedTitle = null;   // 收回時同步卸下
+  await dbgWrite(patch, `${has?'收回':'給予'}稱號 ${t.name}`, { field:'shopTitles', from:cur.length, to:next.length });
+};
+window.dbgSetEquippedTitle = async ()=>{
+  const p = dbgP(); if(!p) return;
+  const v = dbgVal('dbg_eqTitle') || null;
+  const from = p.equippedTitle || null;
+  if(from === v) return;
+  const nameOf = x => !x ? '不裝備'
+    : (CRAFT_TITLES.find(t=>t.id===x)?.name || SHOP_TITLES.find(t=>t.id===x)?.name || x);
+  if(!confirm(`確定把「${p.name}」裝備中的稱號從「${nameOf(from)}」改成「${nameOf(v)}」嗎？`)) return;
+  await dbgWrite({ equippedTitle: v }, `設定裝備稱號 ${nameOf(v)}`, { field:'equippedTitle', from, to:v });
+};
+window.dbgSetCrafted = async (id)=>{
+  const p = dbgP(); if(!p) return;
+  const n = Math.max(0, dbgNum('dbg_cft_'+id));
+  const cur = { ...((p.craftedTitles) || {}) };
+  const from = cur[id] || 0;
+  if(from === n) return;
+  const t = CRAFT_TITLES.find(x=>x.id===id);
+  if(!confirm(`確定把「${p.name}」的合成稱號「${t.name}」持有數從 ${from} 改成 ${n} 嗎？`)) return;
+  if(n === 0) delete cur[id]; else cur[id] = n;
+  const patch = { craftedTitles: cur };
+  if(n === 0 && p.equippedTitle === id) patch.equippedTitle = null;
+  await dbgWrite(patch, `設定合成稱號 ${t.name} ×${n}`, { field:'craftedTitles.'+id, from, to:n });
+};
+
+/* ---- 材料 ---- */
+window.dbgSetMat = async (key)=>{
+  const p = dbgP(); if(!p) return;
+  const n = Math.max(0, dbgNum('dbg_mat_'+key));
+  const from = ((p.materials) || {})[key] ?? 0;
+  if(from === n) return;
+  const m = MATERIALS.find(x=>x.key===key);
+  if(!confirm(`確定把「${p.name}」的材料「${m.name}」從 ${from} 改成 ${n} 嗎？`)) return;
+  await dbgWrite({ ['materials.'+key]: n }, `設定材料 ${m.name} ×${n}`, { field:'materials.'+key, from, to:n });
+};
+
+/* ---- 卡片 ---- */
+window.dbgSetCard = async (cardId)=>{
+  const p = dbgP(); if(!p) return;
+  const c = cardById(cardId);
+  const tier = dbgVal('dbg_cardT_'+cardId);
+  const count = Math.max(0, dbgNum('dbg_cardC_'+cardId));
+  const cur = { ...((p.cards) || {}) };
+  const before = cur[cardId] ? `${cur[cardId].tier} ×${cur[cardId].count}` : '未擁有';
+  const after  = count === 0 ? '未擁有（移除）' : `${tier} ×${count}`;
+  if(!confirm(`確定把「${p.name}」的卡片「${c.name}」從 ${before} 改成 ${after} 嗎？`)) return;
+  const patch = {};
+  if(count === 0){
+    delete cur[cardId];
+    patch.cards = cur;
+    // count 設 0 視為刪除，同時要從 equipped 移除
+    const eq = ((p.equipped) || []).filter(x=>x!==cardId);
+    if(eq.length !== ((p.equipped)||[]).length) patch.equipped = eq;
+  } else {
+    cur[cardId] = { tier, count };
+    patch.cards = cur;
+  }
+  await dbgWrite(patch, `設定卡片 ${c.name} ${after}`, { field:'cards.'+cardId, from:before, to:after });
+};
+window.dbgSetEquipped = async ()=>{
+  const p = dbgP(); if(!p) return;
+  const a = dbgVal('dbg_eq0'), b = dbgVal('dbg_eq1');
+  const next = [a, b].filter(Boolean).filter((v,i,arr)=> arr.indexOf(v)===i);
+  const from = (p.equipped) || [];
+  if(!confirm(`確定把「${p.name}」裝備中的卡片改成 [${next.map(x=>cardById(x)?.name||x).join(', ') || '空'}] 嗎？`)) return;
+  await dbgWrite({ equipped: next }, `設定裝備卡片 ${next.length} 張`,
+    { field:'equipped', from:from.join(','), to:next.join(',') });
+};
+
+/* ---- Boss ---- */
+window.dbgSetStage = async ()=>{
+  const p = dbgP(); if(!p) return;
+  const n = Math.max(1, Math.min(BOSSES.length, dbgNum('dbg_stage')));
+  const b = BOSSES[n-1];
+  const cur = (p.boss) || {};
+  if(!confirm(`確定把「${p.name}」切到第 ${n} 關「${b.name}」嗎？\n`
+    + `HP 會一併重設為滿血 ${b.hp.toLocaleString()}，並清空 DOT 與里程碑。`)) return;
+  await dbgWrite({ boss: { stage:n, hp:b.hp, dots:[], milestones:[],
+      lastTickAt: Date.now(), buff:false, zoneUntil:0 } },
+    `切換 Boss 第 ${n} 關 ${b.name}`, { field:'boss.stage', from:cur.stage ?? 1, to:n });
+};
+window.dbgSetBossHp = async ()=>{
+  const p = dbgP(); if(!p) return;
+  const cur = (p.boss) || { stage:1, hp:BOSSES[0].hp };
+  const n = Math.max(0, dbgNum('dbg_bossHp'));
+  const from = cur.hp ?? 0;
+  if(from === n) return;
+  if(!confirm(`確定把「${p.name}」目前 Boss 的 HP 從 ${from.toLocaleString()} 改成 ${n.toLocaleString()} 嗎？（不換關）`)) return;
+  await dbgWrite({ 'boss.hp': n, 'boss.lastTickAt': Date.now() },
+    `設定 Boss HP ${n}`, { field:'boss.hp', from, to:n });
+};
+
+/* ---- 每日連續 ---- */
+window.dbgSetStreak = async (tplId)=>{
+  const p = dbgP(); if(!p) return;
+  const n = Math.max(0, dbgNum('dbg_stk_'+tplId));
+  const cur = ((p.dailyStreaks) || {})[tplId] || { count:0, lastDate:null };
+  if(!confirm(`確定把「${p.name}」的連續天數從 ${cur.count||0} 改成 ${n} 嗎？`)) return;
+  await dbgWrite({ ['dailyStreaks.'+tplId]: { count:n, lastDate: cur.lastDate || todayKey() } },
+    `設定連續天數 ${n}`, { field:'dailyStreaks.'+tplId, from:cur.count||0, to:n });
+};
+
+/* ---- 一鍵操作 ---- */
+const QUICK = {
+  packs:    { t:'🔄 重置今日卡包', run:p=>({ patch:{ dailyPacks:null }, label:'重置今日卡包' }) },
+  cd:       { t:'⏱️ 清除所有技能 CD', run:p=>({ patch:{ skillReady:{} }, label:'清除所有技能 CD' }) },
+  eqlock:   { t:'🔓 解除換卡鎖', run:p=>({ patch:{ equipSlotReadyAt:0 }, label:'解除換卡鎖' }) },
+  dots:     { t:'💥 清空 Boss DOT', run:p=>({ patch:{ 'boss.dots':[], 'boss.lastTickAt':Date.now() }, label:'清空 Boss DOT' }) },
+  lotpity:  { t:'🎯 抽獎保底拉滿', run:p=>({ patch:{ lotteryPity:69 }, label:'抽獎保底拉滿（69）' }) },
+  packpity: { t:'🎴 卡包保底拉滿', run:p=>({ patch:{ packPity:29 }, label:'卡包保底拉滿（29）' }) },
+  tut:      { t:'📖 重播新手教學', run:p=>({ patch:{ tutorialDone:false }, label:'重播新手教學' }) },
+  ep:       { t:'⚡ 補滿 EP', run:p=>({ patch:{ epBonus:(p.epBonus ?? 0) + 10000 }, label:'補 EP +10000' }) },
+  coin:     { t:'🪙 給 10000 金幣', run:p=>({ patch:{ coins:(p.coins ?? 0) + 10000 }, label:'給 10000 金幣', coin:10000 }) },
+};
+window.dbgQuick = async (key)=>{
+  const p = dbgP(); if(!p) return;
+  const q = QUICK[key];
+  if(!confirm(`確定對「${p.name}」執行「${q.t}」嗎？`)) return;
+  const r = q.run(p);
+  await dbgWrite(r.patch, r.label, { action:key }, r.coin || 0);
+};
+
+/* ---- 危險操作（兩段 confirm，第二段要輸入玩家名）---- */
+const DANGER = {
+  cards:  { t:'🧹 清空所有卡片', patch:()=>({ cards:{}, equipped:[] }) },
+  titles: { t:'🧹 清空所有稱號', patch:()=>({ shopTitles:[], craftedTitles:{}, equippedTitle:null }) },
+  talent: { t:'🧹 重置天賦',     patch:()=>({ talents:{} }) },
+  boss:   { t:'🧹 重置 Boss 進度', patch:()=>({ boss:{ stage:1, hp:BOSSES[0].hp, dots:[], milestones:[],
+              lastTickAt:Date.now(), buff:false, zoneUntil:0 } }) },
+  wipe:   { t:'☢️ 整個玩家歸零', patch:()=>({
+              coins:0, totalEarned:0, xp:0, tasksDone:0, tasksGrabbed:0,
+              achievements:[], talents:{}, bonusTokens:0, epSpent:0, epBonus:0,
+              materials:{}, craftedTitles:{}, shopTitles:[], equippedTitle:null,
+              lotteryPity:0, lotteryCount:0,
+              cards:{}, equipped:[], equipSlotReadyAt:0, skillReady:{},
+              packTickets:0, packPity:0, dailyPacks:null, dailyStreaks:{},
+              boss:{ stage:1, hp:BOSSES[0].hp, dots:[], milestones:[],
+                     lastTickAt:Date.now(), buff:false, zoneUntil:0 },
+              tutorialDone:false }) },
+};
+window.dbgDanger = async (key)=>{
+  const p = dbgP(); if(!p) return;
+  const d = DANGER[key];
+  if(!confirm(`⚠️ 危險操作\n\n要對「${p.name}」執行「${d.t}」嗎？\n這個動作不能復原。`)) return;
+  const typed = prompt(`最後確認：請輸入玩家名稱「${p.name}」以執行「${d.t}」`, '');
+  if(typed !== p.name){ dbgToast('名稱不符，已取消', true); return; }
+  const patch = d.patch();
+  const coinDelta = ('coins' in patch) ? (0 - (p.coins ?? 0)) : 0;
+  await dbgWrite(patch, d.t, { action:key, danger:true }, coinDelta);
+};
+
+/* ---- 畫面 ---- */
+function dbgNumRow(label, path, cur, id, step){
+  const s = step || 1;
+  return `<div class="dbgRow">
+    <span class="dk">${esc(label)}</span>
+    <span class="dv">${typeof cur === 'number' ? cur.toLocaleString() : esc(String(cur))}</span>
+    <input type="number" id="${id}" value="${cur}">
+    <button class="dbgBtn" onclick="dbgSet('${path}','${id}','${esc(label)}')">設為</button>
+    <button class="dbgBtn mini" onclick="dbgAdd('${path}',${s},'${esc(label)}')">+${s}</button>
+    <button class="dbgBtn mini" onclick="dbgAdd('${path}',${-s},'${esc(label)}')">−${s}</button>
+  </div>`;
+}
+
+function renderDebug(){
+  const sel = $('dbgPick');
+  const ids = Object.keys(players);
+  if(sel.dataset.n !== String(ids.length)){
+    sel.innerHTML = '<option value="">— 請選擇 —</option>' +
+      ids.map(id=>`<option value="${esc(id)}">${esc(players[id].name || id)}</option>`).join('');
+    sel.dataset.n = String(ids.length);
+    sel.onchange = ()=> dbgPickPlayer(sel.value);
+  }
+  if(sel.value !== (dbgId || '')) sel.value = dbgId || '';
+
+  const p = dbgP();
+  if(!p){ $('dbgBody').innerHTML = '<div class="empty">選一個玩家開始編輯</div>'; return; }
+
+  const lv = levelFromXp(p.xp ?? 0);
+  const eqLeft = Math.max(0, ((p.equipSlotReadyAt) || 0) - Date.now());
+  const cds = Object.entries((p.skillReady) || {}).filter(([,t])=> t > Date.now());
+  const boss = (p.boss) || { stage:1, hp:BOSSES[0].hp, dots:[], milestones:[] };
+  const bossDef = BOSSES[(boss.stage || 1) - 1];
+  const cardCount = Object.keys((p.cards) || {}).length;
+  const titleCount = ((p.shopTitles)||[]).length + Object.keys((p.craftedTitles)||{}).length;
+
+  $('dbgBody').innerHTML = `
+    <h3>目前狀態總覽</h3>
+    <div class="dbgWarn" style="color:var(--text);border-style:solid;border-color:var(--line)">
+      金幣 <b style="color:${(p.coins??0)<0?'var(--pink)':'var(--gold)'}">${(p.coins ?? 0).toLocaleString()}</b>
+      ／ XP ${(p.xp ?? 0).toLocaleString()}（Lv.${lv}）
+      ／ EP ${epAvail(p).toLocaleString()}
+      ／ 天賦點 ${talentEarned(p)}（已用 ${talentSpent(p)}）<br>
+      成就 ${((p.achievements)||[]).length}/${ACHIEVEMENTS.length}
+      ／ 抽獎 pity ${p.lotteryPity ?? 0}
+      ／ 卡包 pity ${p.packPity ?? 0}
+      ／ 卡包券 ${p.packTickets ?? 0}<br>
+      Boss 第 ${boss.stage ?? 1} 關 HP ${(boss.hp ?? 0).toLocaleString()}/${(bossDef?.hp ?? 0).toLocaleString()}
+      ／ 卡片 ${cardCount} 張 ／ 稱號 ${titleCount} 個
+      ／ 換卡鎖 ${eqLeft > 0 ? Math.ceil(eqLeft/60000) + ' 分' : '無'}
+      ／ CD ${cds.length} 個
+    </div>
+
+    <h3>經濟</h3>
+    ${dbgNumRow('金幣 coins','coins', p.coins ?? 0, 'dbg_coins', 1000)}
+    ${dbgNumRow('累計賺 totalEarned','totalEarned', p.totalEarned ?? 0, 'dbg_te', 1000)}
+
+    <h3>等級 / EP</h3>
+    <div class="dbgRow">
+      <span class="dk">經驗 xp</span>
+      <span class="dv">${(p.xp ?? 0).toLocaleString()}</span>
+      <input type="number" id="dbg_xp" value="${p.xp ?? 0}" oninput="dbgXpPreview()">
+      <button class="dbgBtn" onclick="dbgSet('xp','dbg_xp','經驗 xp')">設為</button>
+      <button class="dbgBtn mini" onclick="dbgAdd('xp',1000,'經驗 xp')">+1000</button>
+      <button class="dbgBtn mini" onclick="dbgAdd('xp',-1000,'經驗 xp')">−1000</button>
+      <div class="dbgPreview" id="dbg_xpPrev" style="width:100%"></div>
+    </div>
+    ${dbgNumRow('已耗 EP epSpent','epSpent', p.epSpent ?? 0, 'dbg_eps', 100)}
+    ${dbgNumRow('Boss EP epBonus','epBonus', p.epBonus ?? 0, 'dbg_epb', 100)}
+
+    <h3>天賦</h3>
+    ${dbgNumRow('額外點 bonusTokens','bonusTokens', p.bonusTokens ?? 0, 'dbg_btk', 1)}
+    ${TALENT_TREES.map(t=>`<div class="dbgRow">
+      <span class="dk">${t.icon} ${t.name}</span>
+      <span class="dv">L${talentLv(p,t.key)}</span>
+      <input type="number" id="dbg_tal_${t.key}" min="1" max="${TALENT_MAX_LV}" value="${talentLv(p,t.key)}">
+      <button class="dbgBtn" onclick="dbgSetTalent('${t.key}')">設為</button>
+    </div>`).join('')}
+
+    <h3>成就（點一下切換，會影響天賦點與全解加成）</h3>
+    <div class="achChips">${ACHIEVEMENTS.map(a=>{
+      const on = ((p.achievements)||[]).includes(a.id);
+      return `<span class="achChip ${on?'on':''}" onclick="dbgToggleAch('${a.id}')">${a.icon} ${esc(a.name)}</span>`;
+    }).join('')}</div>
+
+    <h3>任務</h3>
+    ${dbgNumRow('完成數 tasksDone','tasksDone', p.tasksDone ?? 0, 'dbg_td', 1)}
+    ${dbgNumRow('搶到數 tasksGrabbed','tasksGrabbed', p.tasksGrabbed ?? 0, 'dbg_tg', 1)}
+    ${dailyTemplates.length ? dailyTemplates.map(t=>`<div class="dbgRow">
+      <span class="dk">🔥 ${esc(t.title)}</span>
+      <span class="dv">${((p.dailyStreaks)||{})[t.id]?.count ?? 0} 天</span>
+      <input type="number" id="dbg_stk_${t.id}" value="${((p.dailyStreaks)||{})[t.id]?.count ?? 0}">
+      <button class="dbgBtn" onclick="dbgSetStreak('${t.id}')">設為</button>
+    </div>`).join('') : ''}
+
+    <h3>抽獎</h3>
+    ${dbgNumRow('保底 lotteryPity','lotteryPity', p.lotteryPity ?? 0, 'dbg_lp', 1)}
+    ${dbgNumRow('抽獎次數 lotteryCount','lotteryCount', p.lotteryCount ?? 0, 'dbg_lc', 1)}
+    ${MATERIALS.map(m=>`<div class="dbgRow">
+      <span class="dk">${m.icon} ${m.name}</span>
+      <span class="dv">${((p.materials)||{})[m.key] ?? 0}/${m.need}</span>
+      <input type="number" id="dbg_mat_${m.key}" min="0" value="${((p.materials)||{})[m.key] ?? 0}">
+      <button class="dbgBtn" onclick="dbgSetMat('${m.key}')">設為</button>
+    </div>`).join('')}
+    ${CRAFT_TITLES.map(t=>`<div class="dbgRow">
+      <span class="dk">${t.icon} ${t.name}</span>
+      <span class="dv">×${((p.craftedTitles)||{})[t.id] ?? 0}</span>
+      <input type="number" id="dbg_cft_${t.id}" min="0" value="${((p.craftedTitles)||{})[t.id] ?? 0}">
+      <button class="dbgBtn" onclick="dbgSetCrafted('${t.id}')">設為</button>
+    </div>`).join('')}
+
+    <h3>稱號</h3>
+    <div class="dbgRow">
+      <span class="dk">裝備中</span>
+      <select id="dbg_eqTitle">
+        <option value="">不裝備</option>
+        ${CRAFT_TITLES.map(t=>`<option value="${t.id}" ${p.equippedTitle===t.id?'selected':''}>${t.icon} ${esc(t.name)}（金幣 ×${t.mult}）</option>`).join('')}
+        ${SHOP_TITLES.map(t=>`<option value="${t.id}" ${p.equippedTitle===t.id?'selected':''}>${t.tier} ${esc(t.name)}（幸運 ×${TIERS[t.tier].luck}）</option>`).join('')}
+      </select>
+      <button class="dbgBtn" onclick="dbgSetEquippedTitle()">設定</button>
+    </div>
+    <div class="dbgRow"><span class="dk">商店稱號</span>
+      <input type="text" id="dbg_ttSearch" placeholder="搜尋名稱⋯" oninput="dbgFilterTitles()">
+      <span style="font-family:var(--mono);font-size:11px;color:var(--muted)">
+        已有 ${((p.shopTitles)||[]).length}/${SHOP_TITLES.length}</span>
+    </div>
+    <div class="ttList" id="dbg_ttList">${SHOP_TITLES.map(t=>{
+      const on = ((p.shopTitles)||[]).includes(t.id);
+      return `<span class="achChip ${on?'on':''}" data-nm="${esc(t.name)}"
+        onclick="dbgToggleShopTitle('${t.id}')" style="margin:3px">${t.tier}・${esc(t.name)}</span>`;
+    }).join('')}</div>
+
+    <h3>卡片</h3>
+    <div class="dbgRow">
+      <span class="dk">裝備中（最多 2）</span>
+      <select id="dbg_eq0">${['',...CARDS.map(c=>c.id)].map(id=>
+        `<option value="${id}" ${((p.equipped)||[])[0]===id?'selected':''}>${id?esc(cardById(id).name):'（空）'}</option>`).join('')}</select>
+      <select id="dbg_eq1">${['',...CARDS.map(c=>c.id)].map(id=>
+        `<option value="${id}" ${((p.equipped)||[])[1]===id?'selected':''}>${id?esc(cardById(id).name):'（空）'}</option>`).join('')}</select>
+      <button class="dbgBtn" onclick="dbgSetEquipped()">設定</button>
+    </div>
+    ${CARDS.map(c=>{
+      const own = ((p.cards)||{})[c.id];
+      return `<div class="dbgRow">
+        <span class="dk">${esc(c.name)} <span style="color:var(--dim)">${c.rar}</span></span>
+        <span class="dv">${own ? `${own.tier} ×${own.count}` : '—'}</span>
+        <select id="dbg_cardT_${c.id}">${PACK_TIERS.map(t=>
+          `<option value="${t.id}" ${(own?.tier||'normal')===t.id?'selected':''}>${t.name}</option>`).join('')}</select>
+        <input type="number" id="dbg_cardC_${c.id}" min="0" value="${own?.count ?? 0}" style="width:70px">
+        <button class="dbgBtn" onclick="dbgSetCard('${c.id}')">設為</button>
+      </div>`;
+    }).join('')}
+    ${dbgNumRow('卡包券 packTickets','packTickets', p.packTickets ?? 0, 'dbg_pt', 1)}
+    ${dbgNumRow('卡包保底 packPity','packPity', p.packPity ?? 0, 'dbg_pp', 1)}
+    <div class="dbgRow">
+      <span class="dk">換卡鎖</span>
+      <span class="dv">${eqLeft > 0 ? Math.ceil(eqLeft/60000)+' 分' : '無'}</span>
+      <button class="dbgBtn" onclick="dbgQuick('eqlock')">立即解鎖</button>
+    </div>
+    <div class="dbgRow">
+      <span class="dk">技能 CD</span>
+      <span class="dv">${cds.length} 個</span>
+      <span style="font-family:var(--mono);font-size:10.5px;color:var(--muted);flex:1">
+        ${cds.map(([k,t])=>`${esc(k)} ${Math.ceil((t-Date.now())/60000)}分`).join('、') || '無'}</span>
+      <button class="dbgBtn" onclick="dbgQuick('cd')">全部清除</button>
+    </div>
+
+    <h3>Boss</h3>
+    <div class="dbgRow">
+      <span class="dk">關卡 stage</span>
+      <span class="dv">${boss.stage ?? 1}</span>
+      <input type="number" id="dbg_stage" min="1" max="${BOSSES.length}" value="${boss.stage ?? 1}">
+      <button class="dbgBtn" onclick="dbgSetStage()">切換（重設滿血）</button>
+    </div>
+    <div class="dbgRow">
+      <span class="dk">HP（不換關）</span>
+      <span class="dv">${(boss.hp ?? 0).toLocaleString()}</span>
+      <input type="number" id="dbg_bossHp" min="0" value="${boss.hp ?? 0}">
+      <button class="dbgBtn" onclick="dbgSetBossHp()">設為</button>
+    </div>
+    <div class="dbgRow">
+      <span class="dk">DOT / 里程碑</span>
+      <span class="dv">${((boss.dots)||[]).length} 層</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--muted);flex:1">
+        已領里程碑：${((boss.milestones)||[]).join('%、') || '無'}</span>
+      <button class="dbgBtn" onclick="dbgQuick('dots')">清空 DOT</button>
+      <button class="dbgBtn" onclick="dbgResetMs()">重設里程碑</button>
+    </div>
+
+    <h3>其他</h3>
+    <div class="dbgRow">
+      <span class="dk">新手教學</span>
+      <span class="dv">${p.tutorialDone === true ? '已完成' : '未完成'}</span>
+      <button class="dbgBtn" onclick="dbgToggleTut()">切換</button>
+    </div>
+    <div class="dbgRow">
+      <span class="dk">今日卡包</span>
+      <span class="dv">${(p.dailyPacks?.date) || '無'}</span>
+      <button class="dbgBtn" onclick="dbgQuick('packs')">重置今日卡包</button>
+    </div>
+
+    <h3>一鍵操作</h3>
+    <div class="dbgGrid">${Object.entries(QUICK).map(([k,q])=>
+      `<button class="dbgBtn" onclick="dbgQuick('${k}')">${q.t}</button>`).join('')}</div>
+
+    <h3 style="color:#ff3c5a">危險操作（需輸入玩家名稱）</h3>
+    <div class="dbgGrid">${Object.entries(DANGER).map(([k,d])=>
+      `<button class="dbgBtn danger" onclick="dbgDanger('${k}')">${d.t}</button>`).join('')}</div>`;
+
+  dbgXpPreview();
+}
+
+window.dbgFilterTitles = ()=>{
+  const q = (dbgVal('dbg_ttSearch') || '').trim();
+  $('dbg_ttList').querySelectorAll('.achChip').forEach(el=>{
+    el.style.display = (!q || el.dataset.nm.includes(q)) ? '' : 'none';
+  });
+};
+window.dbgResetMs = async ()=>{
+  const p = dbgP(); if(!p) return;
+  if(!confirm(`確定重設「${p.name}」目前關卡的里程碑嗎？（可以重新領一次）`)) return;
+  await dbgWrite({ 'boss.milestones': [] }, '重設里程碑', { field:'boss.milestones' });
+};
+window.dbgToggleTut = async ()=>{
+  const p = dbgP(); if(!p) return;
+  const to = !(p.tutorialDone === true);
+  if(!confirm(`確定把「${p.name}」的新手教學狀態改成「${to?'已完成':'未完成'}」嗎？`)) return;
+  await dbgWrite({ tutorialDone: to }, `設定教學狀態 ${to?'已完成':'未完成'}`,
+    { field:'tutorialDone', from:p.tutorialDone===true, to });
+};
 
 /* ===== 總繪製 ===== */
 let raf = null;
@@ -985,6 +1566,7 @@ function renderAll(){
       renderFlowControls(); renderFlow();
       renderCum(); renderDaily(); renderSpend();
       renderLottery(); renderDiscipline(); renderCompare();
+      renderDebug();
     } catch(e){
       console.error(e);
       $('notice').innerHTML = '⚠️ 繪製時發生錯誤：' + esc(e.message);
