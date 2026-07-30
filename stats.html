@@ -244,6 +244,11 @@
   .dbgBtn:hover{ background:rgba(255,107,129,.26); }
   .dbgBtn.mini{ padding:5px 9px; }
   .dbgBtn.danger{ background:rgba(255,60,90,.22); color:#fff; border-color:rgba(255,60,90,.7); }
+  .dbgErr{
+    font-family:var(--mono); font-size:12.5px; color:#fff; line-height:1.8;
+    background:rgba(255,60,90,.18); border:1px solid rgba(255,60,90,.7);
+    border-radius:9px; padding:13px 15px;
+  }
   .dbgPickBtns{ display:flex; gap:8px; flex-wrap:wrap; }
   .dbgPickBtn{
     padding:8px 14px; min-height:44px; border-radius:9px; cursor:pointer;
@@ -410,6 +415,7 @@ const {
   EVENTS, setRuntime, eventOn, eventExpired, eventAdd, eventUntil, activeEvents,
   r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
   todayKey, getWeights, TICKET_PRICE, SALE_TICKET_PRICE, LUCK_MAX,
+  epTotal, epAvail, PACK_TIERS, CARDS, cardById, BOSSES, tierById,
 } = window.GAME;
 
 const app = initializeApp(firebaseConfig);
@@ -1330,6 +1336,23 @@ window.dbgQuick = async (key)=>{
   await dbgWrite(r.patch, r.label, { action:key }, r.coin || 0);
 };
 
+/* ---- 一鍵給指定卡片（選卡 + 等級 + 數量）---- */
+window.dbgGrantCard = async ()=>{
+  const p = dbgP(); if(!p) return;
+  const cardId = dbgVal('dbg_giveCard');
+  const tier   = dbgVal('dbg_giveTier');
+  const count  = Math.max(1, dbgNum('dbg_giveCount'));
+  const c = cardById(cardId);
+  if(!c){ dbgToast('請先選卡片', true); return; }
+  const own = ((p.cards) || {})[cardId];
+  const before = own ? `${own.tier} ×${own.count}` : '未擁有';
+  if(!confirm(`確定給「${p.name}」卡片「${c.name}」${tierById(tier).name} ×${count} 嗎？\n目前：${before}`)) return;
+  const cur = { ...((p.cards) || {}) };
+  cur[cardId] = { tier, count };
+  await dbgWrite({ cards: cur }, `給予卡片 ${c.name} ${tierById(tier).name} ×${count}`,
+    { field:'cards.'+cardId, from:before, to:`${tier} ×${count}` });
+};
+
 /* ---- 危險操作（兩段 confirm，第二段要輸入玩家名）---- */
 const DANGER = {
   cards:  { t:'🧹 清空所有卡片', patch:()=>({ cards:{}, equipped:[] }) },
@@ -1485,6 +1508,15 @@ function renderDebug(){
     }).join('')}</div>
 
     <h3>卡片</h3>
+    <div class="dbgRow" style="background:rgba(233,196,106,.06);border-radius:8px;padding:9px 10px">
+      <span class="dk">🎁 一鍵給卡</span>
+      <select id="dbg_giveCard">${CARDS.map(c=>
+        `<option value="${c.id}">${c.rar}・${esc(c.name)}</option>`).join('')}</select>
+      <select id="dbg_giveTier">${PACK_TIERS.map(t=>
+        `<option value="${t.id}">${t.name} ×${t.mult}</option>`).join('')}</select>
+      <input type="number" id="dbg_giveCount" min="1" value="1" style="width:64px">
+      <button class="dbgBtn" onclick="dbgGrantCard()">給予</button>
+    </div>
     <div class="dbgRow">
       <span class="dk">裝備中（最多 2）</span>
       <select id="dbg_eq0">${['',...CARDS.map(c=>c.id)].map(id=>
@@ -1594,10 +1626,16 @@ function renderAll(){
       renderFlowControls(); renderFlow();
       renderCum(); renderDaily(); renderSpend();
       renderLottery(); renderDiscipline(); renderCompare();
-      renderDebug();
     } catch(e){
-      console.error(e);
+      console.error('stats render failed:', e);
       $('notice').innerHTML = '⚠️ 繪製時發生錯誤：' + esc(e.message);
+    }
+    // 編輯區獨立 try：錯誤要當場看得到，不能被上面的 catch 吞掉變成「按了沒反應」
+    try { renderDebug(); }
+    catch(e){
+      console.error('renderDebug failed:', e);
+      $('dbgBody').innerHTML = `<div class="dbgErr">編輯區載入失敗：${esc(e.message)}<br>
+        <span style="opacity:.7">詳細堆疊請看 Console</span></div>`;
     }
   });
 }
