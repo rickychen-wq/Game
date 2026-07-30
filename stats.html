@@ -244,6 +244,14 @@
   .dbgBtn:hover{ background:rgba(255,107,129,.26); }
   .dbgBtn.mini{ padding:5px 9px; }
   .dbgBtn.danger{ background:rgba(255,60,90,.22); color:#fff; border-color:rgba(255,60,90,.7); }
+  .dbgPickBtns{ display:flex; gap:8px; flex-wrap:wrap; }
+  .dbgPickBtn{
+    padding:8px 14px; min-height:44px; border-radius:9px; cursor:pointer;
+    background:#12141d; border:1px solid var(--line-soft); color:var(--muted);
+    font-family:var(--mono); font-size:13px; font-weight:700;
+  }
+  .dbgPickBtn.on{ background:rgba(255,107,129,.2); color:#fff; border-color:rgba(255,107,129,.75);
+    box-shadow:0 0 14px rgba(255,107,129,.28); }
   .dbgGrid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(178px,1fr)); gap:8px; }
   .dbgPreview{ font-family:var(--mono); font-size:11px; color:var(--cyan); padding:6px 0 0; }
   .dbgPreview.warn{ color:#ffb3bf; }
@@ -286,6 +294,8 @@
 </header>
 
 <main>
+  <button class="dbgBtn" id="jumpDbg" style="width:100%;margin-bottom:14px;min-height:44px"
+          onclick="jumpDebug()">☢️ 跳到數據編輯</button>
   <div class="notice" id="notice">載入中⋯</div>
 
   <!-- 🎛️ 系統控制台 -->
@@ -355,14 +365,14 @@
   </section>
   <!-- ☢️ DEBUG ZONE（唯一允許寫入的區域，上方統計區一律唯讀） -->
   <section id="debugZone">
-    <h2>DEBUG ZONE</h2>
+    <h2>玩家數據編輯 <span style="font-size:9px;opacity:.5;letter-spacing:2px">DEBUG ZONE</span></h2>
     <div class="dbgWarn">
       這是 Chen 專用的除錯／管理後台。所有寫入都會記進 ledger（kind:debug），統計不會說謊。<br>
       刪除帳號與批次清理仍然只能在 admin.html 做，這裡不提供任何刪除功能。
     </div>
     <div class="dbgRow">
       <span class="dk">選擇玩家</span>
-      <select id="dbgPick"><option value="">— 請選擇 —</option></select>
+      <div id="dbgPickBtns" class="dbgPickBtns"></div>
     </div>
     <div id="dbgBody"></div>
   </section>
@@ -1099,7 +1109,31 @@ const dbgVal = id => { const el = $(id); return el ? el.value : ''; };
 const dbgNum = id => { const v = Number(dbgVal(id)); return isNaN(v) ? 0 : v; };
 const getPath = (o, path) => path.split('.').reduce((a,k)=> (a==null?a:a[k]), o);
 
-window.dbgPickPlayer = (id)=>{ dbgId = id || null; renderDebug(); };
+// 用按鈕而不是 <select>：高頻重繪的頁面上，原生 select 的使用者選擇永遠會輸給程式覆寫
+function renderDbgPicker(){
+  const box = $('dbgPickBtns');
+  const ids = Object.keys(players);
+  const sig = ids.join(',') + '|' + (dbgId || '');
+  if(box.dataset.sig === sig) return;          // 沒變就不重繪
+  box.dataset.sig = sig;
+  box.innerHTML = ids.map(id=>`
+    <button class="dbgPickBtn ${id === dbgId ? 'on' : ''}"
+            onclick="dbgPickPlayer('${esc(id)}')">${esc(players[id].name || id)}</button>`).join('');
+}
+window.dbgPickPlayer = (id)=>{
+  dbgId = id || null;
+  renderDebug();
+  const z = $('debugZone');
+  if(z) z.scrollIntoView({ behavior:'smooth', block:'start' });
+};
+window.jumpDebug = ()=> $('debugZone').scrollIntoView({ behavior:'smooth', block:'start' });
+window.toggleDbgOverview = ()=>{
+  const el = $('dbgOverview');
+  if(!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : '';
+  $('dbgOvArrow').textContent = open ? '▸' : '▾';
+};
 
 /* ---- 一般數值：設為 / 加減 ---- */
 window.dbgSet = async (path, inputId, label)=>{
@@ -1284,7 +1318,7 @@ const QUICK = {
   dots:     { t:'💥 清空 Boss DOT', run:p=>({ patch:{ 'boss.dots':[], 'boss.lastTickAt':Date.now() }, label:'清空 Boss DOT' }) },
   lotpity:  { t:'🎯 抽獎保底拉滿', run:p=>({ patch:{ lotteryPity:69 }, label:'抽獎保底拉滿（69）' }) },
   packpity: { t:'🎴 卡包保底拉滿', run:p=>({ patch:{ packPity:29 }, label:'卡包保底拉滿（29）' }) },
-  tut:      { t:'📖 重播新手教學', run:p=>({ patch:{ tutorialDone:false }, label:'重播新手教學' }) },
+  tut:      { t:'📖 重置教學紀錄', run:p=>({ patch:{ tutBoss:false, tutTalent:false }, label:'重置教學紀錄（Boss／天賦）' }) },
   ep:       { t:'⚡ 補滿 EP', run:p=>({ patch:{ epBonus:(p.epBonus ?? 0) + 10000 }, label:'補 EP +10000' }) },
   coin:     { t:'🪙 給 10000 金幣', run:p=>({ patch:{ coins:(p.coins ?? 0) + 10000 }, label:'給 10000 金幣', coin:10000 }) },
 };
@@ -1312,7 +1346,7 @@ const DANGER = {
               packTickets:0, packPity:0, dailyPacks:null, dailyStreaks:{},
               boss:{ stage:1, hp:BOSSES[0].hp, dots:[], milestones:[],
                      lastTickAt:Date.now(), buff:false, zoneUntil:0 },
-              tutorialDone:false }) },
+              tutorialDone:false, tutBoss:false, tutTalent:false }) },
 };
 window.dbgDanger = async (key)=>{
   const p = dbgP(); if(!p) return;
@@ -1339,15 +1373,7 @@ function dbgNumRow(label, path, cur, id, step){
 }
 
 function renderDebug(){
-  const sel = $('dbgPick');
-  const ids = Object.keys(players);
-  if(sel.dataset.n !== String(ids.length)){
-    sel.innerHTML = '<option value="">— 請選擇 —</option>' +
-      ids.map(id=>`<option value="${esc(id)}">${esc(players[id].name || id)}</option>`).join('');
-    sel.dataset.n = String(ids.length);
-    sel.onchange = ()=> dbgPickPlayer(sel.value);
-  }
-  if(sel.value !== (dbgId || '')) sel.value = dbgId || '';
+  renderDbgPicker();
 
   const p = dbgP();
   if(!p){ $('dbgBody').innerHTML = '<div class="empty">選一個玩家開始編輯</div>'; return; }
@@ -1361,8 +1387,10 @@ function renderDebug(){
   const titleCount = ((p.shopTitles)||[]).length + Object.keys((p.craftedTitles)||{}).length;
 
   $('dbgBody').innerHTML = `
-    <h3>目前狀態總覽</h3>
-    <div class="dbgWarn" style="color:var(--text);border-style:solid;border-color:var(--line)">
+    <h3 style="cursor:pointer" onclick="toggleDbgOverview()">
+      <span id="dbgOvArrow">▸</span> 目前狀態總覽</h3>
+    <div id="dbgOverview" style="display:none" class="dbgWarn"
+         data-x="color:var(--text)">
       金幣 <b style="color:${(p.coins??0)<0?'var(--pink)':'var(--gold)'}">${(p.coins ?? 0).toLocaleString()}</b>
       ／ XP ${(p.xp ?? 0).toLocaleString()}（Lv.${lv}）
       ／ EP ${epAvail(p).toLocaleString()}
