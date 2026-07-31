@@ -335,6 +335,14 @@
   <!-- 商店頁 -->
   <div class="page" id="page-shop">
     <section>
+      <h2>🎁 願望單 <span class="count zero" id="cWish">0</span></h2>
+      <div id="wishList"></div>
+      <div style="margin-top:12px">
+        <button class="btn gray" id="wishLogBtn" style="width:100%">📜 已處理紀錄（最近 20 筆）▾</button>
+        <div id="wishLog" style="display:none;margin-top:10px"></div>
+      </div>
+    </section>
+    <section>
       <h2>商店管理 <span class="count zero" id="cShop">0</span></h2>
       <input id="sName" placeholder="商品名稱（例：手機時間 30 分鐘）">
       <input id="sCat" list="catList" placeholder="分類（選填，例：手機時間）">
@@ -445,6 +453,7 @@ const {
   EVENTS, setRuntime, eventOn, eventUntil, activeEvents, eventAdd,
   r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
   todayKey, prevKey,
+  CURRENCY_SIGN, priceToPoints, wishToTwd,
 } = window.GAME;
 
 const app = initializeApp(firebaseConfig);
@@ -456,6 +465,7 @@ let shopItems = [];
 let purchases = [];
 let dailyTemplates = [];
 let penalties = [];
+let wishes = [];
 let adminUnlocked = (sessionStorage.getItem('admin_ok') === '1');
 
 
@@ -479,7 +489,8 @@ function setCount(el, n){
 function updateNavBadge(){
   const n = tasks.filter(t=>t.status==='pending').length
           + purchases.filter(p=>p.status==='pending').length
-          + penalties.filter(p=>p.type==='lock' && p.status==='reported').length;
+          + penalties.filter(p=>p.type==='lock' && p.status==='reported').length
+          + wishes.filter(w=>w.status==='pending').length;
   const b = $('navReview');
   b.textContent = n;
   b.classList.toggle('show', n>0);
@@ -622,6 +633,13 @@ onSnapshot(query(collection(db,'purchases'), orderBy('createdAt','desc')), snap=
   renderPlayers();
   updateNavBadge();
 });
+onSnapshot(query(collection(db,'wishes'), orderBy('createdAt','desc')), snap=>{
+  wishes = [];
+  snap.forEach(d=> wishes.push({id:d.id, ...d.data()}));
+  renderWishes();
+  updateNavBadge();
+});
+
 onSnapshot(query(collection(db,'penalties'), orderBy('createdAt','desc')), snap=>{
   penalties = [];
   snap.forEach(d=> penalties.push({id:d.id, ...d.data()}));
@@ -866,6 +884,105 @@ function renderTemplates(){
       </div>
     </div>
   `).join('') : '<div class="empty">還沒有每日任務模板</div>';
+}
+
+/* ==================================================================
+   願望單（後台）
+================================================================== */
+window.listWish = async (id)=>{
+  const w = wishes.find(x=>x.id===id);
+  if(!w) return;
+  const price = parseInt(($('wp_'+id) || {}).value);
+  if(!price || price < 1){ toast('最終價格要大於 0'); return; }
+  const who = pName(w.playerId);
+  const sign = CURRENCY_SIGN[w.currency] || '';
+  if(!confirm(`確定把「${w.itemName}」上架到商店嗎？\n售價 🪙 ${price.toLocaleString()}（${who} 的願望・原價 ${sign}${(w.amount ?? 0).toLocaleString()}）`)) return;
+  try {
+    await runTransaction(db, async tx=>{
+      const wRef = doc(db,'wishes',id);
+      const ws = await tx.get(wRef);                     // read 在 write 之前
+      if(!ws.exists()) throw new Error('願望不存在');
+      if(ws.data().status !== 'pending') throw new Error('狀態已變更');
+      const shopRef = doc(collection(db,'shop'));
+      tx.set(shopRef, {
+        name: w.itemName,
+        price,
+        category: '其他',                                 // 固定
+        desc: `${who} 的願望・原價 ${sign}${(w.amount ?? 0).toLocaleString()}`,
+        isTicket: false,
+        fromWish: true,
+        createdAt: serverTimestamp(),
+      });
+      tx.update(wRef, {
+        status: 'listed', finalPrice: price,
+        shopItemId: shopRef.id, decidedAt: serverTimestamp(),
+      });
+      tx.set(ledgerRef(), ledgerData(w.playerId, 'wish', 0, w.itemName,
+        { playerId: w.playerId, finalPrice: price }));
+    });
+    toast(`已上架到商店：${w.itemName} 🪙 ${price.toLocaleString()}`);
+  } catch(e){ toast(e.message); }
+};
+
+window.rejectWish = async (id)=>{
+  const w = wishes.find(x=>x.id===id);
+  if(!w) return;
+  const reason = prompt(`婉拒「${w.itemName}」的理由（一定要填，弟弟看得到）：`, '');
+  if(reason === null) return;
+  if(!reason.trim()){ toast('一定要填理由'); return; }
+  try {
+    await updateDoc(doc(db,'wishes',id), {
+      status: 'rejected', rejectReason: reason.trim(), decidedAt: serverTimestamp(),
+    });
+    toast('已婉拒');
+  } catch(e){ toast(e.message); }
+};
+
+$('wishLogBtn').onclick = ()=>{
+  const el = $('wishLog');
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : '';
+  $('wishLogBtn').textContent = open ? '📜 已處理紀錄（最近 20 筆）▾' : '📜 收起已處理紀錄 ▴';
+};
+
+function renderWishes(){
+  const pend = wishes.filter(w=>w.status==='pending');
+  setCount('cWish', pend.length);
+
+  $('wishList').innerHTML = pend.length ? pend.map(w=>{
+    const sign = CURRENCY_SIGN[w.currency] || '';
+    const sug = w.suggestPoints ?? priceToPoints(w.amount, w.currency);
+    return `<div class="card">
+      <div class="title">🎁 ${esc(w.itemName)}
+        <span class="pill a">${esc(pName(w.playerId))}</span></div>
+      <div class="sub">原價 ${sign}${(w.amount ?? 0).toLocaleString()}${
+        w.currency === 'JPY' ? `（≈ NT$${(w.twd ?? 0).toLocaleString()}）` : ''}</div>
+      ${w.note ? `<div class="sub">說明：${esc(w.note)}</div>` : ''}
+      <div class="sub" style="margin-top:8px">系統建議　<span class="coin">🪙 ${sug.toLocaleString()}</span></div>
+      <div class="formRow" style="margin-top:8px;align-items:center">
+        <input id="wp_${w.id}" type="number" min="1" value="${sug}" placeholder="最終價格">
+        <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">分類：其他（固定）</span>
+      </div>
+      <div class="row">
+        <button class="btn ok" onclick="listWish('${w.id}')">✅ 上架</button>
+        <button class="btn no" onclick="rejectWish('${w.id}')">↩️ 婉拒</button>
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty">目前沒有待審核的願望</div>';
+
+  const done = wishes.filter(w=>w.status!=='pending').slice(0,20);
+  $('wishLog').innerHTML = done.length ? done.map(w=>{
+    const d = w.decidedAt?.toDate ? w.decidedAt.toDate() : null;
+    const ds = d ? `${d.getMonth()+1}/${d.getDate()}` : '—';
+    const sign = CURRENCY_SIGN[w.currency] || '';
+    return `<div class="card">
+      <div class="title">${esc(w.itemName)}
+        <span class="pill ${w.status === 'listed' ? 'claimed' : 'grab'}">${w.status === 'listed' ? '已上架' : '婉拒'}</span></div>
+      <div class="sub">${esc(pName(w.playerId))}・原價 ${sign}${(w.amount ?? 0).toLocaleString()}・${ds}
+        ${w.status === 'listed' ? `・售價 <span class="coin">🪙 ${(w.finalPrice ?? 0).toLocaleString()}</span>` : ''}
+        ${w.rejectReason ? `<br>理由：${esc(w.rejectReason)}` : ''}</div>
+    </div>`;
+  }).join('') : '<div class="empty">還沒有已處理的願望</div>';
 }
 
 /* ===== 商店管理 ===== */
