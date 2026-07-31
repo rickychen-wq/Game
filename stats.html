@@ -27,10 +27,15 @@
     --mono:'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
   }
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ height:100%; overscroll-behavior-y:none; }
   body {
     font-family:'Noto Sans TC', sans-serif;
     background:var(--bg); color:var(--text);
-    min-height:100vh; position:relative; padding-bottom:60px;
+    height:100dvh;
+    min-height:-webkit-fill-available;
+    overflow:hidden;
+    position:relative;
+    display:flex; flex-direction:column;
   }
   body::after{
     content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
@@ -67,6 +72,7 @@
   #pwMsg{ font-family:var(--mono); font-size:13px; color:var(--pink); min-height:18px; }
 
   header{
+    flex-shrink:0;
     padding:18px 20px 14px; border-bottom:1px solid var(--line);
     background:linear-gradient(180deg,#0a0b12 40%, rgba(7,8,13,.8));
     display:flex; align-items:center; gap:10px; flex-wrap:wrap;
@@ -75,7 +81,11 @@
   header .htag{ font-family:var(--mono); font-size:10px; letter-spacing:2px; color:var(--gold-dim);
     border:1px solid var(--line); padding:2px 8px; border-radius:5px; }
 
-  main{ max-width:1100px; margin:0 auto; padding:16px; }
+  main{
+    flex:1; min-height:0; width:100%; max-width:1100px; margin:0 auto;
+    overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior-y:contain;
+    padding:16px 16px calc(24px + env(safe-area-inset-bottom));   /* B-2 ③ safe-area */
+  }
 
   /* 誠實標示列 */
   .notice{
@@ -275,9 +285,30 @@
   #dbgToast.bad{ color:var(--pink); border-color:rgba(255,107,129,.6); }
 
   @media (max-width:640px){
-    main{ padding:12px; }
+    main{ padding:12px 12px calc(20px + env(safe-area-inset-bottom)); }
     section{ padding:14px; }
     .kpi .v{ font-size:22px; }
+  }
+  /* 窄螢幕：避免任何橫向溢出（表格例外，它包在 .tblWrap 內刻意可橫捲） */
+  @media (max-width:420px){
+    main{ padding:10px 10px calc(18px + env(safe-area-inset-bottom)); }
+    section{ padding:12px; border-radius:10px; }
+    header{ padding:14px 12px 11px; }
+    header .htxt{ font-size:14px; }
+    .buffGrid{ grid-template-columns:1fr; }        /* 三欄 → 單欄 */
+    .kpiGrid{ grid-template-columns:1fr; }
+    .dbgGrid{ grid-template-columns:1fr; }
+    .dbgRow{ gap:6px; }
+    .dbgRow .dk{ min-width:0; flex:1 0 100%; }     /* 標籤獨立一行，欄位不被擠爆 */
+    .dbgRow .dv{ min-width:0; }
+    .dbgRow input[type=number], .dbgRow input[type=text]{ width:88px; }
+    .dbgRow select{ max-width:100%; }
+    .evCtl{ gap:6px; }
+    .evBtn{ margin-left:0; width:100%; }
+    .evCtl .dur{ width:100%; }
+    .evCtl input[type=datetime-local]{ width:100%; }
+    #debugZone{ padding:14px; }
+    .tlItem .m{ font-size:12.5px; }
   }
 </style>
 </head>
