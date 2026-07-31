@@ -229,6 +229,22 @@
   ];
 
   /* ==============================================================
+     願望單：金額 → 點數換算（系統建議值，媽媽在後台可改成任何數字）
+  ============================================================== */
+  const JPY_TO_TWD   = 0.2;     // 1 日幣 = 0.2 台幣（5000 日幣 ≈ 1000 台幣）
+  const TWD_TO_POINT = 125;     // 1 台幣 = 125 點
+  const WISH_PENDING_MAX = 3;   // 每人待審核上限
+  const CURRENCY_SIGN = { JPY:'¥', TWD:'NT$' };
+  function wishToTwd(amount, currency){
+    const n = Number(amount) || 0;
+    return currency === 'JPY' ? n * JPY_TO_TWD : n;
+  }
+  function priceToPoints(amount, currency){
+    const twd = wishToTwd(amount, currency);
+    return Math.round(twd * TWD_TO_POINT / 100) * 100;   // 取整到百位
+  }
+
+  /* ==============================================================
      活動：內容寫死，開關與期限存在 config/system.events
   ============================================================== */
   const EVENTS = [
@@ -500,6 +516,8 @@
     // Boss
     BOSSES, MILESTONES, bossOfStage, bossImg,
     ATTACK_WINDOW_MIN, windowId, inAttackWindow, windowEdge, skillKey, castUsed,
+    // 願望單
+    JPY_TO_TWD, TWD_TO_POINT, WISH_PENDING_MAX, CURRENCY_SIGN, wishToTwd, priceToPoints,
     // 活動
     EVENTS, setRuntime, getRuntime, eventOn, eventExpired, eventAdd, eventUntil,
     activeEvents, ticketPrice,
