@@ -883,6 +883,47 @@
   .poolRow.total{ border-top:1px solid var(--line); margin-top:6px; padding-top:8px; }
   .poolRow.total b{ color:var(--gold); font-size:14px; }
 
+  /* ===== 願望單 ===== */
+  .curSeg{ display:flex; gap:8px; margin-bottom:10px; }
+  .curSeg button{
+    flex:1; min-height:44px; border-radius:10px; cursor:pointer;
+    background:#0d0f17; border:1px solid var(--line); color:var(--muted);
+    font-family:var(--mono); font-size:13px; font-weight:700;
+  }
+  .curSeg button.on{ background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep));
+    color:#1a1206; border-color:transparent; }
+  .wishInput{
+    width:100%; margin-bottom:10px; padding:12px 13px; border-radius:10px;
+    border:1px solid var(--line); background:#0c0e15; color:var(--text);
+    font-family:inherit; font-size:14px;
+  }
+  .wishInput:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(233,196,106,.1); }
+  textarea.wishInput{ min-height:74px; resize:vertical; }
+  .convBox{
+    font-family:var(--mono); font-size:13.5px; font-weight:800; color:var(--gold);
+    background:rgba(233,196,106,.08); border:1px dashed rgba(233,196,106,.4);
+    border-radius:10px; padding:12px; text-align:center; margin-bottom:11px; line-height:1.7;
+  }
+  .wishRow{
+    padding:13px 14px; margin-bottom:10px; border-radius:11px;
+    background:linear-gradient(160deg,var(--panel-1),var(--panel-2)); border:1px solid var(--line-soft);
+  }
+  .wishRow.listed{ border-color:rgba(95,240,220,.45); }
+  .wishRow.rejected{ border-color:rgba(255,107,129,.45); }
+  .wishRow .wTop{ display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+  .wishRow .wNm{ font-size:15.5px; font-weight:900; }
+  .wishRow .wMeta{ font-family:var(--mono); font-size:11.5px; color:var(--muted); margin-top:5px; line-height:1.7; }
+  .wishRow .wRej{
+    font-family:var(--mono); font-size:12px; color:#ffb3bf; line-height:1.7; margin-top:8px;
+    background:rgba(255,107,129,.1); border:1px solid rgba(255,107,129,.35); border-radius:8px; padding:9px 11px;
+  }
+  .wishTag{ font-family:var(--mono); font-size:10.5px; font-weight:800; padding:3px 9px; border-radius:5px; }
+  .wishTag.pend{ background:rgba(233,196,106,.14); color:var(--gold); border:1px solid rgba(233,196,106,.4); }
+  .wishTag.ok{ background:rgba(95,240,220,.14); color:var(--cyan); border:1px solid rgba(95,240,220,.4); }
+  .wishTag.no{ background:rgba(255,107,129,.14); color:var(--pink); border:1px solid rgba(255,107,129,.4); }
+  .wishBadge{ font-family:var(--mono); font-size:10px; font-weight:800; color:#1a1206;
+    background:linear-gradient(180deg,#ffd9a1,#e0a34a); padding:2px 7px; border-radius:5px; margin-left:6px; }
+
   /* ===== 禁閉 / 罰單 ===== */
   .lockCard{
     position:relative; border-radius:12px; padding:16px; margin-bottom:14px;
@@ -1143,6 +1184,11 @@
     <div id="bossBody"></div>
   </div>
 
+  <!-- 願望單 -->
+  <div class="page" id="page-wish">
+    <div id="wishBody"></div>
+  </div>
+
   <!-- 罰單頁 -->
   <div class="page" id="page-penalty">
     <h2>我的罰單</h2>
@@ -1197,6 +1243,7 @@
     <div class="drawerItem" data-p="talent" id="drawerTalent"><span class="dic">🌳</span><span class="dname">天賦</span></div>
     <div class="drawerItem" data-p="cards"><span class="dic">🎴</span><span class="dname">卡片</span></div>
     <div class="drawerItem" data-p="boss"><span class="dic">⚔️</span><span class="dname">Boss</span></div>
+    <div class="drawerItem" data-p="wish"><span class="dic">🎁</span><span class="dname">願望單</span></div>
     <div class="drawerItem" data-p="penalty"><span class="dic">🔒</span><span class="dname">我的罰單</span></div>
   </div>
   <div class="drawerSet">
@@ -1289,7 +1336,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getFirestore, collection, doc, getDoc, setDoc, onSnapshot, updateDoc,
-  runTransaction, serverTimestamp, query, orderBy, increment, arrayUnion, arrayRemove
+  runTransaction, serverTimestamp, query, orderBy, increment, arrayUnion, arrayRemove, addDoc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ====== firebaseConfig（沿用，不動） ====== */
@@ -1322,6 +1369,7 @@ const {
   rollRarity, rollTier, skillDamage, dmgMult,
   BOSSES, MILESTONES, bossOfStage, bossImg,
   ATTACK_WINDOW_MIN, windowId, inAttackWindow, windowEdge, skillKey, castUsed,
+  JPY_TO_TWD, TWD_TO_POINT, WISH_PENDING_MAX, CURRENCY_SIGN, wishToTwd, priceToPoints,
 } = window.GAME;
 
 const app = initializeApp(firebaseConfig);
@@ -1334,6 +1382,7 @@ let shopItems = [];
 let purchases = [];
 let dailyTemplates = [];
 let penalties = [];
+let wishes = [];
 let penaltiesLoaded = false;
 
 /* ===== 記帳（ledger）：玩家端零感知，只新增紀錄不影響任何既有邏輯 ===== */
@@ -1668,6 +1717,7 @@ function goTab(name){
   if(name === 'bag') renderBag();
   if(name === 'lottery') renderLottery();
   if(name === 'penalty') renderPenalty();
+  if(name === 'wish') renderWish();
   if(name === 'titles') renderTitles();
   if(name === 'titleshop') renderTitleShop();
   if(name === 'talent'){ renderTalent(); maybeAutoTut('talent'); }
@@ -1790,6 +1840,12 @@ onSnapshot(doc(db,'config','system'), snap=>{
   setRuntime({ events: cfg.events || {} });     // 活動設定注入 shared.js
   onEventsChanged();
   renderAll();
+});
+
+onSnapshot(query(collection(db,'wishes'), orderBy('createdAt','desc')), snap=>{
+  wishes = [];
+  snap.forEach(d=> wishes.push({id:d.id, ...d.data()}));
+  renderWish();
 });
 
 onSnapshot(query(collection(db,'penalties'), orderBy('createdAt','desc')), snap=>{
@@ -3146,6 +3202,99 @@ function renderBoss(){
 }
 
 /* ==================================================================
+   願望單（前台）
+================================================================== */
+let wishCur = 'JPY';                  // 目前選的幣別
+window.setWishCur = (c)=>{ wishCur = c; renderWish(); };
+
+// 即時換算預覽（輸入時就更新，不重繪整頁）
+window.updateWishPreview = ()=>{
+  const el = $('wishConv'); if(!el) return;
+  const amt = Number($('wishAmt').value) || 0;
+  if(!amt){ el.textContent = '輸入金額後顯示換算'; return; }
+  const twd = wishToTwd(amt, wishCur);
+  const pts = priceToPoints(amt, wishCur);
+  el.innerHTML = wishCur === 'JPY'
+    ? `¥${amt.toLocaleString()}　≈　NT$${Math.round(twd).toLocaleString()}　≈　🪙 ${pts.toLocaleString()} 點`
+    : `NT$${amt.toLocaleString()}　≈　🪙 ${pts.toLocaleString()} 點`;
+};
+
+window.submitWish = async ()=>{
+  if(lockGuard()) return;
+  const itemName = ($('wishName').value || '').trim();
+  const amount = Number($('wishAmt').value) || 0;
+  const note = ($('wishNote').value || '').trim();
+  if(!itemName){ sfxError(); toast('要填想要什麼'); return; }
+  if(amount <= 0){ sfxError(); toast('金額要大於 0'); return; }
+  const pend = wishes.filter(w=>w.playerId===me && w.status==='pending').length;
+  if(pend >= WISH_PENDING_MAX){ sfxError(); toast(`待審核的願望最多 ${WISH_PENDING_MAX} 個`); return; }
+
+  const twd = wishToTwd(amount, wishCur);
+  const suggestPoints = priceToPoints(amount, wishCur);
+  if(!confirm(`要提出願望「${itemName}」嗎？\n${CURRENCY_SIGN[wishCur]}${amount.toLocaleString()}　建議 🪙 ${suggestPoints.toLocaleString()}\n最終價格由媽媽決定`)) return;
+  try {
+    await addDoc(collection(db,'wishes'), {
+      playerId: me, itemName, currency: wishCur, amount,
+      twd: Math.round(twd), suggestPoints, note,
+      status: 'pending', createdAt: serverTimestamp(),
+    });
+    $('wishName').value = ''; $('wishAmt').value = ''; $('wishNote').value = '';
+    sfxBuy(); toast('願望已送出，等媽媽審核 🎁');
+    updateWishPreview();
+  } catch(e){ sfxError(); toast(e.message); }
+};
+
+function renderWish(){
+  if(!me || !players[me]) return;
+  const mine = wishes.filter(w=>w.playerId===me);
+  const pend = mine.filter(w=>w.status==='pending').length;
+  const full = pend >= WISH_PENDING_MAX;
+
+  const list = mine.map(w=>{
+    const d = w.createdAt?.toDate ? w.createdAt.toDate() : null;
+    const ds = d ? `${d.getMonth()+1}/${d.getDate()}` : '—';
+    const price = `${CURRENCY_SIGN[w.currency] || ''}${(w.amount ?? 0).toLocaleString()}`;
+    const tag = w.status === 'listed'   ? '<span class="wishTag ok">🟢 已上架</span>'
+              : w.status === 'rejected' ? '<span class="wishTag no">🔴 婉拒</span>'
+              :                           '<span class="wishTag pend">🟡 等媽媽審核</span>';
+    return `<div class="wishRow ${w.status}">
+      <div class="wTop"><span class="wNm">${esc(w.itemName)}</span>${tag}</div>
+      <div class="wMeta">
+        原價 ${price}${w.currency === 'JPY' ? `（≈ NT$${(w.twd ?? 0).toLocaleString()}）` : ''}・${ds}
+        ${w.note ? `<br>說明：${esc(w.note)}` : ''}
+        ${w.status === 'listed' ? `<br>售價 <b style="color:var(--gold)">🪙 ${(w.finalPrice ?? 0).toLocaleString()}</b>` : ''}
+      </div>
+      ${w.status === 'rejected' && w.rejectReason ? `<div class="wRej">媽媽的理由：${esc(w.rejectReason)}</div>` : ''}
+      ${w.status === 'listed' ? `<div class="row" style="margin-top:10px;justify-content:flex-end">
+        <button class="btn blue" onclick="goTab('shop')">去商店看</button></div>` : ''}
+    </div>`;
+  }).join('');
+
+  $('wishBody').innerHTML = `
+    <h2>提出願望</h2>
+    <input class="wishInput" id="wishName" placeholder="想要什麼？（例：芙莉蓮公仔）"
+      value="${esc($('wishName')?.value || '')}">
+    <div class="curSeg">
+      <button class="${wishCur==='JPY'?'on':''}" onclick="setWishCur('JPY')">🇯🇵 日幣</button>
+      <button class="${wishCur==='TWD'?'on':''}" onclick="setWishCur('TWD')">🇹🇼 台幣</button>
+    </div>
+    <input class="wishInput" id="wishAmt" type="number" min="1" inputmode="numeric"
+      placeholder="金額" value="${esc($('wishAmt')?.value || '')}" oninput="updateWishPreview()">
+    <div class="convBox" id="wishConv">輸入金額後顯示換算</div>
+    <textarea class="wishInput" id="wishNote" placeholder="顏色、尺寸、網址…">${esc($('wishNote')?.value || '')}</textarea>
+    ${actionBtn(`<button class="btn gold" style="width:100%" onclick="submitWish()" ${full?'disabled':''}>送出願望</button>`)}
+    <div class="sub" style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:9px;line-height:1.7">
+      ${full ? `<span style="color:var(--pink)">待審核的願望最多 ${WISH_PENDING_MAX} 個，等媽媽處理完再提</span><br>` : ''}
+      ※ 點數是系統建議值，最終價格由媽媽決定
+    </div>
+
+    <h2>我的願望（${mine.length}）</h2>
+    ${list || '<div class="empty">還沒有提過願望</div>'}`;
+
+  updateWishPreview();
+}
+
+/* ==================================================================
    畫面
 ================================================================== */
 const seen = {};
@@ -3358,7 +3507,7 @@ function renderShop(){
   $('shopList').innerHTML = groupByCategory(shopItems).map(([cat, items])=>
     `<h2>${esc(cat)}</h2>` + items.map(i=>`
     <div class="${cardCls('shop',i.id)}">
-      <div class="title">${esc(i.name)}</div>
+      <div class="title">${esc(i.name)}${i.fromWish ? '<span class="wishBadge">🎁 願望</span>' : ''}</div>
       ${i.desc ? `<div class="sub">${esc(i.desc)}</div>` : ''}
       <div class="row">
         <div class="reward">🪙 ${i.price}</div>
