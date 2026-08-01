@@ -1355,7 +1355,7 @@ const QUICK = {
   dots:     { t:'💥 清空 Boss DOT', run:p=>({ patch:{ 'boss.dots':[], 'boss.lastTickAt':Date.now() }, label:'清空 Boss DOT' }) },
   lotpity:  { t:'🎯 抽獎保底拉滿', run:p=>({ patch:{ lotteryPity:69 }, label:'抽獎保底拉滿（69）' }) },
   packpity: { t:'🎴 卡包保底拉滿', run:p=>({ patch:{ packPity:29 }, label:'卡包保底拉滿（29）' }) },
-  tut:      { t:'📖 重置教學紀錄', run:p=>({ patch:{ tutBoss:false, tutTalent:false }, label:'重置教學紀錄（Boss／天賦）' }) },
+  tut:      { t:'📖 重置教學紀錄', run:p=>({ patch:{ tutBoss:false, tutTalent:false, tutRank:false }, label:'重置教學紀錄（Boss／天賦／排行）' }) },
   ep:       { t:'⚡ 補滿 EP', run:p=>({ patch:{ epBonus:(p.epBonus ?? 0) + 10000 }, label:'補 EP +10000' }) },
   coin:     { t:'🪙 給 10000 金幣', run:p=>({ patch:{ coins:(p.coins ?? 0) + 10000 }, label:'給 10000 金幣', coin:10000 }) },
 };
@@ -1400,7 +1400,8 @@ const DANGER = {
               packTickets:0, packPity:0, dailyPacks:null, dailyStreaks:{},
               boss:{ stage:1, hp:BOSSES[0].hp, dots:[], milestones:[],
                      lastTickAt:Date.now(), buff:false, zoneUntil:0 },
-              tutorialDone:false, tutBoss:false, tutTalent:false }) },
+              tutorialDone:false, tutBoss:false, tutTalent:false, tutRank:false,
+              bossClearReward:0 }) },
 };
 window.dbgDanger = async (key)=>{
   const p = dbgP(); if(!p) return;
@@ -1567,6 +1568,7 @@ function renderDebug(){
         <button class="dbgBtn" onclick="dbgSetCard('${c.id}')">設為</button>
       </div>`;
     }).join('')}
+    ${dbgNumRow('全通關已領 bossClearReward','bossClearReward', p.bossClearReward ?? 0, 'dbg_bcr', 1)}
     ${dbgNumRow('卡包券 packTickets','packTickets', p.packTickets ?? 0, 'dbg_pt', 1)}
     ${dbgNumRow('卡包保底 packPity','packPity', p.packPity ?? 0, 'dbg_pp', 1)}
     <div class="dbgRow">
