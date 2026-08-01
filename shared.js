@@ -220,13 +220,44 @@
     { id:'first_buy',   icon:'🛍️', name:'剁手初體驗', desc:'第一次購買',           check: s => s.buyCount >= 1 },
     { id:'buy_10',      icon:'💸', name:'月光族',     desc:'購買 10 次',           check: s => s.buyCount >= 10 },
     { id:'hoard_1000',  icon:'🏦', name:'守財奴',     desc:'同時持有 1000 金幣',   check: s => s.coins >= 1000 },
-    { id:'grab_king',   icon:'⚡', name:'手速之王',   desc:'搶到 10 個開放任務',   check: s => s.tasksGrabbed >= 10 },
+    { id:'coop_10',     icon:'🤝', name:'最佳拍檔',   desc:'完成 10 個合作任務',   check: s => s.coopDone >= 10 },
     { id:'streak_7',    icon:'🔥', name:'燃燒吧',     desc:'任一每日任務連續達成 7 天', check: s => s.maxStreak >= 7 },
     { id:'lottery_30',  icon:'🎰', name:'賭場常客',   desc:'抽獎 30 次',           check: s => s.lotteryCount >= 30 },
     { id:'lv_20',       icon:'🏅', name:'資深工人',   desc:'等級達到 Lv.20',       check: s => s.level >= 20 },
     { id:'lv_30',       icon:'💎', name:'家務大師',   desc:'等級達到 Lv.30',       check: s => s.level >= 30 },
     { id:'clean_30',    icon:'😇', name:'清白之身',   desc:'連續 30 天沒有任何罰單', check: s => s.cleanDays >= 30 },
   ];
+
+  /* ==============================================================
+     合作任務（取代原本的「開放搶」）
+     所有成員各自回報 → 全員完成才進審核 → 通過時每人各拿全額（各自倍率）
+  ============================================================== */
+  const COOP_ASSIGNEE = 'coop';
+  const REPORT_COOLDOWN_MS = 24 * 3600000;   // 同任務同舉報人 24 小時只能舉報一次
+  const REPORT_MIN_LEN = 5;                  // 舉報理由最少字數
+
+  // 舊的 assignee:'all' 一律視為合作任務，不讓它們變孤兒
+  const isCoop = t => !!t && (t.assignee === COOP_ASSIGNEE || t.assignee === 'all');
+  // 成員名單：以任務建立當下的快照為準；舊任務沒有快照就用傳入的現有玩家
+  function coopMembers(t, fallbackIds){
+    const m = t && t.coopMembers;
+    return (Array.isArray(m) && m.length) ? m : (fallbackIds || []);
+  }
+  const coopDoneBy = (t, id) => !!((t && t.coopDone) || {})[id];
+  function coopProgress(t, fallbackIds){
+    const ids = coopMembers(t, fallbackIds);
+    const done = ids.filter(id => coopDoneBy(t, id));
+    return { ids, done, total: ids.length, allDone: ids.length > 0 && done.length === ids.length };
+  }
+  // 舉報冷卻：同一任務、同一舉報人 24 小時內只能一次
+  function canReport(t, byId, now){
+    const r = t && t.coopReport;
+    if(!r) return true;
+    if(r.status === 'pending') return false;              // 已有進行中的舉報
+    if(r.by !== byId) return true;
+    const at = r.at?.toMillis ? r.at.toMillis() : (r.at || 0);
+    return (now ?? Date.now()) - at >= REPORT_COOLDOWN_MS;
+  }
 
   /* ==============================================================
      每週排行：週次計算（以台灣時間週一 00:00 為一週開始）
@@ -561,6 +592,9 @@
     pickWeighted, rollRarity, rollTier, skillDamage, dmgMult,
     // Boss
     BOSSES, MILESTONES, bossOfStage, bossImg, BOSS_MAX_OPEN, BOSS_CLEAR_REWARD,
+    // 合作任務
+    COOP_ASSIGNEE, REPORT_COOLDOWN_MS, REPORT_MIN_LEN,
+    isCoop, coopMembers, coopDoneBy, coopProgress, canReport,
     // 每週排行
     weekKey, prevWeekKey, weekEndAt, weekRangeTxt, WEEKLY_BOARDS, tpeDay,
     ATTACK_WINDOW_MIN, windowId, inAttackWindow, windowEdge, skillKey, castUsed,
