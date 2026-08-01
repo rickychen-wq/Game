@@ -1441,6 +1441,8 @@ let dailyTemplates = [];
 let penalties = [];
 let wishes = [];
 let weeklyLoaded = false;
+let weeklyDocs = {};          // { weekKey: data }　⚠️ 必須宣告在 onSnapshot 之前，否則 TDZ 會炸
+let weeklySettling = false;
 let penaltiesLoaded = false;
 
 /* ===== 記帳（ledger）：玩家端零感知，只新增紀錄不影響任何既有邏輯 ===== */
@@ -3409,8 +3411,6 @@ function renderWish(){
    ⚠️ 冪等關鍵：「檢查文件不存在」與「建立文件 + 發獎」必須在同一個 transaction 內，
       不可以先 getDoc 再 updateDoc，否則兩個弟弟同時開 app 會重複發獎
 ================================================================== */
-let weeklyDocs = {};          // { weekKey: data }
-let weeklySettling = false;
 
 function boardWinners(mode){
   const rows = rankRows(mode);
