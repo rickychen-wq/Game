@@ -662,6 +662,7 @@ $('addTaskBtn').onclick = async ()=>{
   const title = $('tTitle').value.trim();
   const reward = parseInt($('tReward').value);
   const assignee = $('tAssignee').value;
+  if(!assignee) return toast('要先選指派對象');
   if(!title) return toast('要輸入任務內容');
   if(!reward || reward<1) return toast('金幣要大於 0');
   const isCo = (assignee === COOP_ASSIGNEE);
@@ -677,11 +678,17 @@ $('addTaskBtn').onclick = async ()=>{
 
 function renderAssigneeSelect(){
   const sel = $('tAssignee');
+  // ⚠️ players snapshot 高頻觸發：只有「選項清單真的變了」才重繪。
+  // 否則每次重繪都會把使用者剛選的值洗掉（選了合作任務卻發成個人任務）。
+  const sig = Object.entries(players).map(([id,p])=>id+':'+(p.name||'')).join('|');
+  if(sel.dataset.sig === sig) return;
   const cur = sel.value;
+  sel.dataset.sig = sig;
   sel.innerHTML = Object.entries(players).map(([id,p])=>
     `<option value="${id}">指派給 ${esc(p.name)}</option>`
   ).join('') + `<option value="${COOP_ASSIGNEE}">🤝 合作任務（所有人一起完成）</option>`;
-  if(cur) sel.value = cur;
+  // 只有舊選擇仍存在於新清單時才還原，避免把選擇亂設成別的值
+  if(cur && [...sel.options].some(o=>o.value === cur)) sel.value = cur;
 }
 
 /* ===== 審核任務（★ 通過時同步累加 coins / totalEarned / xp / tasksDone）===== */
@@ -1210,11 +1217,15 @@ $('typeLock').onclick = ()=>{
 
 function renderPenaltySelect(){
   const sel = $('fPlayer');
+  // 同上：只有清單真的變動才重繪，否則會洗掉媽媽剛選的對象
+  const sig = Object.entries(players).map(([id,p])=>id+':'+(p.name||'')).join('|');
+  if(sel.dataset.sig === sig) return;
   const cur = sel.value;
+  sel.dataset.sig = sig;
   sel.innerHTML = Object.entries(players).map(([id,p])=>
     `<option value="${id}">${esc(p.name)}</option>`
   ).join('');
-  if(cur) sel.value = cur;
+  if(cur && [...sel.options].some(o=>o.value === cur)) sel.value = cur;
 }
 
 $('addPenBtn').onclick = async ()=>{
