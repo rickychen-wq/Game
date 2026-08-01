@@ -295,6 +295,10 @@
 <main>
   <!-- 審核頁 -->
   <div class="page on" id="page-review">
+    <section id="disputeSec" style="display:none">
+      <h2>🚨 合作任務爭議 <span class="count zero" id="cDispute">0</span></h2>
+      <div id="disputeList"></div>
+    </section>
     <section>
       <h2>待審核的任務回報 <span class="count zero" id="cReview">0</span></h2>
       <div id="reviewList"></div>
@@ -454,6 +458,7 @@ const {
   r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
   todayKey, prevKey,
   CURRENCY_SIGN, priceToPoints, wishToTwd,
+  COOP_ASSIGNEE, isCoop, coopMembers, coopDoneBy, coopProgress,
 } = window.GAME;
 
 const app = initializeApp(firebaseConfig);
@@ -490,7 +495,8 @@ function updateNavBadge(){
   const n = tasks.filter(t=>t.status==='pending').length
           + purchases.filter(p=>p.status==='pending').length
           + penalties.filter(p=>p.type==='lock' && p.status==='reported').length
-          + wishes.filter(w=>w.status==='pending').length;
+          + wishes.filter(w=>w.status==='pending').length
+          + tasks.filter(t=>t.coopReport && t.coopReport.status==='pending').length;
   const b = $('navReview');
   b.textContent = n;
   b.classList.toggle('show', n>0);
@@ -601,6 +607,7 @@ onSnapshot(collection(db,'players'), snap=>{
   renderAssigneeSelect();
   renderTasks();
   renderReview();
+  renderDisputes();
   renderBuyReview();
   renderPenalties();
   scheduleEnsureAll();
@@ -610,6 +617,7 @@ onSnapshot(query(collection(db,'tasks'), orderBy('createdAt','desc')), snap=>{
   snap.forEach(d=> tasks.push({id:d.id, ...d.data()}));
   renderTasks();
   renderReview();
+  renderDisputes();
   updateNavBadge();
   scheduleEnsureAll();
 });
@@ -656,9 +664,11 @@ $('addTaskBtn').onclick = async ()=>{
   const assignee = $('tAssignee').value;
   if(!title) return toast('要輸入任務內容');
   if(!reward || reward<1) return toast('金幣要大於 0');
+  const isCo = (assignee === COOP_ASSIGNEE);
   await addDoc(collection(db,'tasks'), {
     title, reward, assignee,
-    status:'open', claimedBy:null, wasRejected:false,
+    status:'open', wasRejected:false,
+    ...(isCo ? { coopMembers: Object.keys(players), coopDone: {} } : {}),
     createdAt: serverTimestamp()
   });
   $('tTitle').value=''; $('tReward').value='';
@@ -670,15 +680,23 @@ function renderAssigneeSelect(){
   const cur = sel.value;
   sel.innerHTML = Object.entries(players).map(([id,p])=>
     `<option value="${id}">指派給 ${esc(p.name)}</option>`
-  ).join('') + '<option value="all">開放大家搶</option>';
+  ).join('') + `<option value="${COOP_ASSIGNEE}">🤝 合作任務（所有人一起完成）</option>`;
   if(cur) sel.value = cur;
 }
 
 /* ===== 審核任務（★ 通過時同步累加 coins / totalEarned / xp / tasksDone）===== */
 window.approveTask = async (id)=>{
   const t = tasks.find(x=>x.id===id);
-  if(t){
-    const payee = t.claimedBy || t.assignee;
+  if(t && isCoop(t)){
+    // 合作任務：每人各拿全額，倍率各自算
+    const ids = coopMembers(t, Object.keys(players));
+    const lines = ids.map(pid=>{
+      const cm = coinMultOf(players[pid]);
+      return `${pName(pid)} ⭐×${cm} → 🪙 ${Math.round(t.reward * cm).toLocaleString()}`;
+    }).join('\n');
+    if(!confirm(`確定通過合作任務「${t.title}」？\n所有人各拿全額：\n${lines}`)) return;
+  } else if(t){
+    const payee = t.assignee;
     const who = pName(payee);
     const cm = coinMultOf(players[payee]), xm = xpMultOf(players[payee]);
     const payout = Math.round(t.reward * cm), xpGain = Math.round(t.reward * xm);
@@ -694,12 +712,20 @@ window.approveTask = async (id)=>{
       if(!s.exists()) throw new Error('任務不存在');
       const t = s.data();
       if(t.status!=='pending') throw new Error('狀態已變更');
-      const payee = t.claimedBy || t.assignee;
-      if(!payee || payee==='all') throw new Error('找不到領獎的人');
-      const pRef = doc(db,'players',payee);
-      const ps = await tx.get(pRef);                 // read 一律在 write 之前
-      if(!ps.exists()) throw new Error('玩家帳號已被刪除，請改用「刪除這筆」清除紀錄');
+      // 合作任務 → 全員；一般任務 → 單人
+      const payees = isCoop(t) ? coopMembers(t, Object.keys(players)) : [t.assignee];
+      if(!payees.length || payees.some(x=>!x || x==='all')) throw new Error('找不到領獎的人');
+      // ⚠️ Firestore 要求所有 read 在任何 write 之前 → 先一次讀完所有人
+      const pRefs = payees.map(pid => doc(db,'players',pid));
+      const pSnaps = [];
+      for(const r of pRefs){
+        const snap = await tx.get(r);
+        if(!snap.exists()) throw new Error('玩家帳號已被刪除，請改用「刪除這筆」清除紀錄');
+        pSnaps.push(snap);
+      }
+      const pRef = pRefs[0], ps = pSnaps[0];
       const pd = ps.data() || {};
+      const payee = payees[0];
 
       // 加法池：金幣與 XP 分開算（天賦 XP 加成不能連金幣一起放大）
       const coinMult = coinMultOf(pd);
@@ -721,16 +747,26 @@ window.approveTask = async (id)=>{
 
       tx.update(ref, { status:'done' });
       const boost = eventOn('tokenBoost');     // 活動：每完成一個任務多 1 顆結晶
-      tx.update(pRef, {
-        coins:       increment(payout),
-        totalEarned: increment(payout),     // 用發放後金額累加
-        xp:          increment(xpGain),     // XP 走自己的倍率
-        tasksDone:   increment(1),
-        ...(boost ? { bonusTokens: increment(1) } : {}),
-        ...streakUpdate
+      const coop = isCoop(t);
+      // 每人各拿全額，倍率各自計算
+      pSnaps.forEach((snap, i)=>{
+        const d = snap.data() || {};
+        const cm = coinMultOf(d), xm = xpMultOf(d);
+        const pay = Math.round(t.reward * cm), xg = Math.round(t.reward * xm);
+        tx.update(pRefs[i], {
+          coins:       increment(pay),
+          totalEarned: increment(pay),      // 用發放後金額累加
+          xp:          increment(xg),       // XP 走自己的倍率
+          tasksDone:   increment(1),
+          ...(coop ? { tasksGrabbed: increment(1) } : {}),   // 合作完成數（成就 coop_10）
+          ...(boost ? { bonusTokens: increment(1) } : {}),
+          ...(i === 0 ? streakUpdate : {}),
+        });
+        tx.set(ledgerRef(), ledgerData(payees[i],
+          coop ? 'coop' : (t.isDaily ? 'daily' : 'task'), pay, t.title,
+          { mult: cm, xpMult: xm, xpGain: xg, base: t.reward,
+            ...(coop ? { coop:true } : {}), ...(boost ? { tokenBoost:true } : {}) }));
       });
-      tx.set(ledgerRef(), ledgerData(payee, t.isDaily ? 'daily' : 'task', payout, t.title,
-        { mult: coinMult, xpMult, xpGain, base: t.reward, ...(boost ? { tokenBoost:true } : {}) }));
     });
     toast('已通過，金幣入帳 🪙');
   } catch(e){ toast(e.message); }
@@ -740,8 +776,9 @@ window.rejectTask = async (id)=>{
   const t = tasks.find(x=>x.id===id);
   if(!t) return;
   await updateDoc(doc(db,'tasks',id), {
-    status: t.claimedBy ? 'claimed' : 'open',
-    wasRejected: true
+    status: 'open',
+    wasRejected: true,
+    ...(isCoop(t) ? { coopDone: {} } : {}),      // 合作任務退回 → 兩人都要重做
   });
   toast('已退回，請他重做');
 };
@@ -750,9 +787,25 @@ function renderReview(){
   const list = tasks.filter(t=>t.status==='pending');
   setCount('cReview', list.length);
   $('reviewList').innerHTML = list.length ? list.map(t=>{
-    const payee = t.claimedBy || t.assignee;
-    const gone = !isKnown(payee);            // 帳號已刪除 → 按發錢一定失敗
+    const payee = t.assignee;
+    const gone = !isCoop(t) && !isKnown(payee);   // 帳號已刪除 → 按發錢一定失敗
     const m = gone ? 1 : coinMultOf(players[payee]);
+    if(isCoop(t)){
+      const ids = coopMembers(t, Object.keys(players));
+      const lines = ids.map(pid=>{
+        const cm = coinMultOf(players[pid]);
+        return `${esc(pName(pid))} <span class="multPill">⭐×${cm} → 🪙 ${Math.round(t.reward*cm).toLocaleString()}</span>`;
+      }).join('　　');
+      return `<div class="card">
+        <div class="title">🤝 ${esc(t.title)} <span class="pill claimed">合作</span></div>
+        <div class="sub">全員完成・每人各拿全額（倍率各自計算）</div>
+        <div class="sub" style="margin-top:6px">${lines}</div>
+        <div class="row">
+          <button class="btn ok" onclick="approveTask('${t.id}')">✅ 通過（兩人都發）</button>
+          <button class="btn no" onclick="rejectTask('${t.id}')">↩️ 退回重做</button>
+        </div>
+      </div>`;
+    }
     return `<div class="card">
       <div class="title">${esc(t.title)}${t.isDaily?' <span class="pill a">📅每日</span>':''}${gone?' <span class="pill lock">⚠️ 帳號已刪除</span>':''}</div>
       <div class="sub">${esc(gone ? payee : pName(payee))} 回報完成・獎勵 <span class="coin">🪙 ${t.reward}</span>${(!gone && m>1)?`<span class="multPill">⭐×${m} → 🪙 ${Math.round(t.reward*m)}${
@@ -778,6 +831,105 @@ window.delOrphanBuy = async (id)=>{
   await deleteDoc(doc(db,'purchases',id));
   toast('已刪除孤兒購買');
 };
+
+/* ==================================================================
+   合作任務仲裁：舉報不會直接懲罰，一律由媽媽裁決
+================================================================== */
+// 發獎給指定名單（read 全部先做完再 write）
+async function payCoop(tx, tRef, t, ids, note){
+  const refs = ids.map(pid => doc(db,'players',pid));
+  const snaps = [];
+  for(const r of refs){
+    const sn = await tx.get(r);                       // ⚠️ read 一律在 write 之前
+    if(!sn.exists()) throw new Error('玩家帳號已被刪除');
+    snaps.push(sn);
+  }
+  tx.update(tRef, { status:'done', 'coopReport.status':'resolved' });
+  const boost = eventOn('tokenBoost');
+  snaps.forEach((sn,i)=>{
+    const d = sn.data() || {};
+    const cm = coinMultOf(d), xm = xpMultOf(d);
+    const pay = Math.round(t.reward * cm), xg = Math.round(t.reward * xm);
+    tx.update(refs[i], {
+      coins: increment(pay), totalEarned: increment(pay),
+      xp: increment(xg), tasksDone: increment(1), tasksGrabbed: increment(1),
+      ...(boost ? { bonusTokens: increment(1) } : {}),
+    });
+    tx.set(ledgerRef(), ledgerData(ids[i], 'coop_arbitration', pay, t.title,
+      { verdict: note, mult: cm, base: t.reward }));
+  });
+}
+
+window.arbitrate = async (id, verdict)=>{
+  const t = tasks.find(x=>x.id===id);
+  if(!t || !t.coopReport) return;
+  const allIds = coopMembers(t, Object.keys(players));
+  const doneIds = allIds.filter(pid => coopDoneBy(t, pid));
+  const rep = t.coopReport;
+
+  if(verdict === 'winner'){
+    const names = doneIds.map(pid=>pName(pid)).join('、');
+    const lose = allIds.filter(x=>!doneIds.includes(x)).map(pid=>pName(pid)).join('、');
+    if(!doneIds.length){ toast('沒有人回報完成'); return; }
+    if(!confirm(`確定只發給已完成的人嗎？\n✅ ${names} 各拿全額\n❌ ${lose} 拿 0`)) return;
+    try {
+      await runTransaction(db, async tx=>{
+        const tRef = doc(db,'tasks',id);
+        const ts = await tx.get(tRef);
+        if(!ts.exists() || ts.data().status === 'done') throw new Error('狀態已變更');
+        await payCoop(tx, tRef, t, doneIds, 'winner');
+      });
+      toast('已判給完成的人 ✅');
+    } catch(e){ toast(e.message); }
+
+  } else if(verdict === 'both'){
+    const names = allIds.map(pid=>pName(pid)).join('、');
+    if(!confirm(`確定視為兩人都完成嗎？\n${names} 都會拿到全額`)) return;
+    try {
+      await runTransaction(db, async tx=>{
+        const tRef = doc(db,'tasks',id);
+        const ts = await tx.get(tRef);
+        if(!ts.exists() || ts.data().status === 'done') throw new Error('狀態已變更');
+        await payCoop(tx, tRef, t, allIds, 'both');
+      });
+      toast('已全員發獎 ⚖️');
+    } catch(e){ toast(e.message); }
+
+  } else {
+    if(!confirm(`確定駁回 ${pName(rep.by)} 的舉報嗎？\n任務會回到進行中，${pName(rep.target)} 仍可回報完成。`)) return;
+    try {
+      await updateDoc(doc(db,'tasks',id), { status:'open', 'coopReport.status':'resolved' });
+      addDoc(collection(db,'ledger'), ledgerData(rep.by, 'coop_arbitration', 0, t.title,
+        { verdict:'dismiss', target: rep.target })).catch(()=>{});
+      toast('已駁回舉報');
+    } catch(e){ toast(e.message); }
+  }
+};
+
+function renderDisputes(){
+  const list = tasks.filter(t=>t.coopReport && t.coopReport.status === 'pending');
+  setCount('cDispute', list.length);
+  $('disputeSec').style.display = list.length ? '' : 'none';
+  if(!list.length){ $('disputeList').innerHTML = ''; return; }
+  $('disputeList').innerHTML = list.map(t=>{
+    const ids = coopMembers(t, Object.keys(players));
+    const rep = t.coopReport;
+    const states = ids.map(pid=>
+      `${esc(pName(pid))} ${coopDoneBy(t,pid) ? '已完成' : '尚未回報'}`).join('　');
+    const doneIds = ids.filter(pid => coopDoneBy(t, pid));
+    return `<div class="card lockCard">
+      <div class="title">🚨 ${esc(t.title)}</div>
+      <div class="sub">${states}</div>
+      <div class="sub" style="margin-top:6px">${esc(pName(rep.by))} 說：${esc(rep.reason)}</div>
+      <div class="row">
+        <button class="btn ok" onclick="arbitrate('${t.id}','winner')">✅ 判給${
+          doneIds.map(pid=>esc(pName(pid))).join('、') || '完成者'}全額</button>
+        <button class="btn gray" onclick="arbitrate('${t.id}','both')">⚖️ 兩人都給</button>
+        <button class="btn no" onclick="arbitrate('${t.id}','dismiss')">↩️ 駁回舉報</button>
+      </div>
+    </div>`;
+  }).join('');
+}
 
 /* ===== 核銷購買 ===== */
 window.redeemBuy = async (id)=>{
@@ -834,12 +986,14 @@ window.delTask = async (id)=>{
 };
 
 function renderTasks(){
-  const list = tasks.filter(t=>t.status==='open' || t.status==='claimed');
+  const list = tasks.filter(t=>t.status==='open' || t.status==='claimed');   // claimed 為舊資料相容
   setCount('cTask', list.length);
   $('taskList').innerHTML = list.length ? list.map(t=>{
     let pill;
-    if(t.status==='claimed') pill = `<span class="pill claimed">${esc(pName(t.claimedBy))} 搶到</span>`;
-    else if(t.assignee==='all') pill = '<span class="pill grab">開放搶</span>';
+    if(isCoop(t)){
+      const pg = coopProgress(t, Object.keys(players));
+      pill = `<span class="pill claimed">🤝 合作</span> <span class="pill grab">${pg.done.length}/${pg.total} 完成</span>`;
+    }
     else pill = `<span class="pill a">${esc(pName(t.assignee))}</span>`;
     const dailyPill = t.isDaily ? '<span class="pill a">📅每日</span> ' : '';
     return `<div class="card">
