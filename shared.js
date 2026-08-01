@@ -229,6 +229,49 @@
   ];
 
   /* ==============================================================
+     每週排行：週次計算（以台灣時間週一 00:00 為一週開始）
+  ============================================================== */
+  // 取台灣時間的年月日（避免裝置時區影響）
+  function tpeParts(d){
+    const s = (d || new Date()).toLocaleDateString('en-CA', { timeZone:'Asia/Taipei' });
+    return s;                                   // 'YYYY-MM-DD'
+  }
+  // 台灣時間的星期幾（0=日 ... 6=六）
+  function tpeDay(d){
+    const s = (d || new Date()).toLocaleDateString('en-US', { timeZone:'Asia/Taipei', weekday:'short' });
+    return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(s);
+  }
+  // 該日期所屬那一週的週一（'YYYY-MM-DD'）
+  function weekKey(d){
+    const key = tpeParts(d);
+    const dow = tpeDay(d);                       // 0=日
+    const back = (dow === 0) ? 6 : dow - 1;      // 週日算成上一個週一（往回 6 天）
+    const t = new Date(key + 'T00:00:00Z').getTime() - back * 86400000;
+    return new Date(t).toISOString().slice(0,10);
+  }
+  function prevWeekKey(d){
+    const t = new Date(weekKey(d) + 'T00:00:00Z').getTime() - 7 * 86400000;
+    return new Date(t).toISOString().slice(0,10);
+  }
+  // 本週結束時刻（下週一 00:00 台灣時間）的毫秒時間戳
+  function weekEndAt(d){
+    const t = new Date(weekKey(d) + 'T00:00:00+08:00').getTime();
+    return t + 7 * 86400000;
+  }
+  // 顯示用：'7/20 - 7/26'
+  function weekRangeTxt(wk){
+    const a = new Date(wk + 'T00:00:00Z');
+    const b = new Date(a.getTime() + 6 * 86400000);
+    const f = x => `${x.getUTCMonth()+1}/${x.getUTCDate()}`;
+    return `${f(a)} - ${f(b)}`;
+  }
+  const WEEKLY_BOARDS = [
+    { key:'earned', icon:'📈', name:'累計賺到' },
+    { key:'boss',   icon:'⚔️', name:'Boss 進度' },
+    { key:'tasks',  icon:'✅', name:'完成任務' },
+  ];
+
+  /* ==============================================================
      願望單：金額 → 點數換算（系統建議值，媽媽在後台可改成任何數字）
   ============================================================== */
   const JPY_TO_TWD   = 0.2;     // 1 日幣 = 0.2 台幣（5000 日幣 ≈ 1000 台幣）
@@ -446,6 +489,9 @@
     return m[skillKey(cardId, sid)] === windowId(t);
   }
 
+  const BOSS_MAX_OPEN = 3;      // ⚠️ 調整這個數字即可開放新關卡（BOSSES 資料全部保留）
+  const BOSS_CLEAR_REWARD = 3;  // 全通關獎勵：🔮 ×3
+
   const MILESTONES = [75, 50, 25];        // 血量里程碑，各給該關 coin 的 20%
   const bossOfStage = stage => BOSSES[(stage || 1) - 1] || null;   // 超出陣列 → null（已通關全部）
   const bossImg = stage => 'assets/bosses/boss' + String(stage).padStart(2,'0') + '.png';
@@ -514,7 +560,9 @@
     cardById, packById, tierById, skillOf, cardOfPack, tierBetter,
     pickWeighted, rollRarity, rollTier, skillDamage, dmgMult,
     // Boss
-    BOSSES, MILESTONES, bossOfStage, bossImg,
+    BOSSES, MILESTONES, bossOfStage, bossImg, BOSS_MAX_OPEN, BOSS_CLEAR_REWARD,
+    // 每週排行
+    weekKey, prevWeekKey, weekEndAt, weekRangeTxt, WEEKLY_BOARDS, tpeDay,
     ATTACK_WINDOW_MIN, windowId, inAttackWindow, windowEdge, skillKey, castUsed,
     // 願望單
     JPY_TO_TWD, TWD_TO_POINT, WISH_PENDING_MAX, CURRENCY_SIGN, wishToTwd, priceToPoints,
