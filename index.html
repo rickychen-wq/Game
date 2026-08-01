@@ -3732,9 +3732,11 @@ function renderShop(){
    並列規則：數值完全相同 → 名次相同，下一位跳號（1,1,3） */
 function rankRows(mode){
   const rows = Object.entries(players).map(([id,p])=>{
-    const b = p.boss || {};
-    const stage = b.stage ?? 1;
-    const hp = b.hp ?? 0;
+    // 沒打過 Boss 的玩家沒有 boss 欄位 → 必須當「第 1 關滿血」，不能當 0
+    // （當 0 會被誤判成打到剩 0 血而排第一）
+    const b = bossOf(p);
+    const stage = b.stage;
+    const hp = b.hp;
     return {
       id, name: p.name || id, lv: levelFromXp(p.xp ?? 0), eq: equippedTitle(p),
       stage, hp,
