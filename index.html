@@ -690,11 +690,15 @@
     border:1px solid var(--line); }
   .bossFb{ width:100%; max-width:520px; aspect-ratio:16/9; border-radius:12px; border:1px solid var(--line);
     display:none; background:#0c0e15; }
-  .hpBar{ position:relative; height:22px; border-radius:99px; background:#12141d; overflow:hidden;
+  .hpBar{ position:relative; height:16px; border-radius:99px; background:#12141d; overflow:hidden;
     border:1px solid var(--line); margin:12px 0 4px; }
   .hpFill{ height:100%; background:linear-gradient(90deg,#b03a4c,#ff6b81); transition:width .5s ease; }
-  .hpTxt{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    font-family:var(--mono); font-size:11.5px; font-weight:800; color:#fff; text-shadow:0 1px 3px #000; }
+  /* 血量文字移到血條下方獨立一行，永遠不會被血條或 box-shadow 蓋住 */
+  .hpTxt2{
+    font-family:var(--mono); font-size:13px; font-weight:800; color:#fff;
+    text-shadow:0 1px 3px rgba(0,0,0,.9); text-align:center; margin-top:6px;
+    font-variant-numeric:tabular-nums;
+  }
   .msTick{ position:absolute; top:0; bottom:0; width:2px; background:rgba(255,255,255,.35); }
   .skillBtn{
     width:100%; text-align:left; border:1px solid var(--line-soft); border-radius:10px; padding:11px 13px;
@@ -882,6 +886,44 @@
   .poolRow b{ color:var(--text); font-weight:800; }
   .poolRow.total{ border-top:1px solid var(--line); margin-top:6px; padding-top:8px; }
   .poolRow.total b{ color:var(--gold); font-size:14px; }
+
+  /* ===== 每週排行 ===== */
+  .wkBar{
+    border-radius:12px; padding:13px 15px; margin-bottom:12px;
+    background:linear-gradient(160deg,#241d0e,#12100a);
+    border:1px solid rgba(233,196,106,.5);
+  }
+  .wkBar .wkT{ font-family:var(--mono); font-size:14px; font-weight:800; color:var(--gold); }
+  .wkBar .wkS{ font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:5px; line-height:1.6; }
+  .wkLast{ margin-bottom:12px; }
+  .wkLast summary{
+    font-family:var(--mono); font-size:12px; color:var(--muted); cursor:pointer;
+    padding:10px 13px; border-radius:10px; background:#12141d; border:1px solid var(--line-soft);
+    min-height:44px; display:flex; align-items:center;
+  }
+  .wkRow{ font-family:var(--mono); font-size:12px; color:var(--text); padding:8px 13px; line-height:1.7; }
+  .popFull{
+    position:fixed; inset:0; z-index:440; display:none; overflow:hidden;
+    align-items:center; justify-content:center; flex-direction:column;
+    background:radial-gradient(circle at center, rgba(12,12,20,.92), rgba(3,3,6,.97));
+  }
+  .popFull.show{ display:flex; }
+
+  /* 全通關畫面 */
+  .clearBox{
+    text-align:center; padding:34px 20px; border-radius:16px;
+    background:linear-gradient(160deg,#241d0e,#12100a);
+    border:1.5px solid rgba(233,196,106,.6);
+    box-shadow:0 0 40px rgba(233,196,106,.2);
+  }
+  .clearBox .cIc{ font-size:52px; filter:drop-shadow(0 0 18px rgba(233,196,106,.55)); }
+  .clearBox .cT{ font-size:21px; font-weight:900; color:#fff; margin:12px 0 6px; }
+  .clearBox .cS{ font-family:var(--mono); font-size:12px; color:var(--muted); line-height:1.8; }
+  .clearBox .cRw{
+    display:inline-block; margin-top:14px; padding:10px 18px; border-radius:10px;
+    font-family:var(--mono); font-size:13px; font-weight:800; color:var(--gold);
+    background:rgba(233,196,106,.12); border:1px solid rgba(233,196,106,.5);
+  }
 
   /* ===== 願望單 ===== */
   .curSeg{ display:flex; gap:8px; margin-bottom:10px; }
@@ -1207,10 +1249,15 @@
 
   <!-- 排行頁 -->
   <div class="page" id="page-rank">
-    <div class="rankTabs">
-      <button class="on" data-r="totalEarned">累計賺到</button>
-      <button data-r="coins">目前金幣</button>
-      <button data-r="tasksDone">完成任務</button>
+    <div class="pageHd">
+      <h2 style="margin:0">排行榜</h2>
+      <button class="helpBtn" onclick="replayTut('rank')" title="教學">❓</button>
+    </div>
+    <div id="weeklyBox"></div>
+    <div class="rankTabs" id="rankTabs">
+      <button class="on" data-r="totalEarned">📈 累計賺到</button>
+      <button data-r="boss">⚔️ Boss 進度</button>
+      <button data-r="tasksDone">✅ 完成任務</button>
     </div>
     <div id="rankList"></div>
   </div>
@@ -1276,6 +1323,15 @@
     <div class="ppMeta" id="ppMeta"></div>
     <button class="pBtn" id="ppBtn">收下</button>
   </div>
+</div>
+
+<!-- 週榜得獎通知 -->
+<div id="weeklyPop" class="popFull">
+  <div class="luRay"></div>
+  <div class="kpTitle">🏆 WEEKLY</div>
+  <div class="kpName" id="wkName"></div>
+  <div class="kpRewards" id="wkList"></div>
+  <button class="pBtn" id="wkBtn">收下</button>
 </div>
 
 <!-- 擊殺演出 -->
@@ -1367,7 +1423,8 @@ const {
   EQUIP_MAX, EQUIP_LOCK_MS, BUFF_MULT, ZONE_MULT, ZONE_MS, DOT_HOURS,
   cardById, packById, tierById, skillOf, cardOfPack, tierBetter,
   rollRarity, rollTier, skillDamage, dmgMult,
-  BOSSES, MILESTONES, bossOfStage, bossImg,
+  BOSSES, MILESTONES, bossOfStage, bossImg, BOSS_MAX_OPEN, BOSS_CLEAR_REWARD,
+  weekKey, prevWeekKey, weekEndAt, weekRangeTxt, WEEKLY_BOARDS,
   ATTACK_WINDOW_MIN, windowId, inAttackWindow, windowEdge, skillKey, castUsed,
   JPY_TO_TWD, TWD_TO_POINT, WISH_PENDING_MAX, CURRENCY_SIGN, wishToTwd, priceToPoints,
 } = window.GAME;
@@ -1383,6 +1440,7 @@ let purchases = [];
 let dailyTemplates = [];
 let penalties = [];
 let wishes = [];
+let weeklyLoaded = false;
 let penaltiesLoaded = false;
 
 /* ===== 記帳（ledger）：玩家端零感知，只新增紀錄不影響任何既有邏輯 ===== */
@@ -1713,7 +1771,7 @@ function goTab(name){
   if(navBtn) navBtn.classList.add('on');
   const dItem = document.querySelector(`.drawerItem[data-p="${name}"]`);
   if(dItem){ dItem.classList.add('on'); $('moreBtn').classList.add('on'); }
-  if(name === 'rank') renderRank();
+  if(name === 'rank'){ renderRank(); settleWeekly(); maybeAutoTut('rank'); }
   if(name === 'bag') renderBag();
   if(name === 'lottery') renderLottery();
   if(name === 'penalty') renderPenalty();
@@ -1840,6 +1898,15 @@ onSnapshot(doc(db,'config','system'), snap=>{
   setRuntime({ events: cfg.events || {} });     // 活動設定注入 shared.js
   onEventsChanged();
   renderAll();
+});
+
+onSnapshot(collection(db,'weekly'), snap=>{
+  weeklyDocs = {};
+  snap.forEach(d=> weeklyDocs[d.id] = d.data());
+  weeklyLoaded = true;
+  settleWeekly();                 // 載入後檢查上一週是否已結算
+  checkWeeklyWin();
+  if($('page-rank').classList.contains('on')) renderRank();
 });
 
 onSnapshot(query(collection(db,'wishes'), orderBy('createdAt','desc')), snap=>{
@@ -2957,7 +3024,7 @@ window.useSkill = async (cardId, skillId, ev)=>{
 
   // 前置檢查：不可用時要讓玩家知道為什麼（抖動 + 音效 + 說明）
   if(isLocked())  return skillNope(btn, '🔒 禁閉中，先完成贖罪任務');
-  if(bossOf(p).stage > BOSSES.length) return skillNope(btn, '目前沒有可挑戰的 Boss');
+  if(bossOf(p).stage > Math.min(BOSS_MAX_OPEN, BOSSES.length)) return skillNope(btn, '目前開放的關卡都通關了');
   if(!inAttackWindow()) return skillNope(btn,
     `⏰ 攻擊時段已結束，下次開放還有 ${msLeftTxt(windowEdge() - Date.now())}`);
   if(castUsed(bossOf(p), cardId, skillId)) return skillNope(btn, '這招本時段已經用過了');
@@ -2979,7 +3046,7 @@ window.useSkill = async (cardId, skillId, ev)=>{
       const b = bossOf(cur);
       if(castUsed(b, cardId, skillId, now)) throw new Error('這招本時段已經用過了');
       const boss = bossOfStage(b.stage);
-      if(!boss) throw new Error('目前沒有可挑戰的 Boss');
+      if(!boss || b.stage > Math.min(BOSS_MAX_OPEN, BOSSES.length)) throw new Error('目前開放的關卡都通關了');
 
       // 先把離線期間的 DOT 補算
       const settled = dotDamage(b, now);
@@ -3081,6 +3148,42 @@ $('kpBtn').onclick = ()=>{
   renderBoss();                             // 關閉後載入下一關
 };
 
+/* 全通關獎勵：每個 BOSS_MAX_OPEN 值只能領一次
+   條件：boss.stage > 開放上限 且 bossClearReward < 開放上限
+   冪等：條件檢查與發獎在同一個 transaction 內 */
+let clearClaiming = false;
+async function claimBossClear(){
+  if(!me || !players[me] || clearClaiming) return;
+  const openMax = Math.min(BOSS_MAX_OPEN, BOSSES.length);
+  const p = players[me];
+  if(bossOf(p).stage <= openMax) return;
+  if((p.bossClearReward ?? 0) >= openMax) return;     // 本地先擋，減少沒必要的交易
+  clearClaiming = true;
+  try {
+    let granted = false;
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'players',me);
+      const s = await tx.get(ref);                     // read 在 write 之前
+      const cur = s.data() || {};
+      const stage = (cur.boss || {}).stage ?? 1;
+      if(stage <= openMax) return;                     // 還沒通關
+      if((cur.bossClearReward ?? 0) >= openMax) return;// 這個上限已領過
+      tx.update(ref, {
+        bonusTokens: increment(BOSS_CLEAR_REWARD),
+        bossClearReward: openMax,
+      });
+      tx.set(ledgerRef(), ledgerData('bossclear', 0, `全通關獎勵（1～${openMax} 關）`,
+        { openMax, reward: BOSS_CLEAR_REWARD }));
+      granted = true;
+    });
+    if(granted){
+      sfxLevelUp(); flyCoins(6);
+      toast(`🏆 全通關！獲得 ${TALENT_ICON} ×${BOSS_CLEAR_REWARD}`);
+    }
+  } catch(e){ console.error('claimBossClear failed:', e); }
+  clearClaiming = false;
+}
+
 let bossGhostHp = null, bossGhostStage = null, lastWinOpen = null;
 function renderBoss(){
   if(!me || !players[me]) return;
@@ -3088,11 +3191,17 @@ function renderBoss(){
   const b = bossOf(p);
   const boss = bossOfStage(b.stage);
 
-  if(!boss){
-    $('bossBody').innerHTML = `<div class="card" style="text-align:center;padding:34px 18px">
-      <div style="font-size:44px">🏆</div>
-      <div class="title" style="margin-top:10px">⚔️ 目前最終關已通關</div>
-      <div class="sub" style="margin-top:6px">敬請期待下一批 Boss</div>
+  const openMax = Math.min(BOSS_MAX_OPEN, BOSSES.length);
+  if(!boss || b.stage > openMax){
+    claimBossClear();                       // 冪等，重複進來不會重複發
+    const got = (p.bossClearReward ?? 0) >= openMax;
+    $('bossBody').innerHTML = `<div class="clearBox">
+      <div class="cIc">🏆</div>
+      <div class="cT">目前關卡全部通關！</div>
+      <div class="cS">你已經打倒了目前開放的所有 Boss（1 ～ ${openMax} 關）</div>
+      <div class="cRw">${got ? `已領取 ${TALENT_ICON} ×${BOSS_CLEAR_REWARD} 全通關獎勵`
+                             : `發放中⋯ ${TALENT_ICON} ×${BOSS_CLEAR_REWARD}`}</div>
+      <div class="cS" style="margin-top:14px">⚔️ 新的 Boss 正在準備中，敬請期待</div>
     </div>`;
     return;
   }
@@ -3169,8 +3278,8 @@ function renderBoss(){
         <div class="hpGhost" id="hpGhost" style="width:${ghostPct}%"></div>
         <div class="hpFill" style="width:${pct}%"></div>
         ${MILESTONES.map(m=>`<div class="msTick" style="left:${m}%"></div>`).join('')}
-        <div class="hpTxt">${hp.toLocaleString()} / ${boss.hp.toLocaleString()}　${pct.toFixed(1)}%</div>
       </div>
+      <div class="hpTxt2">${hp.toLocaleString()} / ${boss.hp.toLocaleString()}　${pct.toFixed(1)}%</div>
       <div class="sub" id="bossReward" style="font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.8">
         擊破獎勵：🪙 ${boss.coin}　${TALENT_ICON} ${boss.token}　🎟️ ${boss.ticket}　⚡ ${boss.ep}
       </div>
@@ -3292,6 +3401,108 @@ function renderWish(){
     ${list || '<div class="empty">還沒有提過願望</div>'}`;
 
   updateWishPreview();
+}
+
+/* ==================================================================
+   每週排行榜獎勵
+   靜態網站沒有排程 → 懶結算：任何人開 app 就檢查上一週有沒有結算過
+   ⚠️ 冪等關鍵：「檢查文件不存在」與「建立文件 + 發獎」必須在同一個 transaction 內，
+      不可以先 getDoc 再 updateDoc，否則兩個弟弟同時開 app 會重複發獎
+================================================================== */
+let weeklyDocs = {};          // { weekKey: data }
+let weeklySettling = false;
+
+function boardWinners(mode){
+  const rows = rankRows(mode);
+  const top = rows.filter(r=>r.rank === 1);
+  if(!top.length) return null;
+  return {
+    ids: top.map(r=>r.id),
+    value: mode === 'boss' ? `${top[0].stage}-${top[0].hp}` : top[0].val,
+  };
+}
+
+async function settleWeekly(){
+  if(!me || !players[me] || weeklySettling) return;
+  const prev = prevWeekKey();
+  if(weeklyDocs[prev]?.settled) return;          // 本地已知結算過就不用打 DB
+  weeklySettling = true;
+  try {
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'weekly',prev);
+      const snap = await tx.get(ref);             // read 在所有 write 之前
+      if(snap.exists() && snap.data().settled === true) return;   // 冪等：已結算就什麼都不做
+
+      const winners = {};
+      const payout = {};                          // playerId → 得幾顆
+      for(const b of WEEKLY_BOARDS){
+        const mode = b.key === 'earned' ? 'totalEarned' : b.key === 'tasks' ? 'tasksDone' : 'boss';
+        const w = boardWinners(mode);
+        if(!w) continue;
+        winners[b.key] = w;
+        w.ids.forEach(id=>{ payout[id] = (payout[id] || 0) + 1; });   // 並列每人都拿 1 顆
+      }
+
+      tx.set(ref, { weekKey: prev, settled: true, winners, settledAt: serverTimestamp() });
+      Object.entries(payout).forEach(([id,n])=>{
+        tx.update(doc(db,'players',id), { bonusTokens: increment(n) });
+      });
+      for(const b of WEEKLY_BOARDS){
+        const w = winners[b.key];
+        if(!w) continue;
+        w.ids.forEach(id=>{
+          tx.set(doc(collection(db,'ledger')), {
+            playerId:id, delta:0, kind:'weekly', label:`週榜獎勵・${b.name}`,
+            meta:{ weekKey:prev, board:b.key, value:w.value }, createdAt: serverTimestamp(),
+          });
+        });
+      }
+    });
+  } catch(e){ console.error('settleWeekly failed:', e); }
+  weeklySettling = false;
+}
+
+/* 得獎通知：localStorage 記 weekKey，同一週只播一次 */
+function checkWeeklyWin(){
+  if(!me) return;
+  const prev = prevWeekKey();
+  const d = weeklyDocs[prev];
+  if(!d || !d.settled) return;
+  if(localStorage.getItem('weeklySeen_' + me) === prev) return;
+  const mine = WEEKLY_BOARDS.filter(b=> (d.winners?.[b.key]?.ids || []).includes(me));
+  localStorage.setItem('weeklySeen_' + me, prev);
+  if(!mine.length) return;
+  $('wkName').textContent = '上週冠軍！';
+  $('wkList').innerHTML = mine.map(b=>
+    `<div class="rw" style="animation-delay:${300 + mine.indexOf(b)*150}ms">${b.icon} ${esc(b.name)}　+${TALENT_ICON} 1</div>`
+  ).join('');
+  $('weeklyPop').classList.add('show');
+  sfxLevelUp(); flyCoins(6);
+}
+$('wkBtn').onclick = ()=> $('weeklyPop').classList.remove('show');
+
+function renderWeeklyBox(){
+  const prev = prevWeekKey();
+  const d = weeklyDocs[prev];
+  const last = (d && d.settled) ? `
+    <details class="wkLast">
+      <summary>上週（${weekRangeTxt(prev)}）得獎紀錄</summary>
+      ${WEEKLY_BOARDS.map(b=>{
+        const w = d.winners?.[b.key];
+        if(!w || !w.ids.length) return `<div class="wkRow">${b.icon} ${esc(b.name)}　<span style="color:var(--dim)">從缺</span></div>`;
+        const names = w.ids.map(id=> esc(players[id]?.name || id)).join('・');
+        return `<div class="wkRow">${b.icon} ${esc(b.name)}　<b>${names}</b>　${TALENT_ICON}×1${
+          w.ids.length > 1 ? '（並列）' : ''}</div>`;
+      }).join('')}
+    </details>` : '';
+
+  $('weeklyBox').innerHTML = `
+    <div class="wkBar">
+      <div class="wkT">🏆 本週排行　剩 ${tickSpan(weekEndAt(), { rerender:true, done:'結算中⋯' })}</div>
+      <div class="wkS">每個榜的第一名可獲得 ${TALENT_ICON} ×1（並列都有）</div>
+      <div class="wkS" style="opacity:.7">※ 結算以第一位玩家開啟 app 的時間為準</div>
+    </div>
+    ${last}`;
 }
 
 /* ==================================================================
@@ -3517,14 +3728,41 @@ function renderShop(){
   ).join('') + entry;
 }
 
+/* 依榜別產生排序後的列（含並列名次）
+   並列規則：數值完全相同 → 名次相同，下一位跳號（1,1,3） */
+function rankRows(mode){
+  const rows = Object.entries(players).map(([id,p])=>{
+    const b = p.boss || {};
+    const stage = b.stage ?? 1;
+    const hp = b.hp ?? 0;
+    return {
+      id, name: p.name || id, lv: levelFromXp(p.xp ?? 0), eq: equippedTitle(p),
+      stage, hp,
+      val: mode === 'boss' ? null : (p[mode] ?? 0),
+      tasksDone: p.tasksDone ?? 0,
+    };
+  });
+  if(mode === 'boss'){
+    rows.sort((a,b)=> (b.stage - a.stage) || (a.hp - b.hp) || a.name.localeCompare(b.name));
+  } else {
+    rows.sort((a,b)=> b.val - a.val || a.name.localeCompare(b.name));
+  }
+  // 並列名次
+  const same = (a,b)=> mode === 'boss'
+    ? (a.stage === b.stage && a.hp === b.hp)
+    : (a.val === b.val);
+  rows.forEach((r,i)=>{ r.rank = (i > 0 && same(r, rows[i-1])) ? rows[i-1].rank : i + 1; });
+  return rows;
+}
+
 function renderRank(){
-  const rows = Object.entries(players)
-    .map(([id,p])=>({ id, name:p.name||id, val:p[rankMode] ?? 0, tasksDone:p.tasksDone ?? 0, lv:levelFromXp(p.xp ?? 0), eq:equippedTitle(p) }))
-    .sort((a,b)=> b.val - a.val || (b.tasksDone ?? 0) - (a.tasksDone ?? 0) || a.name.localeCompare(b.name));
+  renderWeeklyBox();
+  const rows = rankRows(rankMode);
 
   $('rankList').innerHTML = rows.length ? rows.map((r,i)=>{
-    const cls = 'rankRow' + (i===0 ? ' first' : '') + (r.id===me ? ' me' : '');
-    const no = i===0 ? '👑' : (i+1);
+    const first = r.rank === 1;
+    const cls = 'rankRow' + (first ? ' first' : '') + (r.id===me ? ' me' : '');
+    const no = first ? '👑' : r.rank;
     return `<div class="${cls}">
       <div class="rankNo">${no}</div>
       <div class="rankAv">${esc(r.name.trim()[0]||'?')}</div>
@@ -3534,7 +3772,11 @@ function renderRank(){
           ? (r.eq.kind==='craft' ? esc(r.eq.icon+' '+r.eq.name) : `<span class="t${r.eq.tier}">${esc(r.eq.name)}</span>`)
           : esc(titleFromLevel(r.lv))}</div>
       </div>
-      <div class="rankVal">${r.val}</div>
+      <div class="rankVal">${rankMode === 'boss'
+        ? `<span style="font-size:13px">第 ${r.stage} 關</span><br>
+           <span style="font-size:11px;color:var(--muted)">剩 ${r.hp.toLocaleString()} / ${
+             (bossOfStage(r.stage)?.hp ?? 0).toLocaleString()}</span>`
+        : r.val.toLocaleString()}</div>
     </div>`;
   }).join('') : '<div class="empty">還沒有人上榜</div>';
 }
@@ -3775,6 +4017,7 @@ const TUT_BOSS = [
   { target:'#bossSkills', tab:'boss', title:'技能',          text:'每招消耗 EP、有自己的冷卻時間，冷卻中不能再放。' },
   { target:'#bossSkills', tab:'boss', title:'持續傷害 ☠️',    text:'有些大招是持續傷害，放完後每小時自動扣血，關掉 app 也會繼續。' },
   { target:'#bossReward', tab:'boss', title:'獎勵',          text:'打倒後拿獎勵並進入下一關。結晶可以拿去點天賦樹。' },
+  { target:'#bossReward', tab:'boss', title:'全部通關獎勵 🔮',  text:'打完目前開放的所有關卡，可以額外拿到 3 顆天賦結晶。之後開新關卡還能再拿一次。' },
 ];
 const TUT_TALENT = [
   { target:'#talentAvailBox', tab:'talent', title:'天賦結晶 🔮',   text:'來源：等級 21 之後每升一級 1 顆、每解一個成就 1 顆、打倒 Boss。' },
@@ -3782,6 +4025,12 @@ const TUT_TALENT = [
   { target:'#tree-luck',      tab:'talent', title:'幸運（最便宜）', text:'提高抽獎拿到材料的機率，前期最划算，建議先點。' },
   { target:'#tree-xp',        tab:'talent', title:'經驗（加速）',   text:'增加任務 XP → 升級更快 → 拿到更多結晶。' },
   { target:'#respecBtn',      tab:'talent', title:'洗點',          text:'花 3000 金幣可以把點數全退回重配，點錯不用怕。' },
+];
+const TUT_RANK = [
+  { target:null,        tab:'rank', title:'三個排行榜 🏆', text:'累計賺到、Boss 進度、完成任務，三個榜各自比較。' },
+  { target:'#rankTabs', tab:'rank', title:'切換榜單',      text:'點上面的按鈕切換不同排行榜。' },
+  { target:'#weeklyBox',tab:'rank', title:'每週有獎 🔮',   text:'每週日午夜結算，三個榜的第一名各拿 1 顆天賦結晶。' },
+  { target:'#rankList', tab:'rank', title:'並列也有獎',    text:'數值一樣就並列第一，每個人都拿得到，不用怕平手。' },
 ];
 let TUT_STEPS = TUT_BOSS;          // 目前播放中的那一套
 
@@ -3795,15 +4044,16 @@ let tutChecked = false;  // 本 session 是否已判斷過要不要自動教學
 // v1.4：舊的 11 步新手教學已移除；改成 Boss 與天賦兩套，各自首次進入時播一次
 let tutKind = null;
 function maybeStartTutorial(){ /* 舊入口保留但不再自動播 */ }
+const TUT_FLAG = { boss:'tutBoss', talent:'tutTalent', rank:'tutRank' };
+const TUT_SET  = { boss:TUT_BOSS, talent:TUT_TALENT, rank:TUT_RANK };
 function maybeAutoTut(kind){
   if(!me || !players[me] || tutOpen) return;
-  const flag = kind === 'boss' ? 'tutBoss' : 'tutTalent';
-  if(players[me][flag] === true) return;
+  if(players[me][TUT_FLAG[kind]] === true) return;
   startTut(kind);
 }
 function startTut(kind){
   tutKind = kind;
-  TUT_STEPS = (kind === 'boss') ? TUT_BOSS : TUT_TALENT;
+  TUT_STEPS = TUT_SET[kind] || TUT_BOSS;
   tutOpen = true; tutStep = 0;
   $('tutorial').classList.add('show');
   showTutStep();
@@ -3910,7 +4160,7 @@ function advanceTut(){
 async function finishTutorial(){
   closeTutorial();
   if(!me || !tutKind) return;
-  const flag = tutKind === 'boss' ? 'tutBoss' : 'tutTalent';
+  const flag = TUT_FLAG[tutKind] || 'tutBoss';
   try { await updateDoc(doc(db,'players',me), { [flag]: true }); } catch(e){}
 }
 $('tutSkip').onclick = ()=> finishTutorial();      // 跳過也算看過
