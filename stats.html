@@ -1436,7 +1436,7 @@ function renderDebug(){
   const lv = levelFromXp(p.xp ?? 0);
   const eqLeft = Math.max(0, ((p.equipSlotReadyAt) || 0) - Date.now());
   const cds = Object.entries((p.skillReady) || {}).filter(([,t])=> t > Date.now());
-  const boss = (p.boss) || { stage:1, hp:BOSSES[0].hp, dots:[], milestones:[] };
+  const boss = { stage:1, hp:BOSSES[0].hp, dots:[], milestones:[], ...((p.boss) || {}) };
   const bossDef = BOSSES[(boss.stage || 1) - 1];
   const cardCount = Object.keys((p.cards) || {}).length;
   const titleCount = ((p.shopTitles)||[]).length + Object.keys((p.craftedTitles)||{}).length;
