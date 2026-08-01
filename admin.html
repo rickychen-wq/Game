@@ -152,6 +152,25 @@
   input:focus, select:focus { outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(233,196,106,.1); }
   select option{ background:#0c0e15; }
 
+  .assignRow{ margin-bottom:10px; }
+  .asLbl{ display:block; font-family:var(--mono); font-size:11px; color:var(--muted);
+    letter-spacing:1px; margin-bottom:7px; }
+  .assignBtns{ display:flex; gap:8px; flex-wrap:wrap; }
+  .asBtn{
+    padding:10px 16px; min-height:44px;      /* 手指友善 */
+    border:1px solid var(--line); border-radius:9px; cursor:pointer;
+    background:#0d0f17; color:var(--muted);
+    font-family:var(--mono); font-size:13px; font-weight:700;
+  }
+  .asBtn.on{
+    background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep));
+    color:#1a1206; border-color:transparent;
+  }
+  .asBtn.coop.on{
+    background:linear-gradient(180deg,#8fe3c8,#2f9e7a);   /* 合作用不同色，一眼可辨 */
+    color:#0a1a14;
+  }
+
   .formRow { display:flex; gap:10px; }
   .formRow > * { flex:1; }
 
@@ -324,9 +343,10 @@
     <section>
       <h2>發布新任務</h2>
       <input id="tTitle" placeholder="任務內容（例：寫數學考卷一張）">
-      <div class="formRow">
-        <input id="tReward" type="number" min="1" placeholder="金幣獎勵">
-        <select id="tAssignee"></select>
+      <input id="tReward" type="number" min="1" placeholder="金幣獎勵">
+      <div class="assignRow">
+        <span class="asLbl">指派對象</span>
+        <div id="tAssignBtns" class="assignBtns"></div>
       </div>
       <button class="btn ok" id="addTaskBtn" style="width:100%">發布任務</button>
     </section>
@@ -604,7 +624,7 @@ onSnapshot(collection(db,'players'), snap=>{
   players = {};
   snap.forEach(d=> players[d.id] = d.data());
   renderPlayers();
-  renderAssigneeSelect();
+  renderAssignBtns();
   renderTasks();
   renderReview();
   renderDisputes();
@@ -661,7 +681,7 @@ const pName = id => id==='all' ? '大家搶' : (players[id]?.name || id);
 $('addTaskBtn').onclick = async ()=>{
   const title = $('tTitle').value.trim();
   const reward = parseInt($('tReward').value);
-  const assignee = $('tAssignee').value;
+  const assignee = taskAssignee;                      // 讀變數，不讀 DOM
   if(!assignee) return toast('要先選指派對象');
   if(!title) return toast('要輸入任務內容');
   if(!reward || reward<1) return toast('金幣要大於 0');
@@ -673,22 +693,37 @@ $('addTaskBtn').onclick = async ()=>{
     createdAt: serverTimestamp()
   });
   $('tTitle').value=''; $('tReward').value='';
+  taskAssignee = null; renderAssignBtns();           // 清空選擇，避免誤發下一筆
   toast('任務已發布 ✅');
 };
 
-function renderAssigneeSelect(){
-  const sel = $('tAssignee');
-  // ⚠️ players snapshot 高頻觸發：只有「選項清單真的變了」才重繪。
-  // 否則每次重繪都會把使用者剛選的值洗掉（選了合作任務卻發成個人任務）。
-  const sig = Object.entries(players).map(([id,p])=>id+':'+(p.name||'')).join('|');
-  if(sel.dataset.sig === sig) return;
-  const cur = sel.value;
-  sel.dataset.sig = sig;
-  sel.innerHTML = Object.entries(players).map(([id,p])=>
-    `<option value="${id}">指派給 ${esc(p.name)}</option>`
-  ).join('') + `<option value="${COOP_ASSIGNEE}">🤝 合作任務（所有人一起完成）</option>`;
-  // 只有舊選擇仍存在於新清單時才還原，避免把選擇亂設成別的值
-  if(cur && [...sel.options].some(o=>o.value === cur)) sel.value = cur;
+/* ⚠️ 不要用原生 <select> 在高頻重繪的頁面上承載狀態：
+   使用者的操作會輸給程式重繪，iOS Safari 的 picker value 寫回時機也不可靠。
+   正確做法：狀態存 JS 變數，UI 用按鈕，重繪前比對 signature 避免打斷點擊。 */
+let taskAssignee = null;          // ← 唯一真實來源
+
+window.pickAssignee = (v)=>{
+  taskAssignee = v;
+  renderAssignBtns();
+};
+
+function renderAssignBtns(){
+  const box = $('tAssignBtns');
+  const ids = Object.keys(players);
+  const sig = ids.join(',') + '|' + (taskAssignee || '');
+  if(box.dataset.sig === sig) return;        // 沒變就不重繪
+  box.dataset.sig = sig;
+
+  box.innerHTML =
+    ids.map(id => `
+      <button type="button" class="asBtn ${taskAssignee===id?'on':''}"
+              onclick="pickAssignee('${esc(id)}')">
+        ${esc(players[id].name || id)}
+      </button>`).join('')
+    + `<button type="button" class="asBtn coop ${taskAssignee===COOP_ASSIGNEE?'on':''}"
+               onclick="pickAssignee('${COOP_ASSIGNEE}')">
+         🤝 合作任務
+       </button>`;
 }
 
 /* ===== 審核任務（★ 通過時同步累加 coins / totalEarned / xp / tasksDone）===== */
