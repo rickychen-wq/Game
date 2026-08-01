@@ -481,6 +481,7 @@ if(sessionStorage.getItem('stats_ok')==='1') $('lock').style.display='none';
    資料（全部唯讀）
 ================================================================== */
 let players = {}, tasks = [], purchases = [], penalties = [], ledger = [], dailyTemplates = [];
+let sysCfg = {};          // ⚠️ 必須宣告在 config onSnapshot 之前，否則 TDZ 會炸
 let ledgerCapped = false;
 const ready = { players:false, tasks:false, purchases:false, penalties:false, ledger:false };
 function mark(k){ ready[k] = true; renderAll(); }
@@ -985,7 +986,6 @@ function renderCompare(){
    允許的寫入只有兩處：(1) 這裡的 config/system，(2) 最下方 DEBUG ZONE 的 players + ledger。
    統計圖表區域一律不得有任何寫入；且全檔不提供任何刪除／批次刪除功能。
 ================================================================== */
-let sysCfg = {};
 let durChoice = {};          // { key: '1'|'3'|'7'|'custom' }
 let durCustom = {};          // { key: datetime-local 字串 }
 
