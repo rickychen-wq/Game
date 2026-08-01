@@ -887,6 +887,24 @@
   .poolRow.total{ border-top:1px solid var(--line); margin-top:6px; padding-top:8px; }
   .poolRow.total b{ color:var(--gold); font-size:14px; }
 
+  /* ===== 合作任務 ===== */
+  .coopMems{ margin:10px 0 4px; }
+  .coopMem{ display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:6px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+  .coopMem:last-child{ border-bottom:none; }
+  .cmN{ font-size:13.5px; font-weight:800; }
+  .cmS{ font-family:var(--mono); font-size:11.5px; color:var(--muted); }
+  .cmS.ok{ color:var(--cyan); }
+  .cmWait{ font-family:var(--mono); font-size:11px; color:var(--muted); }
+  .accuseBar{
+    font-family:var(--mono); font-size:12px; line-height:1.8; color:#ffb3bf;
+    background:rgba(255,107,129,.12); border:1px solid rgba(255,107,129,.5);
+    border-radius:9px; padding:10px 12px; margin-bottom:10px;
+  }
+  .coopPill{ font-family:var(--mono); font-size:10.5px; font-weight:800; color:var(--cyan);
+    background:rgba(95,240,220,.12); border:1px solid rgba(95,240,220,.35);
+    padding:2px 8px; border-radius:5px; margin-left:6px; }
+
   /* ===== 每週排行 ===== */
   .wkBar{
     border-radius:12px; padding:13px 15px; margin-bottom:12px;
@@ -1140,8 +1158,8 @@
     <div id="dailyTasks"></div>
     <h2>我的任務</h2>
     <div id="myTasks"></div>
-    <h2 id="h2-open">開放搶的任務</h2>
-    <div id="openTasks"></div>
+    <h2 id="h2-open">🤝 合作任務</h2>
+    <div id="coopTasks"></div>
     <h2 id="h2-pending">等媽媽審核</h2>
     <div id="pendingTasks"></div>
   </div>
@@ -1235,6 +1253,8 @@
   <div class="page" id="page-penalty">
     <h2>我的罰單</h2>
     <div id="penaltyList"></div>
+    <h2>🚨 合作任務舉報紀錄</h2>
+    <div id="accuseList"></div>
   </div>
 
   <!-- 背包頁 -->
@@ -1291,7 +1311,7 @@
     <div class="drawerItem" data-p="cards"><span class="dic">🎴</span><span class="dname">卡片</span></div>
     <div class="drawerItem" data-p="boss"><span class="dic">⚔️</span><span class="dname">Boss</span></div>
     <div class="drawerItem" data-p="wish"><span class="dic">🎁</span><span class="dname">願望單</span></div>
-    <div class="drawerItem" data-p="penalty"><span class="dic">🔒</span><span class="dname">我的罰單</span></div>
+    <div class="drawerItem" data-p="penalty"><span class="dic">🔒</span><span class="dname">我的紀錄</span></div>
   </div>
   <div class="drawerSet">
     <div class="dsT">⚙️ 設定</div>
@@ -1425,6 +1445,8 @@ const {
   rollRarity, rollTier, skillDamage, dmgMult,
   BOSSES, MILESTONES, bossOfStage, bossImg, BOSS_MAX_OPEN, BOSS_CLEAR_REWARD,
   weekKey, prevWeekKey, weekEndAt, weekRangeTxt, WEEKLY_BOARDS,
+  COOP_ASSIGNEE, REPORT_COOLDOWN_MS, REPORT_MIN_LEN,
+  isCoop, coopMembers, coopDoneBy, coopProgress, canReport,
   ATTACK_WINDOW_MIN, windowId, inAttackWindow, windowEdge, skillKey, castUsed,
   JPY_TO_TWD, TWD_TO_POINT, WISH_PENDING_MAX, CURRENCY_SIGN, wishToTwd, priceToPoints,
 } = window.GAME;
@@ -1531,7 +1553,7 @@ function myStats(){
     tasksDone: p.tasksDone ?? 0,
     totalEarned: p.totalEarned ?? 0,
     coins: p.coins ?? 0,
-    tasksGrabbed: p.tasksGrabbed ?? 0,
+    coopDone: p.tasksGrabbed ?? 0,     // 欄位沿用，改記合作任務完成數（既有數值保留）
     buyCount: purchases.filter(x => x.playerId === me && x.status !== 'refunded').length,
     maxStreak,
     lotteryCount: p.lotteryCount ?? 0,
@@ -1938,20 +1960,50 @@ function lockGuard(){
 }
 
 /* ===== 任務動作 ===== */
-window.grabTask = async (id)=>{
+/* ===== 合作任務：各自回報，全員完成才進審核 ===== */
+window.coopReport = async (id)=>{
   if(lockGuard()) return;
+  const t = tasks.find(x=>x.id===id);
+  if(!t) return;
+  if(!confirm(`確定回報「${t.title}」你這邊已完成嗎？\n要等所有人都回報，媽媽才會看到。`)) return;
   try {
     await runTransaction(db, async tx=>{
       const ref = doc(db,'tasks',id);
-      const s = await tx.get(ref);
+      const s = await tx.get(ref);                       // read 在 write 之前
       if(!s.exists()) throw new Error('任務不見了');
-      const t = s.data();
-      if(t.status !== 'open' || t.claimedBy) throw new Error('慢了一步，被搶走了 😭');
-      tx.update(ref, { status:'claimed', claimedBy: me });
-      tx.update(doc(db,'players',me), { tasksGrabbed: increment(1) });
+      const cur = s.data();
+      if(cur.status !== 'open') throw new Error('狀態已變更');
+      const ids = coopMembers(cur, Object.keys(players));
+      const done = { ...(cur.coopDone || {}), [me]: true };
+      const allDone = ids.length > 0 && ids.every(x=>done[x]);
+      tx.update(ref, {
+        coopDone: done,
+        [`coopReportedAt.${me}`]: serverTimestamp(),
+        wasRejected: false,
+        ...(allDone ? { status:'pending', completedAt: serverTimestamp() } : {}),
+        ...(cur.coopMembers ? {} : { coopMembers: ids }),   // 舊任務補上成員快照
+      });
     });
-    sfxGrab();
-    toast('搶到了！🔥');
+    toast('已回報，等其他人完成 🤝');
+  } catch(e){ sfxError(); toast(e.message); }
+};
+
+/* ===== 舉報：請媽媽仲裁，不會直接懲罰對方 ===== */
+window.coopAccuse = async (id, targetId)=>{
+  if(lockGuard()) return;
+  const t = tasks.find(x=>x.id===id);
+  if(!t) return;
+  if(!canReport(t, me)){ sfxError(); toast('這個任務你 24 小時內已經回報過了'); return; }
+  const reason = prompt(`為什麼覺得 ${pName(targetId)} 還沒完成？（至少 ${REPORT_MIN_LEN} 個字，他看得到）`, '');
+  if(reason === null) return;
+  if(reason.trim().length < REPORT_MIN_LEN){ toast(`理由至少要 ${REPORT_MIN_LEN} 個字`); return; }
+  if(!confirm(`要向媽媽回報「${pName(targetId)} 未完成」嗎？\n他會看到你的舉報內容。`)) return;
+  try {
+    await updateDoc(doc(db,'tasks',id), {
+      coopReport: { by: me, target: targetId, reason: reason.trim(),
+                    at: serverTimestamp(), status: 'pending' },
+    });
+    toast('已回報，等媽媽處理 🚨');
   } catch(e){ sfxError(); toast(e.message); }
 };
 
@@ -3606,6 +3658,57 @@ function renderHeader(){
   lastCoins = coins;
 }
 
+/* ===== 合作任務卡片 ===== */
+function renderCoop(){
+  if(!me || !players[me]) return;
+  const allIds = Object.keys(players);
+  const list = tasks.filter(t => !t.isDaily && isCoop(t) && t.status === 'open' &&
+    coopMembers(t, allIds).includes(me));
+
+  $('coopTasks').innerHTML = list.length ? list.map(t=>{
+    const pg = coopProgress(t, allIds);
+    const iDone = coopDoneBy(t, me);
+    const others = pg.ids.filter(id => id !== me);
+    const undone = others.filter(id => !coopDoneBy(t, id));
+    const rep = t.coopReport;
+    const accused = rep && rep.status === 'pending' && rep.target === me;
+    const iReported = rep && rep.status === 'pending' && rep.by === me;
+
+    const members = pg.ids.map(id=>`
+      <div class="coopMem">
+        <span class="cmN">${esc(pName(id))}${id===me?'<span class="meTag">我</span>':''}</span>
+        <span class="cmS ${coopDoneBy(t,id)?'ok':''}">${coopDoneBy(t,id)?'✅ 已完成':'⏳ 尚未完成'}</span>
+      </div>`).join('');
+
+    let ctrl = '';
+    if(!iDone){
+      ctrl = actionBtn(`<button class="btn gold" onclick="coopReport('${t.id}')">完成回報</button>`);
+    } else if(undone.length){
+      ctrl = `<span class="cmWait">等待 ${undone.map(id=>esc(pName(id))).join('、')} 完成中…</span>` +
+        (iReported
+          ? '<button class="btn" disabled>已回報，等媽媽處理</button>'
+          : actionBtn(`<button class="btn danger" onclick="coopAccuse('${t.id}','${undone[0]}')">🚨 回報未完成</button>`));
+    } else {
+      ctrl = '<span class="badge wait">等媽媽審核</span>';
+    }
+
+    return `<div class="${cardCls('coop',t.id)}">
+      ${accused ? `<div class="accuseBar">
+        ⚠️ ${esc(pName(rep.by))} 回報你尚未完成<br>
+        「${esc(rep.reason)}」<br>
+        <span style="opacity:.85">→ 現在完成還來得及</span>
+      </div>` : ''}
+      <div class="title">🤝 ${esc(t.title)}
+        ${t.wasRejected ? '<span class="badge back">↩️ 被退回，兩人都要重做</span>' : ''}</div>
+      <div class="coopMems">${members}</div>
+      <div class="row">
+        ${rewardHtml(t.reward)}
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${ctrl}</div>
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty">目前沒有合作任務</div>';
+}
+
 function renderAll(){
   if(!me || !players[me]) return;
   renderHeader();
@@ -3619,22 +3722,17 @@ function renderAll(){
   renderCards();
   renderBoss();
 
-  const mine = tasks.filter(t => !t.isDaily && (
-    (t.status==='open' && t.assignee===me) ||
-    (t.status==='claimed' && t.claimedBy===me)
-  ));
+  const mine = tasks.filter(t => !t.isDaily && t.status==='open' && t.assignee===me);
   $('myTasks').innerHTML = mine.length ? mine.map(t=>{
     const badge = t.wasRejected ? '<span class="badge back">被退回，再做一次</span>'
                 : (t.status==='claimed' ? '<span class="badge mine">我搶到的</span>' : '');
     return taskCard('myTasks', t, `<button class="btn gold" onclick="reportDone('${t.id}')">完成回報</button>`, badge);
   }).join('') : '<div class="empty">目前沒有任務，爽 😎</div>';
 
-  const open = tasks.filter(t => !t.isDaily && t.status==='open' && t.assignee==='all');
-  $('openTasks').innerHTML = open.length ? open.map(t=>
-    taskCard('openTasks', t, `<button class="btn blue" onclick="grabTask('${t.id}')">搶任務 ⚡</button>`)
-  ).join('') : '<div class="empty">沒有可以搶的</div>';
+  renderCoop();
 
-  const pending = tasks.filter(t => !t.isDaily && t.status==='pending' && (t.claimedBy===me || t.assignee===me));
+  const pending = tasks.filter(t => !t.isDaily && t.status==='pending' &&
+    (t.assignee===me || (isCoop(t) && coopMembers(t, Object.keys(players)).includes(me))));
   $('pendingTasks').innerHTML = pending.length ? pending.map(t=>
     taskCard('pendingTasks', t, '<span class="badge wait">審核中</span>')
   ).join('') : '<div class="empty">沒有等審核的</div>';
@@ -3805,7 +3903,8 @@ function renderLog(){
   if(!me) return;
   renderAchWall();
 
-  const done = tasks.filter(t => t.status==='done' && (t.claimedBy===me || t.assignee===me)).slice(0,20);
+  const done = tasks.filter(t => t.status==='done' &&
+    (t.assignee===me || (isCoop(t) && coopMembers(t, Object.keys(players)).includes(me)))).slice(0,20);
   $('doneTasks').innerHTML = done.length ? done.map(t=>`
     <div class="${cardCls('done',t.id)}">
       <div class="title">${t.isDaily?'📅 ':''}${esc(t.title)}<span class="badge done">已入帳</span></div>
@@ -3888,8 +3987,32 @@ window.reportLock = async (id)=>{
 };
 
 /* ===== 我的罰單 ===== */
+// 舉報紀錄（透明化：自己舉報別人、被別人舉報都看得到）
+function renderAccuse(){
+  if(!me) return;
+  const list = tasks.filter(t=>t.coopReport &&
+    (t.coopReport.by === me || t.coopReport.target === me));
+  const st = { pending:'等媽媽處理', resolved:'媽媽已裁決' };
+  $('accuseList').innerHTML = list.length ? list.map(t=>{
+    const r = t.coopReport;
+    const mineBy = r.by === me;
+    const d = r.at?.toDate ? r.at.toDate() : null;
+    const ds = d ? `${d.getMonth()+1}/${d.getDate()}` : '—';
+    return `<div class="penRow ${mineBy ? 'fine' : 'lock'}">
+      <div class="pTop">
+        <span class="pType">${mineBy ? '🚨 我回報了' + esc(pName(r.target)) : '⚠️ ' + esc(pName(r.by)) + ' 回報我'}</span>
+        <span class="pDate">${ds}</span>
+      </div>
+      <div class="pReason">${esc(t.title)}</div>
+      <div class="pMeta">理由：${esc(r.reason || '—')}・${esc(st[r.status] || r.status)}
+        ${t.status === 'done' ? '（任務已結案）' : ''}</div>
+    </div>`;
+  }).join('') : '<div class="empty">沒有舉報紀錄，很好 👍</div>';
+}
+
 function renderPenalty(){
   if(!me) return;
+  renderAccuse();
   const mine = penalties.filter(p=>p.playerId===me);
   const st = { active:'進行中', reported:'等媽媽確認', cleared:'已解除' };
   $('penaltyList').innerHTML = mine.length ? mine.map(p=>{
