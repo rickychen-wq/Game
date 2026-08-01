@@ -1490,6 +1490,7 @@ function showLogin(on){
   document.body.classList.toggle('locked', on);
 }
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pName = id => (players[id] && players[id].name) || id;   // 顯示玩家名稱（合作任務/舉報用）
 
 function toast(msg){
   const t = $('toast');
@@ -3709,18 +3710,23 @@ function renderCoop(){
   }).join('') : '<div class="empty">目前沒有合作任務</div>';
 }
 
+// 每個區塊獨立 try：任何一個 render 壞掉都不能拖垮其他區塊
+// （曾發生 updateSpinBtn 對 null 設值 → 後面的合作任務、紀錄全部沒渲染）
+function safe(name, fn){
+  try { fn(); } catch(e){ console.error('render 失敗:', name, e); }
+}
 function renderAll(){
   if(!me || !players[me]) return;
-  renderHeader();
-  renderLock();
-  renderDaily();
-  renderLottery();     // 材料/保底/按鈕狀態跟著 players、penalties 更新
-  renderTitles();
-  renderTitleShop();
-  renderTalent();
-  renderPackShop();
-  renderCards();
-  renderBoss();
+  safe('header', renderHeader);
+  safe('lock', renderLock);
+  safe('daily', renderDaily);
+  safe('lottery', renderLottery);
+  safe('titles', renderTitles);
+  safe('titleShop', renderTitleShop);
+  safe('talent', renderTalent);
+  safe('packShop', renderPackShop);
+  safe('cards', renderCards);
+  safe('boss', renderBoss);
 
   const mine = tasks.filter(t => !t.isDaily && t.status==='open' && t.assignee===me);
   $('myTasks').innerHTML = mine.length ? mine.map(t=>{
@@ -3729,7 +3735,7 @@ function renderAll(){
     return taskCard('myTasks', t, `<button class="btn gold" onclick="reportDone('${t.id}')">完成回報</button>`, badge);
   }).join('') : '<div class="empty">目前沒有任務，爽 😎</div>';
 
-  renderCoop();
+  safe('coop', renderCoop);
 
   const pending = tasks.filter(t => !t.isDaily && t.status==='pending' &&
     (t.assignee===me || (isCoop(t) && coopMembers(t, Object.keys(players)).includes(me))));
@@ -3737,8 +3743,8 @@ function renderAll(){
     taskCard('pendingTasks', t, '<span class="badge wait">審核中</span>')
   ).join('') : '<div class="empty">沒有等審核的</div>';
 
-  renderLog();
-  if($('page-rank').classList.contains('on')) renderRank();
+  safe('log', renderLog);
+  if($('page-rank').classList.contains('on')) safe('rank', renderRank);
 }
 
 /* ===== 每日任務區塊（只顯示自己當天的） ===== */
@@ -4057,6 +4063,7 @@ function updateSpinBtn(){
   const locked = isLocked();
   btn.disabled = spinning || locked || n === 0;
   const txt = btn.querySelector('.sTxt'), sub = btn.querySelector('.sSub');
+  if(!txt || !sub) return;              // 轉盤還沒建好時不要炸掉整個 renderAll
   if(locked){ txt.textContent = '禁閉中'; sub.textContent = '🔒 先完成贖罪任務'; }
   else if(spinning){ txt.textContent = '抽獎中'; sub.textContent = '⋯'; }
   else if(n === 0){ txt.textContent = '沒有抽獎券'; sub.textContent = '去商店買 🛒'; }
