@@ -229,6 +229,72 @@
   ];
 
   /* ==============================================================
+     管理員臨時活動（與常態 EVENTS 分開：以分鐘計、可疊加）
+     ⚠️ 泉水活動不能走現有 luck 公式：
+        現有公式材料總計 38×L 由金幣200四格(52%)吸收，L 最大只到 2.37，
+        ×4 以上會產生負機率。所以泉水活動只放大魂源那一格。
+  ============================================================== */
+  const SOUL_IDX = 15;                    // 魂源泉水在 PRIZES 的索引
+  const ADMIN_EVENTS = [
+    { id:'luck2', icon:'🍀', name:'幸運 ×2', ef:'所有材料格機率 ×2', luck:2,   soul:1 },
+    { id:'soul4', icon:'🫧', name:'泉水 ×4', ef:'魂源泉水機率 ×4',   luck:1,   soul:4 },
+    { id:'soul6', icon:'🫧', name:'泉水 ×6', ef:'魂源泉水機率 ×6',   luck:1,   soul:6 },
+    { id:'soul8', icon:'🫧', name:'泉水 ×8', ef:'魂源泉水機率 ×8',   luck:1,   soul:8 },
+  ];
+  const ADMIN_DURATIONS = [5, 10, 15, 30];          // 分鐘
+  const adminEventById = id => ADMIN_EVENTS.find(e => e.id === id) || null;
+
+  // 生效判定：id 存在且未到期 → 到期自動失效，不需清理
+  function adminEventOn(){
+    const a = runtime.adminEvent;
+    if(!a || !a.id) return null;
+    if(!(Date.now() < (a.until || 0))) return null;
+    return adminEventById(a.id);
+  }
+  const adminEventUntil = () => (runtime.adminEvent || {}).until || 0;
+  const adminLuck = () => adminEventOn()?.luck || 1;
+  const adminSoul = () => adminEventOn()?.soul || 1;
+
+  /* 管理員版權重：先套一般幸運，再單獨放大魂源
+     AGAIN(7%) 與金幣1000(3%) 永遠不動；差額只由金幣200四格吸收 */
+  function getWeightsAdmin(luck, soulMult){
+    const w = getWeights(luck);
+    const m = Number(soulMult) || 1;
+    if(m > 1){
+      const extra = w[SOUL_IDX] * (m - 1);
+      w[SOUL_IDX] += extra;
+      const per = extra / COIN_IDX.length;
+      COIN_IDX.forEach(j => { w[j] -= per; });
+    }
+    // 防呆：任一格為負 → clamp 到 0，缺口從最大的那格補回
+    let deficit = 0;
+    for(let i = 0; i < w.length; i++){
+      if(w[i] < 0){ deficit += -w[i]; w[i] = 0; }
+    }
+    if(deficit > 0){
+      let big = 0;
+      for(let i = 1; i < w.length; i++) if(w[i] > w[big]) big = i;
+      w[big] = Math.max(0, w[big] - deficit);
+    }
+    // 浮點誤差補回索引 0，確保加總為 100
+    const sum = w.reduce((a,b) => a + b, 0);
+    w[0] += 100 - sum;
+    if(w[0] < 0){                       // 極端情況：索引 0 被補成負數
+      const need = -w[0];
+      w[0] = 0;
+      let big = 1;
+      for(let i = 1; i < w.length; i++) if(w[i] > w[big]) big = i;
+      w[big] = Math.max(0, w[big] - need);
+    }
+    return w;
+  }
+  // 目前實際生效的權重（抽獎與機率公示共用）
+  function currentWeights(p){
+    const base = luckOf(p) * adminLuck();
+    return getWeightsAdmin(base, adminSoul());
+  }
+
+  /* ==============================================================
      合作任務（取代原本的「開放搶」）
      所有成員各自回報 → 全員完成才進審核 → 通過時每人各拿全額（各自倍率）
   ============================================================== */
@@ -592,6 +658,10 @@
     pickWeighted, rollRarity, rollTier, skillDamage, dmgMult,
     // Boss
     BOSSES, MILESTONES, bossOfStage, bossImg, BOSS_MAX_OPEN, BOSS_CLEAR_REWARD,
+    // 管理員臨時活動
+    SOUL_IDX, ADMIN_EVENTS, ADMIN_DURATIONS, adminEventById,
+    adminEventOn, adminEventUntil, adminLuck, adminSoul,
+    getWeightsAdmin, currentWeights,
     // 合作任務
     COOP_ASSIGNEE, REPORT_COOLDOWN_MS, REPORT_MIN_LEN,
     isCoop, coopMembers, coopDoneBy, coopProgress, canReport,
