@@ -197,6 +197,33 @@
   .buffCell .bv{ font-family:var(--mono); font-size:20px; font-weight:800; color:var(--dim); margin-top:4px; }
   .buffCell.on .bv{ color:var(--gold); }
 
+  .ctlInput{
+    width:100%; margin-bottom:9px; padding:11px 12px; border-radius:9px;
+    border:1px solid var(--line); background:#0d0f17; color:var(--text);
+    font-family:inherit; font-size:13.5px; resize:vertical;
+  }
+  .ctlInput:focus{ outline:none; border-color:var(--gold); }
+  .ctlNum{ width:120px; padding:10px 12px; border-radius:9px; border:1px solid var(--line);
+    background:#0d0f17; color:var(--text); font-family:var(--mono); font-size:13px; }
+  .ctlRow{ display:flex; align-items:center; gap:10px; margin-bottom:9px; flex-wrap:wrap; }
+  .ctlLbl{ font-family:var(--mono); font-size:11px; color:var(--muted); letter-spacing:1px; min-width:34px; }
+  .ctlBtns{ display:flex; gap:7px; flex-wrap:wrap; }
+  .ctlBtn{
+    padding:9px 14px; min-height:44px; border-radius:9px; cursor:pointer;
+    border:1px solid var(--line); background:#0d0f17; color:var(--muted);
+    font-family:var(--mono); font-size:12.5px; font-weight:700;
+  }
+  .ctlBtn.on{ background:linear-gradient(180deg,var(--gold-hi),var(--gold-deep));
+    color:#1a1206; border-color:transparent; }
+  .ctlBtn.danger.on{ background:linear-gradient(180deg,#ff8497,#d9455c); color:#fff; }
+  .ctlHist{ margin-top:10px; font-family:var(--mono); font-size:11px; color:var(--muted); line-height:1.9; }
+  .ctlHist .hRow{ padding:6px 10px; border-bottom:1px solid var(--line-soft); }
+  .aeNow{
+    padding:12px 14px; border-radius:10px; margin-bottom:10px;
+    background:rgba(255,107,129,.12); border:1px solid rgba(255,107,129,.6);
+    font-family:var(--mono); font-size:13px; font-weight:800; color:#fff;
+    display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+  }
   .evRow{ padding:13px 14px; border-radius:10px; margin-bottom:10px;
     background:linear-gradient(160deg,#141722,#0c0e15); border:1px solid var(--line-soft); }
   .evRow.live{ border-color:rgba(233,196,106,.65); box-shadow:0 0 20px rgba(233,196,106,.2); }
@@ -344,6 +371,28 @@
     </div>
     <h3>活動</h3>
     <div id="evList"></div>
+
+    <h3>📢 廣播訊息</h3>
+    <textarea id="bcText" class="ctlInput" rows="3" placeholder="要對他們說的話⋯"></textarea>
+    <div class="ctlRow"><span class="ctlLbl">樣式</span><div id="bcStyleBtns" class="ctlBtns"></div></div>
+    <div class="ctlRow"><span class="ctlLbl">秒數</span><div id="bcDurBtns" class="ctlBtns"></div></div>
+    <button class="evBtn go" id="bcSend" style="width:100%;margin-top:6px">送出廣播</button>
+    <div id="bcHistory" class="ctlHist"></div>
+
+    <h3>⚡ 管理員臨時活動</h3>
+    <div id="adminEvtNow"></div>
+    <div class="ctlRow"><span class="ctlLbl">活動</span><div id="aeTypeBtns" class="ctlBtns"></div></div>
+    <div class="ctlRow"><span class="ctlLbl">時長</span><div id="aeDurBtns" class="ctlBtns"></div></div>
+    <button class="evBtn go" id="aeStart" style="width:100%;margin-top:6px">開啟活動</button>
+
+    <h3>🎁 全體發獎</h3>
+    <div class="ctlRow"><span class="ctlLbl">類型</span><div id="giftTypeBtns" class="ctlBtns"></div></div>
+    <div id="giftExtra"></div>
+    <div class="ctlRow"><span class="ctlLbl">數量</span>
+      <input type="number" id="giftAmt" class="ctlNum" min="1" value="1000"></div>
+    <input type="text" id="giftMsg" class="ctlInput" placeholder="廣播文字（留空則自動生成）">
+    <button class="evBtn stop" id="giftSend" style="width:100%;margin-top:6px">🎁 發送給全體</button>
+    <div id="giftHistory" class="ctlHist"></div>
   </section>
 
   <!-- ① 系統總覽 -->
@@ -447,6 +496,8 @@ const {
   r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
   todayKey, getWeights, TICKET_PRICE, SALE_TICKET_PRICE, LUCK_MAX,
   epTotal, epAvail, PACK_TIERS, CARDS, cardById, BOSSES, tierById,
+  ADMIN_EVENTS, ADMIN_DURATIONS, adminEventById, adminEventOn, adminEventUntil,
+  getWeightsAdmin,
 } = window.GAME;
 
 const app = initializeApp(firebaseConfig);
@@ -482,6 +533,8 @@ if(sessionStorage.getItem('stats_ok')==='1') $('lock').style.display='none';
 ================================================================== */
 let players = {}, tasks = [], purchases = [], penalties = [], ledger = [], dailyTemplates = [];
 let sysCfg = {};          // ⚠️ 必須宣告在 config onSnapshot 之前，否則 TDZ 會炸
+let sysBc = {};           // 同上（廣播歷史）
+let giftHist = [];
 let ledgerCapped = false;
 const ready = { players:false, tasks:false, purchases:false, penalties:false, ledger:false };
 function mark(k){ ready[k] = true; renderAll(); }
@@ -501,9 +554,13 @@ onSnapshot(collection(db,'penalties'), s=>{
 onSnapshot(collection(db,'dailyTemplates'), s=>{
   dailyTemplates = []; s.forEach(d=> dailyTemplates.push({id:d.id, ...d.data()})); renderAll();
 });
+onSnapshot(doc(db,'config','broadcast'), d=>{
+  sysBc = d.exists() ? (d.data() || {}) : {};
+  renderCtl(true);
+});
 onSnapshot(doc(db,'config','system'), d=>{
   sysCfg = d.exists() ? (d.data() || {}) : {};
-  setRuntime({ events: sysCfg.events || {} });
+  setRuntime({ events: sysCfg.events || {}, adminEvent: sysCfg.adminEvent || null });
   renderConsole();
   renderAll();
 });
@@ -1648,6 +1705,217 @@ window.dbgToggleTut = async ()=>{
     { field:'tutorialDone', from:p.tutorialDone===true, to });
 };
 
+/* ==================================================================
+   管理員控制台：廣播 / 臨時活動 / 全體發獎
+   ⚠️ 所有選擇一律用「按鈕 + JS 變數」持有狀態，不用 <select>
+      （本專案已兩次因原生 select 被高頻重繪洗掉而出 bug）
+================================================================== */
+let bcStyle = 'admin', bcDur = 3000;
+let aeType = null, aeDur = 10;
+let giftType = 'coins', giftCard = CARDS[0].id, giftTier = 'normal', giftMat = MATERIALS[0].key;
+
+const BC_STYLES = [
+  { id:'admin',  name:'📢 管理員' },
+  { id:'reward', name:'🎁 獎勵' },
+  { id:'event',  name:'⚡ 活動' },
+];
+const BC_DURS = [3000, 5000, 10000];
+const GIFT_TYPES = [
+  { id:'coins',        name:'🪙 金幣' },
+  { id:'bonusTokens',  name:'🔮 結晶' },
+  { id:'ticket',       name:'🎟️ 抽獎券' },
+  { id:'packTickets',  name:'🎴 卡包券' },
+  { id:'epBonus',      name:'⚡ EP' },
+  { id:'material',     name:'🟣 材料' },
+  { id:'card',         name:'🃏 卡片' },
+];
+
+window.pickBcStyle = v=>{ bcStyle = v; renderCtl(); };
+window.pickBcDur   = v=>{ bcDur = v; renderCtl(); };
+window.pickAeType  = v=>{ aeType = v; renderCtl(); };
+window.pickAeDur   = v=>{ aeDur = v; renderCtl(); };
+window.pickGiftType= v=>{ giftType = v; renderCtl(true); };
+window.pickGiftCard= v=>{ giftCard = v; renderCtl(true); };
+window.pickGiftTier= v=>{ giftTier = v; renderCtl(true); };
+window.pickGiftMat = v=>{ giftMat = v; renderCtl(true); };
+
+function btns(list, cur, fn, cls){
+  return list.map(o=>`<button class="ctlBtn ${cls||''} ${o.id===cur?'on':''}"
+    onclick="${fn}('${o.id}')">${o.name}</button>`).join('');
+}
+
+/* ---- 廣播 ---- */
+async function sendBroadcast(text, style, duration){
+  const at = Date.now();
+  const hist = [{ text, style, at }, ...(sysBc.history || [])].slice(0, 5);   // 最多留 5 筆
+  await setDoc(doc(db,'config','broadcast'),
+    { text, style, duration, at, history: hist }, { merge:true });
+}
+$('bcSend').onclick = async ()=>{
+  const text = ($('bcText').value || '').trim();
+  if(!text){ dbgToast('要先輸入內容', true); return; }
+  if(!confirm(`確定廣播給所有人嗎？\n\n${text}\n\n樣式：${
+    BC_STYLES.find(x=>x.id===bcStyle).name}　顯示 ${bcDur/1000} 秒`)) return;
+  try { await sendBroadcast(text, bcStyle, bcDur); $('bcText').value=''; dbgToast('📢 已廣播'); }
+  catch(e){ dbgToast('廣播失敗：'+e.message, true); }
+};
+
+/* ---- 臨時活動 ---- */
+$('aeStart').onclick = async ()=>{
+  if(!aeType){ dbgToast('要先選活動', true); return; }
+  const e = adminEventById(aeType);
+  const until = Date.now() + aeDur * 60000;
+  if(!confirm(`確定開啟「${e.name}」嗎？\n效果：${e.ef}\n持續 ${aeDur} 分鐘（至 ${
+    new Date(until).toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei'})}）`)) return;
+  try {
+    await saveSystemConfig({ adminEvent: { id: aeType, until } });   // 同時只能開一種
+    await sendBroadcast(`⚡ ${e.name} 活動開始！限時 ${aeDur} 分鐘`, 'event', 5000);
+    dbgToast('⚡ 活動已開啟');
+  } catch(err){ dbgToast('開啟失敗：'+err.message, true); }
+};
+window.stopAdminEvent = async ()=>{
+  if(!confirm('確定立即結束目前的管理員活動嗎？')) return;
+  try {
+    await saveSystemConfig({ adminEvent: { id: null, until: 0 } });
+    await sendBroadcast('活動結束了', 'admin', 3000);
+    dbgToast('已結束活動');
+  } catch(e){ dbgToast('結束失敗：'+e.message, true); }
+};
+
+/* ---- 全體發獎 ---- */
+function giftLabel(){
+  const n = Math.max(1, Number($('giftAmt')?.value) || 1);
+  if(giftType === 'card'){
+    const c = cardById(giftCard);
+    return `${c.name}（${tierById(giftTier).name}）×${n}`;
+  }
+  if(giftType === 'material'){
+    const m = MATERIALS.find(x=>x.key===giftMat);
+    return `${m.icon} ${m.name} ×${n}`;
+  }
+  return `${GIFT_TYPES.find(x=>x.id===giftType).name.replace(/^\S+\s/,'')} ×${n}`;
+}
+$('giftSend').onclick = async ()=>{
+  const ids = Object.keys(players);
+  if(!ids.length){ dbgToast('沒有玩家', true); return; }
+  const n = Math.max(1, Number($('giftAmt').value) || 1);
+  const label = giftLabel();
+  const names = ids.map(id=>players[id].name || id).join('、');
+  if(!confirm(`確定發送給全體嗎？\n\n發放：${label}\n對象：${names}（共 ${ids.length} 人）\n每人各得上述數量`)) return;
+  const msg = ($('giftMsg').value || '').trim() || `🎁 管理員發送 ${label} 給大家！`;
+  try {
+    await runTransaction(db, async tx=>{
+      const refs = ids.map(id=>doc(db,'players',id));
+      const snaps = [];
+      for(const r of refs){                       // ⚠️ read 全部先做完
+        const sn = await tx.get(r);
+        if(sn.exists()) snaps.push(sn); else snaps.push(null);
+      }
+      snaps.forEach((sn,i)=>{
+        if(!sn) return;
+        const id = ids[i];
+        let patch = {}, delta = 0;
+        if(giftType === 'coins'){ patch = { coins: increment(n) }; delta = n; }   // 不加 totalEarned/xp
+        else if(giftType === 'bonusTokens') patch = { bonusTokens: increment(n) };
+        else if(giftType === 'packTickets') patch = { packTickets: increment(n) };
+        else if(giftType === 'epBonus')     patch = { epBonus: increment(n) };
+        else if(giftType === 'material')    patch = { ['materials.'+giftMat]: increment(n) };
+        else if(giftType === 'card'){
+          const cur = { ...((sn.data().cards) || {}) };
+          const own = cur[giftCard];
+          cur[giftCard] = own
+            ? { tier: (TIER_ORDER_ADMIN.indexOf(giftTier) > TIER_ORDER_ADMIN.indexOf(own.tier || 'normal'))
+                      ? giftTier : (own.tier || 'normal'),
+                count: (own.count || 1) + n }
+            : { tier: giftTier, count: n };
+          patch = { cards: cur };
+        }
+        else if(giftType === 'ticket'){
+          for(let k = 0; k < n; k++){
+            tx.set(doc(collection(db,'purchases')), {
+              playerId: id, itemName: '抽獎券', price: 0,
+              status: 'owned', isTicket: true, createdAt: serverTimestamp(),
+            });
+          }
+        }
+        if(Object.keys(patch).length) tx.update(refs[i], patch);
+        tx.set(doc(collection(db,'ledger')), {
+          playerId: id, delta, kind: 'gift', label,
+          meta: { type: giftType, amount: n }, createdAt: serverTimestamp(),
+        });
+      });
+    });
+    await sendBroadcast(msg, 'reward', 5000);
+    giftHist = [{ label, at: Date.now(), n: ids.length }, ...giftHist].slice(0,5);
+    $('giftMsg').value = '';
+    dbgToast(`🎁 已發送給 ${ids.length} 人`);
+    renderCtl(true);
+  } catch(e){ dbgToast('發放失敗：'+e.message, true); }
+};
+
+const TIER_ORDER_ADMIN = ['normal','gold','diamond','rainbow'];
+
+function renderCtl(force){
+  // 廣播
+  const bcSig = bcStyle + '|' + bcDur;
+  const bs = $('bcStyleBtns');
+  if(force || bs.dataset.sig !== bcSig){
+    bs.dataset.sig = bcSig;
+    bs.innerHTML = btns(BC_STYLES, bcStyle, 'pickBcStyle');
+    $('bcDurBtns').innerHTML = btns(BC_DURS.map(d=>({id:String(d),name:(d/1000)+' 秒'})),
+      String(bcDur), 'pickBcDur').replace(/onclick="pickBcDur\('(\d+)'\)"/g, 'onclick="pickBcDur($1)"');
+  }
+  $('bcHistory').innerHTML = (sysBc.history || []).map(h=>{
+    const d = new Date(h.at);
+    return `<div class="hRow">${d.getMonth()+1}/${d.getDate()} ${
+      String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}　${esc(h.text)}</div>`;
+  }).join('') || '<div class="hRow">還沒送過廣播</div>';
+
+  // 臨時活動
+  const ae = adminEventOn();
+  $('adminEvtNow').innerHTML = ae
+    ? `<div class="aeNow"><span>${ae.icon} ${esc(ae.name)} 進行中　剩 <span class="tick"
+         data-until="${adminEventUntil()}" data-done="已結束">${leftText(new Date(adminEventUntil()).toISOString())}</span></span>
+       <button class="evBtn stop" onclick="stopAdminEvent()">立即結束</button></div>`
+    : '';
+  const aeSig = (aeType||'') + '|' + aeDur + '|' + (ae?ae.id:'');
+  const at = $('aeTypeBtns');
+  if(force || at.dataset.sig !== aeSig){
+    at.dataset.sig = aeSig;
+    at.innerHTML = btns(ADMIN_EVENTS.map(e=>({id:e.id,name:e.icon+' '+e.name})), aeType, 'pickAeType');
+    $('aeDurBtns').innerHTML = ADMIN_DURATIONS.map(d=>
+      `<button class="ctlBtn ${d===aeDur?'on':''}" onclick="pickAeDur(${d})">${d} 分</button>`).join('');
+  }
+
+  // 全體發獎
+  const gSig = giftType + '|' + giftCard + '|' + giftTier + '|' + giftMat;
+  const gt = $('giftTypeBtns');
+  if(force || gt.dataset.sig !== gSig){
+    gt.dataset.sig = gSig;
+    gt.innerHTML = btns(GIFT_TYPES, giftType, 'pickGiftType');
+    let extra = '';
+    if(giftType === 'card'){
+      extra = `<div class="ctlRow"><span class="ctlLbl">卡片</span><div class="ctlBtns">${
+        CARDS.map(c=>`<button class="ctlBtn ${c.id===giftCard?'on':''}"
+          onclick="pickGiftCard('${c.id}')">${c.rar}・${esc(c.name)}</button>`).join('')}</div></div>
+        <div class="ctlRow"><span class="ctlLbl">等級</span><div class="ctlBtns">${
+        PACK_TIERS.map(t=>`<button class="ctlBtn ${t.id===giftTier?'on':''}"
+          onclick="pickGiftTier('${t.id}')">${t.name} ×${t.mult}</button>`).join('')}</div></div>`;
+    } else if(giftType === 'material'){
+      extra = `<div class="ctlRow"><span class="ctlLbl">材料</span><div class="ctlBtns">${
+        MATERIALS.map(m=>`<button class="ctlBtn ${m.key===giftMat?'on':''}"
+          onclick="pickGiftMat('${m.key}')">${m.icon} ${esc(m.name)}</button>`).join('')}</div></div>`;
+    }
+    $('giftExtra').innerHTML = extra;
+  }
+  $('giftHistory').innerHTML = giftHist.map(h=>{
+    const d = new Date(h.at);
+    return `<div class="hRow">${d.getMonth()+1}/${d.getDate()} ${
+      String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}　${
+      esc(h.label)}　→ ${h.n} 人</div>`;
+  }).join('') || '<div class="hRow">還沒發過獎</div>';
+}
+
 /* ===== 總繪製 ===== */
 let raf = null;
 function renderAll(){
@@ -1664,6 +1932,7 @@ function renderAll(){
       $('notice').innerHTML = '⚠️ 繪製時發生錯誤：' + esc(e.message);
     }
     // 編輯區獨立 try：錯誤要當場看得到，不能被上面的 catch 吞掉變成「按了沒反應」
+    try { renderCtl(); } catch(e){ console.error('renderCtl failed:', e); }
     try { renderDebug(); }
     catch(e){
       console.error('renderDebug failed:', e);
