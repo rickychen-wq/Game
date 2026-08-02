@@ -887,6 +887,40 @@
   .poolRow.total{ border-top:1px solid var(--line); margin-top:6px; padding-top:8px; }
   .poolRow.total b{ color:var(--gold); font-size:14px; }
 
+  /* ===== 管理員廣播 ===== */
+  #bcBar{
+    position:fixed; left:0; right:0; top:0; z-index:430;
+    display:flex; align-items:center; gap:11px; padding:14px 16px;
+    transform:translateY(-120%); transition:transform .35s cubic-bezier(.22,1,.36,1);
+    cursor:pointer; box-shadow:0 8px 30px rgba(0,0,0,.6);
+  }
+  #bcBar.show{ transform:translateY(0); }
+  #bcBar .bcIc{ font-size:24px; flex-shrink:0; }
+  #bcBar .bcTx{ font-size:14.5px; font-weight:800; line-height:1.6; }
+  #bcBar.admin{ background:linear-gradient(160deg,#3a2560,#1e1236);
+    border-bottom:2px solid #c9a0ff; color:#e8dbff; }
+  #bcBar.reward{ background:linear-gradient(160deg,#3a2f12,#1e1808);
+    border-bottom:2px solid var(--gold); color:#ffeec2; }
+  #bcBar.event{ background:linear-gradient(160deg,#4a1420,#2a0a12);
+    border-bottom:2px solid var(--pink); color:#ffd5dc;
+    animation:bcPulse 1.1s ease-in-out infinite; }
+  @keyframes bcPulse{ 0%,100%{ box-shadow:0 4px 20px rgba(255,107,129,.3); }
+    50%{ box-shadow:0 4px 42px rgba(255,107,129,.75); } }
+
+  /* 管理員活動條（抽獎頁） */
+  .adminEvtBar{
+    display:flex; align-items:center; justify-content:center; gap:9px;
+    padding:12px 14px; border-radius:12px; margin-bottom:14px;
+    font-family:var(--mono); font-size:14px; font-weight:800; color:#fff;
+    background:linear-gradient(160deg,#4a1420,#25101a);
+    border:1px solid rgba(255,107,129,.7);
+    animation:bcPulse 1.2s ease-in-out infinite;
+  }
+  .cell.soulHot{ border-color:#c9a0ff !important;
+    box-shadow:0 0 22px rgba(201,160,255,.85) !important;
+    animation:soulGlow 1.3s ease-in-out infinite; }
+  @keyframes soulGlow{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.5); } }
+
   /* ===== 合作任務 ===== */
   .coopMems{ margin:10px 0 4px; }
   .coopMem{ display:flex; align-items:center; justify-content:space-between; gap:10px;
@@ -1174,6 +1208,7 @@
   <!-- 抽獎頁 -->
   <div class="page" id="page-lottery">
     <div id="lotteryMain">
+      <div id="adminEvtBar"></div>
       <div class="lotTop">
         <div class="lotBox">
           <div class="lbl">持有抽獎券</div>
@@ -1345,6 +1380,9 @@
   </div>
 </div>
 
+<!-- 管理員廣播 -->
+<div id="bcBar"><span class="bcIc" id="bcIc">📢</span><span class="bcTx" id="bcTx"></span></div>
+
 <!-- 週榜得獎通知 -->
 <div id="weeklyPop" class="popFull">
   <div class="luRay"></div>
@@ -1445,6 +1483,8 @@ const {
   rollRarity, rollTier, skillDamage, dmgMult,
   BOSSES, MILESTONES, bossOfStage, bossImg, BOSS_MAX_OPEN, BOSS_CLEAR_REWARD,
   weekKey, prevWeekKey, weekEndAt, weekRangeTxt, WEEKLY_BOARDS,
+  SOUL_IDX, ADMIN_EVENTS, ADMIN_DURATIONS, adminEventById,
+  adminEventOn, adminEventUntil, adminLuck, adminSoul, getWeightsAdmin, currentWeights,
   COOP_ASSIGNEE, REPORT_COOLDOWN_MS, REPORT_MIN_LEN,
   isCoop, coopMembers, coopDoneBy, coopProgress, canReport,
   ATTACK_WINDOW_MIN, windowId, inAttackWindow, windowEdge, skillKey, castUsed,
@@ -1918,9 +1958,34 @@ onSnapshot(query(collection(db,'purchases'), orderBy('createdAt','desc')), snap=
   checkAchievements();
 });
 
+/* ===== 管理員廣播：同一則不重播（用 at 當版本號） ===== */
+let bcTimer = null;
+function showBroadcast(b){
+  if(!b || !b.text || !b.at) return;
+  if(localStorage.getItem('bcSeen') === String(b.at)) return;   // 重整不會重播
+  localStorage.setItem('bcSeen', String(b.at));
+  const el = $('bcBar');
+  const style = ['admin','reward','event'].includes(b.style) ? b.style : 'admin';
+  el.className = style;
+  $('bcIc').textContent = style === 'reward' ? '🎁' : style === 'event' ? '⚡' : '📢';
+  // 一律 escape，換行才轉 <br>，杜絕 HTML 注入
+  $('bcTx').innerHTML = esc(b.text).replace(/\n/g, '<br>');
+  requestAnimationFrame(()=> el.classList.add('show'));
+  if(style === 'reward'){ sfxCoin(); flyCoins(6); }
+  else if(style === 'event') sfxLevelUp();
+  else { sfxGrab(); }
+  const hide = ()=>{ clearTimeout(bcTimer); el.classList.remove('show'); el.onclick = null; };
+  el.onclick = hide;                                            // 可點擊提前關閉
+  clearTimeout(bcTimer);
+  bcTimer = setTimeout(hide, Math.max(1000, Number(b.duration) || 3000));
+}
+onSnapshot(doc(db,'config','broadcast'), snap=>{
+  if(snap.exists()) showBroadcast(snap.data() || {});
+});
+
 onSnapshot(doc(db,'config','system'), snap=>{
   const cfg = snap.exists() ? (snap.data() || {}) : {};
-  setRuntime({ events: cfg.events || {} });     // 活動設定注入 shared.js
+  setRuntime({ events: cfg.events || {}, adminEvent: cfg.adminEvent || null });
   onEventsChanged();
   renderAll();
 });
@@ -2090,7 +2155,7 @@ window.buyTicket = async ()=>{
 function pickPrizeIndex(){
   const pity = players[me]?.lotteryPity ?? 0;
   if(pity >= PITY_MAX - 1) return 15;        // 本抽為第 70 抽 → 強制魂源泉水（幸運不影響保底）
-  const w = getWeights(luckOf(players[me]));
+  const w = currentWeights(players[me]);     // 含管理員臨時活動
   const r = Math.random() * 100;
   let acc = 0;
   for(let i=0;i<w.length;i++){ acc += w[i]; if(r < acc) return i; }
@@ -4073,6 +4138,19 @@ let lastMats = null;
 function renderLottery(){
   if(!me || !players[me]) return;
   buildWheel();
+
+  // 管理員臨時活動條（倒數走既有 .tick 機制）
+  const ae0 = adminEventOn();
+  const aeBox = $('adminEvtBar');
+  if(aeBox){
+    aeBox.innerHTML = ae0
+      ? `<div class="adminEvtBar">${ae0.icon} ${esc(ae0.name)}　剩 ${
+          tickSpan(adminEventUntil(), { rerender:true, done:'已結束' })}</div>`
+      : '';
+  }
+  // 泉水活動時魂源格加強發光
+  const soulCell = document.querySelector('.cell[data-i="15"]');
+  if(soulCell) soulCell.classList.toggle('soulHot', !!(ae0 && adminSoul() > 1));
   const p = players[me];
   $('ticketCount').textContent = myTickets().length;
 
@@ -4101,19 +4179,22 @@ function renderLottery(){
   cb.textContent = isLocked() ? '🔒 禁閉中' : (canCraft ? '✨ 合成稱號' : '材料不足，繼續抽');
   cb.onclick = window.craft;
 
-  // 機率公示（與抽獎共用 getWeights，顯示套用幸運後的實際機率）
+  // 機率公示（與抽獎共用 currentWeights，顯示套用幸運＋管理員活動後的實際機率）
   const luck = luckOf(p);
+  const ae = adminEventOn();
   $('luckVal').textContent = '×' + luck;
-  const w = getWeights(luck);
+  const w = currentWeights(p);
   const fmt = n => (Math.round(n * 100) / 100) + '%';
-  const head = luck > 1
-    ? `實際機率<span style="color:var(--gold)">（已套用幸運 ×${luck}）</span>`
-    : '實際機率';
+  let head = '實際機率';
+  if(luck > 1) head += `<span style="color:var(--gold)">（幸運 ×${luck}）</span>`;
+  if(ae) head += `<span style="color:var(--pink)">（管理員活動中：${esc(ae.name)}）</span>`;
   $('probList').innerHTML =
     `<div class="probRow"><span style="color:var(--gold)">${head}</span><b></b></div>` +
     PRIZES.map((x,i)=>{
-      const up = luck > 1 && MAT_IDX.includes(i);      // 被幸運提升的材料格標金色
-      const c = up ? ' style="color:var(--gold)"' : '';
+      const up = (luck > 1 || adminLuck() > 1) && MAT_IDX.includes(i);
+      const hot = ae && adminSoul() > 1 && i === SOUL_IDX;      // 泉水活動放大的那一格
+      const c = hot ? ' style="color:var(--pink);font-weight:800"'
+              : up ? ' style="color:var(--gold)"' : '';
       return `<div class="probRow"><span${c}>${x.icon} ${esc(x.name)}</span><b${c}>${fmt(w[i])}</b></div>`;
     }).join('') +
     `<div class="probRow"><span>🫧 保底</span><b>每 ${PITY_MAX} 抽必出魂源泉水</b></div>`;
