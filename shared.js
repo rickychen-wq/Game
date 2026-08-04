@@ -586,8 +586,36 @@
     return m[skillKey(cardId, sid)] === windowId(t);
   }
 
-  const BOSS_MAX_OPEN = 3;      // ⚠️ 調整這個數字即可開放新關卡（BOSSES 資料全部保留）
-  const BOSS_CLEAR_REWARD = 3;  // 全通關獎勵：🔮 ×3
+  /* ===== 關卡開放：改由 stats 後台逐關切換（config/system.bossOpen） =====
+     1-3 關固定開啟不可關；4-10 關可手動切換 */
+  const BOSS_FORCE_OPEN = 3;          // 前 N 關強制開啟
+  // 目前開放到第幾關（連續開放；第 4 關關掉時，就算第 5 關是開的也到不了）
+  function bossOpenMap(){ return (runtime.bossOpen || {}); }
+  function bossStageOpen(stage){
+    if(stage <= BOSS_FORCE_OPEN) return true;
+    return bossOpenMap()[String(stage)] === true;
+  }
+  function bossMaxOpen(){
+    let n = 0;
+    for(let i = 1; i <= BOSSES.length; i++){
+      if(!bossStageOpen(i)) break;
+      n = i;
+    }
+    return n;
+  }
+
+  /* ===== 全通關里程碑：先搶先贏，每個里程碑只有第一個達成的人拿得到 =====
+     第 3 關已有人領過 → 本次起取消，不再發放（已領的不回收） */
+  const BOSS_MILESTONES = [
+    { stage: 5,  reward: 3 },
+    { stage: 7,  reward: 3 },
+    { stage: 10, reward: 5 },
+  ];
+  const bossMilestoneAt = stage => BOSS_MILESTONES.find(m => m.stage === stage) || null;
+  // 得獎紀錄存全域 config/system.bossClearWinners = { '5':'Ca', '7':null, ... }
+  function bossMilestoneWinner(stage){
+    return (runtime.bossClearWinners || {})[String(stage)] || null;
+  }
 
   const MILESTONES = [75, 50, 25];        // 血量里程碑，各給該關 coin 的 20%
   const bossOfStage = stage => BOSSES[(stage || 1) - 1] || null;   // 超出陣列 → null（已通關全部）
@@ -657,7 +685,9 @@
     cardById, packById, tierById, skillOf, cardOfPack, tierBetter,
     pickWeighted, rollRarity, rollTier, skillDamage, dmgMult,
     // Boss
-    BOSSES, MILESTONES, bossOfStage, bossImg, BOSS_MAX_OPEN, BOSS_CLEAR_REWARD,
+    BOSSES, MILESTONES, bossOfStage, bossImg,
+    BOSS_FORCE_OPEN, bossOpenMap, bossStageOpen, bossMaxOpen,
+    BOSS_MILESTONES, bossMilestoneAt, bossMilestoneWinner,
     // 管理員臨時活動
     SOUL_IDX, ADMIN_EVENTS, ADMIN_DURATIONS, adminEventById,
     adminEventOn, adminEventUntil, adminLuck, adminSoul,
