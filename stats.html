@@ -218,6 +218,23 @@
   .ctlBtn.danger.on{ background:linear-gradient(180deg,#ff8497,#d9455c); color:#fff; }
   .ctlHist{ margin-top:10px; font-family:var(--mono); font-size:11px; color:var(--muted); line-height:1.9; }
   .ctlHist .hRow{ padding:6px 10px; border-bottom:1px solid var(--line-soft); }
+  .stgRow{
+    display:flex; align-items:center; gap:10px; padding:9px 11px; margin-bottom:7px;
+    border-radius:9px; background:#12141d; border:1px solid var(--line-soft);
+  }
+  .stgRow.open{ border-color:rgba(95,240,220,.5); }
+  .stgRow.locked{ opacity:.75; }
+  .stgNo{ font-family:var(--mono); font-size:12px; color:var(--muted); min-width:44px; }
+  .stgNm{ flex:1; font-size:13.5px; font-weight:800; }
+  .stgHp{ font-family:var(--mono); font-size:11px; color:var(--dim); }
+  .stgBtn{
+    min-width:70px; min-height:40px; border-radius:8px; cursor:pointer;
+    font-family:var(--mono); font-size:12px; font-weight:800;
+    border:1px solid var(--line); background:#0d0f17; color:var(--muted);
+  }
+  .stgBtn.on{ background:linear-gradient(180deg,#8fe3c8,#2f9e7a); color:#0a1a14; border-color:transparent; }
+  .stgBtn.fixed{ background:rgba(95,240,220,.12); color:var(--cyan);
+    border-color:rgba(95,240,220,.4); cursor:default; }
   .aeNow{
     padding:12px 14px; border-radius:10px; margin-bottom:10px;
     background:rgba(255,107,129,.12); border:1px solid rgba(255,107,129,.6);
@@ -385,6 +402,11 @@
     <div class="ctlRow"><span class="ctlLbl">時長</span><div id="aeDurBtns" class="ctlBtns"></div></div>
     <button class="evBtn go" id="aeStart" style="width:100%;margin-top:6px">開啟活動</button>
 
+    <h3>⚔️ Boss 關卡開放</h3>
+    <div id="bossOpenInfo" class="ctlHist" style="margin-bottom:8px"></div>
+    <div id="bossOpenList"></div>
+    <div id="bossMsList" class="ctlHist"></div>
+
     <h3>🎁 全體發獎</h3>
     <div class="ctlRow"><span class="ctlLbl">類型</span><div id="giftTypeBtns" class="ctlBtns"></div></div>
     <div id="giftExtra"></div>
@@ -469,7 +491,8 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, collection, doc, onSnapshot, query, orderBy, limit, setDoc, updateDoc, addDoc, serverTimestamp
+  getFirestore, collection, doc, onSnapshot, query, orderBy, limit,
+  setDoc, updateDoc, addDoc, serverTimestamp, runTransaction, increment
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ====== firebaseConfig（與 index/admin 同一份） ====== */
@@ -495,8 +518,10 @@ const {
   EVENTS, setRuntime, eventOn, eventExpired, eventAdd, eventUntil, activeEvents,
   r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
   todayKey, getWeights, TICKET_PRICE, SALE_TICKET_PRICE, LUCK_MAX,
-  epTotal, epAvail, PACK_TIERS, CARDS, cardById, BOSSES, tierById,
+  epTotal, epAvail, PACK_TIERS, CARDS, cardById, tierById,
   ADMIN_EVENTS, ADMIN_DURATIONS, adminEventById, adminEventOn, adminEventUntil,
+  BOSS_FORCE_OPEN, bossOpenMap, bossStageOpen, bossMaxOpen,
+  BOSS_MILESTONES, bossMilestoneAt, bossMilestoneWinner, BOSSES,
   getWeightsAdmin,
 } = window.GAME;
 
@@ -560,7 +585,8 @@ onSnapshot(doc(db,'config','broadcast'), d=>{
 });
 onSnapshot(doc(db,'config','system'), d=>{
   sysCfg = d.exists() ? (d.data() || {}) : {};
-  setRuntime({ events: sysCfg.events || {}, adminEvent: sysCfg.adminEvent || null });
+  setRuntime({ events: sysCfg.events || {}, adminEvent: sysCfg.adminEvent || null,
+               bossOpen: sysCfg.bossOpen || {}, bossClearWinners: sysCfg.bossClearWinners || {} });
   renderConsole();
   renderAll();
 });
@@ -1782,6 +1808,65 @@ window.stopAdminEvent = async ()=>{
   } catch(e){ dbgToast('結束失敗：'+e.message, true); }
 };
 
+/* ---- Boss 關卡開放 ---- */
+window.toggleStage = async (stage)=>{
+  if(stage <= BOSS_FORCE_OPEN) return;              // 1-3 關鎖定，不可關
+  const cur = bossStageOpen(stage);
+  const b = BOSSES[stage-1];
+  if(!confirm(`確定要${cur?'關閉':'開放'}第 ${stage} 關「${b.name}」嗎？\n${
+    cur ? '關閉後玩家打不到這關（已在此關的進度不會消失）'
+        : `HP ${b.hp.toLocaleString()}　擊破獎勵 🪙${b.coin}`}`)) return;
+  try {
+    await saveSystemConfig({ bossOpen: { ...bossOpenMap(), [String(stage)]: !cur } });
+    dbgToast(cur ? `已關閉第 ${stage} 關` : `已開放第 ${stage} 關`);
+  } catch(e){ dbgToast('切換失敗：'+e.message, true); }
+};
+
+function renderBossOpen(){
+  const max = bossMaxOpen();
+  $('bossOpenInfo').innerHTML =
+    `<div class="hRow">目前開放到 <b style="color:var(--cyan)">第 ${max} 關</b>　
+     （1～${BOSS_FORCE_OPEN} 關固定開啟；關卡需<b>連續開放</b>，中間關掉後面就到不了）</div>`;
+
+  $('bossOpenList').innerHTML = BOSSES.map((b,i)=>{
+    const stage = i + 1;
+    const on = bossStageOpen(stage);
+    const fixed = stage <= BOSS_FORCE_OPEN;
+    const reach = stage <= max;                      // 實際可到達
+    return `<div class="stgRow ${on?'open':''} ${!reach&&on?'locked':''}">
+      <span class="stgNo">第 ${stage} 關</span>
+      <span class="stgNm">${esc(b.name)}</span>
+      <span class="stgHp">HP ${b.hp.toLocaleString()}</span>
+      ${fixed
+        ? '<button class="stgBtn fixed" disabled>固定開啟</button>'
+        : `<button class="stgBtn ${on?'on':''}" onclick="toggleStage(${stage})">${on?'已開放':'關閉中'}</button>`}
+    </div>`;
+  }).join('');
+
+  $('bossMsList').innerHTML =
+    '<div class="hRow" style="color:var(--gold)">全通關里程碑（先搶先贏，每個只有第一個打完的人拿得到）</div>' +
+    BOSS_MILESTONES.map(m=>{
+      const w = bossMilestoneWinner(m.stage);
+      return `<div class="hRow">第 ${m.stage} 關　${TALENT_ICON}×${m.reward}　→ ${
+        w ? `<b style="color:var(--cyan)">${esc(players[w]?.name || w)} 已領取</b>`
+          : '<span style="color:var(--muted)">尚未有人達成</span>'}
+        ${w ? `<button class="stgBtn" style="min-width:56px;min-height:30px;margin-left:8px"
+                 onclick="resetMilestone(${m.stage})">重置</button>` : ''}</div>`;
+    }).join('');
+}
+
+window.resetMilestone = async (stage)=>{
+  const w = bossMilestoneWinner(stage);
+  if(!w) return;
+  if(!confirm(`確定重置第 ${stage} 關的全通關獎勵嗎？\n目前得主：${players[w]?.name || w}\n重置後會變成「尚未有人達成」，下一個打完的人可以再搶一次（已發出的結晶不會回收）。`)) return;
+  try {
+    const winners = { ...(sysCfg.bossClearWinners || {}) };
+    delete winners[String(stage)];
+    await saveSystemConfig({ bossClearWinners: winners });
+    dbgToast(`已重置第 ${stage} 關里程碑`);
+  } catch(e){ dbgToast('重置失敗：'+e.message, true); }
+};
+
 /* ---- 全體發獎 ---- */
 function giftLabel(){
   const n = Math.max(1, Number($('giftAmt')?.value) || 1);
@@ -1886,6 +1971,8 @@ function renderCtl(force){
     $('aeDurBtns').innerHTML = ADMIN_DURATIONS.map(d=>
       `<button class="ctlBtn ${d===aeDur?'on':''}" onclick="pickAeDur(${d})">${d} 分</button>`).join('');
   }
+
+  renderBossOpen();
 
   // 全體發獎
   const gSig = giftType + '|' + giftCard + '|' + giftTier + '|' + giftMat;
