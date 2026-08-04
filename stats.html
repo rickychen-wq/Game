@@ -1823,6 +1823,14 @@ window.toggleStage = async (stage)=>{
 };
 
 function renderBossOpen(){
+  // shared.js 版本不符時給明確訊息，不要讓整區空白
+  if(typeof bossMaxOpen !== 'function'){
+    $('bossOpenInfo').innerHTML =
+      '<div class="dbgErr">shared.js 版本過舊，請一併上傳最新的 shared.js</div>';
+    $('bossOpenList').innerHTML = '';
+    $('bossMsList').innerHTML = '';
+    return;
+  }
   const max = bossMaxOpen();
   $('bossOpenInfo').innerHTML =
     `<div class="hRow">目前開放到 <b style="color:var(--cyan)">第 ${max} 關</b>　
@@ -1940,6 +1948,20 @@ $('giftSend').onclick = async ()=>{
 
 const TIER_ORDER_ADMIN = ['normal','gold','diamond','rainbow'];
 
+// 區塊獨立保護：任一區塊出錯不能拖垮其他區塊；
+// 且失敗時要清掉 sig，否則下次會誤判「沒變」而永遠不再重繪
+function ctlSafe(name, boxId, fn){
+  try { fn(); }
+  catch(e){
+    console.error('renderCtl 區塊失敗:', name, e);
+    const box = $(boxId);
+    if(box){
+      box.dataset.sig = '';                       // 清掉快取，下次重試
+      box.innerHTML = `<div class="dbgErr">${esc(name)} 載入失敗：${esc(e.message)}</div>`;
+    }
+  }
+}
+
 function renderCtl(force){
   // 廣播
   const bcSig = bcStyle + '|' + bcDur;
@@ -1956,7 +1978,7 @@ function renderCtl(force){
       String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}　${esc(h.text)}</div>`;
   }).join('') || '<div class="hRow">還沒送過廣播</div>';
 
-  // 臨時活動
+  ctlSafe('管理員臨時活動', 'aeTypeBtns', ()=>{
   const ae = adminEventOn();
   $('adminEvtNow').innerHTML = ae
     ? `<div class="aeNow"><span>${ae.icon} ${esc(ae.name)} 進行中　剩 <span class="tick"
@@ -1972,9 +1994,12 @@ function renderCtl(force){
       `<button class="ctlBtn ${d===aeDur?'on':''}" onclick="pickAeDur(${d})">${d} 分</button>`).join('');
   }
 
-  renderBossOpen();
+  });
+
+  ctlSafe('Boss 關卡開放', 'bossOpenList', renderBossOpen);
 
   // 全體發獎
+  ctlSafe('全體發獎', 'giftTypeBtns', ()=>{
   const gSig = giftType + '|' + giftCard + '|' + giftTier + '|' + giftMat;
   const gt = $('giftTypeBtns');
   if(force || gt.dataset.sig !== gSig){
@@ -1995,6 +2020,7 @@ function renderCtl(force){
     }
     $('giftExtra').innerHTML = extra;
   }
+  });
   $('giftHistory').innerHTML = giftHist.map(h=>{
     const d = new Date(h.at);
     return `<div class="hRow">${d.getMonth()+1}/${d.getDate()} ${
