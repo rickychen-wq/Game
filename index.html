@@ -1481,7 +1481,9 @@ const {
   EQUIP_MAX, EQUIP_LOCK_MS, BUFF_MULT, ZONE_MULT, ZONE_MS, DOT_HOURS,
   cardById, packById, tierById, skillOf, cardOfPack, tierBetter,
   rollRarity, rollTier, skillDamage, dmgMult,
-  BOSSES, MILESTONES, bossOfStage, bossImg, BOSS_MAX_OPEN, BOSS_CLEAR_REWARD,
+  BOSSES, MILESTONES, bossOfStage, bossImg,
+  BOSS_FORCE_OPEN, bossOpenMap, bossStageOpen, bossMaxOpen,
+  BOSS_MILESTONES, bossMilestoneAt, bossMilestoneWinner,
   weekKey, prevWeekKey, weekEndAt, weekRangeTxt, WEEKLY_BOARDS,
   SOUL_IDX, ADMIN_EVENTS, ADMIN_DURATIONS, adminEventById,
   adminEventOn, adminEventUntil, adminLuck, adminSoul, getWeightsAdmin, currentWeights,
@@ -1985,7 +1987,8 @@ onSnapshot(doc(db,'config','broadcast'), snap=>{
 
 onSnapshot(doc(db,'config','system'), snap=>{
   const cfg = snap.exists() ? (snap.data() || {}) : {};
-  setRuntime({ events: cfg.events || {}, adminEvent: cfg.adminEvent || null });
+  setRuntime({ events: cfg.events || {}, adminEvent: cfg.adminEvent || null,
+               bossOpen: cfg.bossOpen || {}, bossClearWinners: cfg.bossClearWinners || {} });
   onEventsChanged();
   renderAll();
 });
@@ -3144,7 +3147,7 @@ window.useSkill = async (cardId, skillId, ev)=>{
 
   // 前置檢查：不可用時要讓玩家知道為什麼（抖動 + 音效 + 說明）
   if(isLocked())  return skillNope(btn, '🔒 禁閉中，先完成贖罪任務');
-  if(bossOf(p).stage > Math.min(BOSS_MAX_OPEN, BOSSES.length)) return skillNope(btn, '目前開放的關卡都通關了');
+  if(bossOf(p).stage > bossMaxOpen()) return skillNope(btn, '目前開放的關卡都通關了');
   if(!inAttackWindow()) return skillNope(btn,
     `⏰ 攻擊時段已結束，下次開放還有 ${msLeftTxt(windowEdge() - Date.now())}`);
   if(castUsed(bossOf(p), cardId, skillId)) return skillNope(btn, '這招本時段已經用過了');
@@ -3166,7 +3169,7 @@ window.useSkill = async (cardId, skillId, ev)=>{
       const b = bossOf(cur);
       if(castUsed(b, cardId, skillId, now)) throw new Error('這招本時段已經用過了');
       const boss = bossOfStage(b.stage);
-      if(!boss || b.stage > Math.min(BOSS_MAX_OPEN, BOSSES.length)) throw new Error('目前開放的關卡都通關了');
+      if(!boss || b.stage > bossMaxOpen()) throw new Error('目前開放的關卡都通關了');
 
       // 先把離線期間的 DOT 補算
       const settled = dotDamage(b, now);
@@ -3268,37 +3271,44 @@ $('kpBtn').onclick = ()=>{
   renderBoss();                             // 關閉後載入下一關
 };
 
-/* 全通關獎勵：每個 BOSS_MAX_OPEN 值只能領一次
-   條件：boss.stage > 開放上限 且 bossClearReward < 開放上限
-   冪等：條件檢查與發獎在同一個 transaction 內 */
+/* 全通關里程碑：先搶先贏，每個里程碑只有第一個達成的人拿得到
+   得獎紀錄存全域 config/system.bossClearWinners
+   ⚠️ 冪等關鍵：「檢查沒人領過」與「寫入得主 + 發獎」必須在同一個 transaction 內，
+      否則兩個弟弟同時打完會兩人都領到 */
 let clearClaiming = false;
 async function claimBossClear(){
   if(!me || !players[me] || clearClaiming) return;
-  const openMax = Math.min(BOSS_MAX_OPEN, BOSSES.length);
   const p = players[me];
-  if(bossOf(p).stage <= openMax) return;
-  if((p.bossClearReward ?? 0) >= openMax) return;     // 本地先擋，減少沒必要的交易
+  const stage = bossOf(p).stage;
+  // 剛通關的那一關 = stage - 1
+  const cleared = stage - 1;
+  const ms = bossMilestoneAt(cleared);
+  if(!ms) return;                                   // 這一關沒有里程碑（含已取消的第 3 關）
+  if(bossMilestoneWinner(cleared)) return;          // 已經有人領走了
+
   clearClaiming = true;
   try {
-    let granted = false;
+    let got = null;
     await runTransaction(db, async tx=>{
-      const ref = doc(db,'players',me);
-      const s = await tx.get(ref);                     // read 在 write 之前
-      const cur = s.data() || {};
-      const stage = (cur.boss || {}).stage ?? 1;
-      if(stage <= openMax) return;                     // 還沒通關
-      if((cur.bossClearReward ?? 0) >= openMax) return;// 這個上限已領過
-      tx.update(ref, {
-        bonusTokens: increment(BOSS_CLEAR_REWARD),
-        bossClearReward: openMax,
-      });
-      tx.set(ledgerRef(), ledgerData('bossclear', 0, `全通關獎勵（1～${openMax} 關）`,
-        { openMax, reward: BOSS_CLEAR_REWARD }));
-      granted = true;
+      const cfgRef = doc(db,'config','system');
+      const pRef = doc(db,'players',me);
+      const cfgSnap = await tx.get(cfgRef);          // read 全部先做完
+      const pSnap = await tx.get(pRef);
+      const cfg = cfgSnap.exists() ? (cfgSnap.data() || {}) : {};
+      const winners = cfg.bossClearWinners || {};
+      if(winners[String(cleared)]) return;           // 已被搶走
+      const curStage = ((pSnap.data() || {}).boss || {}).stage ?? 1;
+      if(curStage - 1 < cleared) return;             // 還沒真的打完
+
+      tx.set(cfgRef, { bossClearWinners: { ...winners, [String(cleared)]: me } }, { merge:true });
+      tx.update(pRef, { bonusTokens: increment(ms.reward) });
+      tx.set(ledgerRef(), ledgerData('bossclear', 0, `全通關獎勵（第 ${cleared} 關・先搶先贏）`,
+        { stage: cleared, reward: ms.reward }));
+      got = ms.reward;
     });
-    if(granted){
+    if(got){
       sfxLevelUp(); flyCoins(6);
-      toast(`🏆 全通關！獲得 ${TALENT_ICON} ×${BOSS_CLEAR_REWARD}`);
+      toast(`🏆 第 ${cleared} 關全通關！搶到 ${TALENT_ICON} ×${got}`);
     }
   } catch(e){ console.error('claimBossClear failed:', e); }
   clearClaiming = false;
@@ -3311,16 +3321,31 @@ function renderBoss(){
   const b = bossOf(p);
   const boss = bossOfStage(b.stage);
 
-  const openMax = Math.min(BOSS_MAX_OPEN, BOSSES.length);
+  const openMax = bossMaxOpen();
   if(!boss || b.stage > openMax){
     claimBossClear();                       // 冪等，重複進來不會重複發
-    const got = (p.bossClearReward ?? 0) >= openMax;
+    const cleared = b.stage - 1;
+    const ms = bossMilestoneAt(cleared);
+    const winner = ms ? bossMilestoneWinner(cleared) : null;
+    let rw = '';
+    if(ms){
+      rw = winner === me
+        ? `<div class="cRw">🏆 你搶到了 ${TALENT_ICON} ×${ms.reward}</div>`
+        : winner
+          ? `<div class="cRw" style="opacity:.65">第 ${cleared} 關的獎勵被 ${esc(pName(winner))} 搶先領走了</div>`
+          : `<div class="cRw">發放中⋯ ${TALENT_ICON} ×${ms.reward}</div>`;
+    }
+    // 還沒領的里程碑預告
+    const next = BOSS_MILESTONES.filter(m => m.stage > cleared)
+      .map(m => `第 ${m.stage} 關 ${TALENT_ICON}×${m.reward}${
+        bossMilestoneWinner(m.stage) ? `（${esc(pName(bossMilestoneWinner(m.stage)))} 已領）` : ''}`).join('　');
     $('bossBody').innerHTML = `<div class="clearBox">
       <div class="cIc">🏆</div>
       <div class="cT">目前關卡全部通關！</div>
       <div class="cS">你已經打倒了目前開放的所有 Boss（1 ～ ${openMax} 關）</div>
-      <div class="cRw">${got ? `已領取 ${TALENT_ICON} ×${BOSS_CLEAR_REWARD} 全通關獎勵`
-                             : `發放中⋯ ${TALENT_ICON} ×${BOSS_CLEAR_REWARD}`}</div>
+      ${rw}
+      ${next ? `<div class="cS" style="margin-top:12px">下一個里程碑：${next}<br>
+        <span style="opacity:.7">每個里程碑只有第一個打完的人拿得到</span></div>` : ''}
       <div class="cS" style="margin-top:14px">⚔️ 新的 Boss 正在準備中，敬請期待</div>
     </div>`;
     return;
