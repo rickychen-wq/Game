@@ -3498,7 +3498,7 @@ let wishCur = 'JPY';                  // 目前選的幣別
 window.setWishCur = (c)=>{ wishCur = c; renderWish(); };
 
 // 即時換算預覽（輸入時就更新，不重繪整頁）
-window.updateWishPreview = ()=>{
+function updateWishPreview(){
   const el = $('wishConv'); if(!el) return;
   const amt = Number($('wishAmt').value) || 0;
   if(!amt){ el.textContent = '輸入金額後顯示換算'; return; }
@@ -3533,6 +3533,8 @@ window.submitWish = async ()=>{
     updateWishPreview();
   } catch(e){ sfxError(); toast(e.message); }
 };
+
+window.updateWishPreview = updateWishPreview;   // 供 inline oninput 使用
 
 function renderWish(){
   if(!me || !players[me]) return;
