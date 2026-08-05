@@ -510,7 +510,8 @@ const firebaseConfig = {
   appId: "1:162254677726:web:5371b0c883d8b81b99844f"
 };
 const STATS_PASSWORD = "chen0414";
-const LEDGER_LIMIT = 3000;
+const LEDGER_LIMIT = 300;      // ⚠️ Firestore 免費方案每天 5 萬次讀取
+                               //    每開一次 stats 就讀這麼多筆，設太大很快會 Quota exceeded
 /* ================================================== */
 
 
@@ -567,6 +568,7 @@ let sysCfg = {};          // ⚠️ 必須宣告在 config onSnapshot 之前，�
 let sysBc = {};           // 同上（廣播歷史）
 let giftHist = [];
 let ledgerCapped = false;
+let ledgerLoading = false;
 const ready = { players:false, tasks:false, purchases:false, penalties:false, ledger:false };
 function mark(k){ ready[k] = true; renderAll(); }
 
@@ -596,11 +598,29 @@ onSnapshot(doc(db,'config','system'), d=>{
   renderConsole();
   renderAll();
 });
-onSnapshot(query(collection(db,'ledger'), orderBy('createdAt','desc'), limit(LEDGER_LIMIT)), s=>{
-  ledger = []; s.forEach(d=> ledger.push({id:d.id, ...d.data()}));
-  ledgerCapped = (ledger.length >= LEDGER_LIMIT);
-  mark('ledger');
-});
+/* ledger 不自動監聽：它是最耗讀取量的來源（每次都讀 LEDGER_LIMIT 筆）
+   改成按「載入統計」才讀一次，不做即時監聽 */
+let ledgerUnsub = null;
+function loadLedger(){
+  if(ledgerUnsub) ledgerUnsub();                 // 先取消舊的監聽，避免疊加
+  ledgerLoading = true; renderAll();
+  ledgerUnsub = onSnapshot(
+    query(collection(db,'ledger'), orderBy('createdAt','desc'), limit(LEDGER_LIMIT)),
+    s=>{
+      ledger = []; s.forEach(d=> ledger.push({id:d.id, ...d.data()}));
+      ledgerCapped = (ledger.length >= LEDGER_LIMIT);
+      ledgerLoading = false;
+      mark('ledger');
+    },
+    err=>{
+      ledgerLoading = false;
+      console.error('ledger 載入失敗:', err);
+      $('notice').innerHTML = '⚠️ 記帳資料載入失敗：' + esc(err.message);
+    });
+}
+window.loadLedger = loadLedger;
+// 開頁不自動載入 → 省下每次數百～數千次讀取
+ready.ledger = true;
 
 const pName = id => players[id]?.name || id;
 const pids  = () => Object.keys(players);
@@ -713,8 +733,17 @@ function ledgerStart(){
   return withDate.length ? withDate[0] : null;
 }
 function renderNotice(){
+  // ledger 尚未載入 → 顯示載入按鈕，不自動讀（省配額）
+  if(!ledger.length && !ledgerLoading){
+    $('notice').innerHTML = `
+      📊 記帳資料（收支圖表、抽獎分析）尚未載入<br>
+      <span style="opacity:.75">為了節省 Firestore 每日讀取額度，需要時才載入最近 ${nf(LEDGER_LIMIT)} 筆</span><br>
+      <button class="evBtn go" style="margin-top:10px" onclick="loadLedger()">📥 載入統計資料</button>`;
+    return;
+  }
+  if(ledgerLoading){ $('notice').innerHTML = '📊 載入中⋯'; return; }
   const start = ledgerStart();
-  const cap = ledgerCapped ? `　⚠️ ledger 已達上限，僅顯示最近 ${nf(LEDGER_LIMIT)} 筆` : '';
+  const cap = ledgerCapped ? `　⚠️ 僅載入最近 ${nf(LEDGER_LIMIT)} 筆（為節省讀取額度）` : '';
   const orp = orphanCount();
   const orpMsg = orp ? `<br><span style="color:var(--pink)">⚠️ 偵測到 ${nf(orp)} 筆孤兒資料（玩家已刪除），已排除在統計之外。
     可到後台「玩家管理 → 孤兒資料清理」清除。</span>` : '';
