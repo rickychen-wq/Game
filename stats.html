@@ -525,7 +525,7 @@ const {
   r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
   todayKey, getWeights, TICKET_PRICE, SALE_TICKET_PRICE, LUCK_MAX,
   epTotal, epAvail, PACK_TIERS, CARDS, cardById, tierById, packTicketsOf, packTicketTotal,
-  PACKS, packById, rollTier,
+  PACKS, packById, rollTier, cardCounts, migrateCounts,
   ADMIN_EVENTS, ADMIN_DURATIONS, adminEventById, adminEventOn, adminEventUntil,
   BOSS_FORCE_OPEN, bossOpenMap, bossStageOpen, bossMaxOpen,
   BOSS_MILESTONES, bossMilestoneAt, bossMilestoneWinner, BOSSES,
@@ -1460,7 +1460,8 @@ window.dbgSetCard = async (cardId)=>{
     const eq = ((p.equipped) || []).filter(x=>x!==cardId);
     if(eq.length !== ((p.equipped)||[]).length) patch.equipped = eq;
   } else {
-    cur[cardId] = { tier, count };
+    // 依「最高等級往下逐級各 1 張、剩餘塞最高」重新分配，保持張數一致
+    cur[cardId] = { tier, count, counts: migrateCounts(tier, count) };
     patch.cards = cur;
   }
   await dbgWrite(patch, `設定卡片 ${c.name} ${after}`, { field:'cards.'+cardId, from:before, to:after });
@@ -1541,7 +1542,7 @@ window.dbgGrantCard = async ()=>{
   const before = own ? `${own.tier} ×${own.count}` : '未擁有';
   if(!confirm(`確定給「${p.name}」卡片「${c.name}」${tierById(tier).name} ×${count} 嗎？\n目前：${before}`)) return;
   const cur = { ...((p.cards) || {}) };
-  cur[cardId] = { tier, count };
+  cur[cardId] = { tier, count, counts: migrateCounts(tier, count) };
   await dbgWrite({ cards: cur }, `給予卡片 ${c.name} ${tierById(tier).name} ×${count}`,
     { field:'cards.'+cardId, from:before, to:`${tier} ×${count}` });
 };
@@ -1722,9 +1723,11 @@ function renderDebug(){
     </div>
     ${CARDS.map(c=>{
       const own = ((p.cards)||{})[c.id];
+      const cc = own ? cardCounts(own) : null;
+      const ccTxt = cc ? PACK_TIERS.filter(t=>cc[t.id]>0).map(t=>`${t.name}${cc[t.id]}`).join(' ') : '—';
       return `<div class="dbgRow">
         <span class="dk">${esc(c.name)} <span style="color:var(--dim)">${c.rar}</span></span>
-        <span class="dv">${own ? `${own.tier} ×${own.count}` : '—'}</span>
+        <span class="dv" style="font-size:10.5px">${ccTxt}</span>
         <select id="dbg_cardT_${c.id}">${PACK_TIERS.map(t=>
           `<option value="${t.id}" ${(own?.tier||'normal')===t.id?'selected':''}>${t.name}</option>`).join('')}</select>
         <input type="number" id="dbg_cardC_${c.id}" min="0" value="${own?.count ?? 0}" style="width:70px">
