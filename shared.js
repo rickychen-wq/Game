@@ -456,6 +456,8 @@
   const ZONE_MULT = 1.35;            // ZONE：8 小時內所有技能 +35%
   const ZONE_MS   = 8 * 3600000;
   const DOT_HOURS = 10;              // DOT 傷害分 10 小時平均給
+  const DOT_MAX_STACK = 3;           // 同時最多 3 層 DOT
+                                     // （不設限的話 10 小時內可疊 20 層，Boss 會被掛機輾過去）
 
   const CARDS = [
     // ===== 海賊王 onepiece =====
@@ -709,7 +711,7 @@
     EP_START_LV, epTotal, epAvail,
     // 卡牌
     PACKS, RARITIES, PACK_TIERS, TIER_ORDER, PACK_PITY_MAX, CARDS,
-    EQUIP_MAX, EQUIP_LOCK_MS, BUFF_MULT, ZONE_MULT, ZONE_MS, DOT_HOURS,
+    EQUIP_MAX, EQUIP_LOCK_MS, BUFF_MULT, ZONE_MULT, ZONE_MS, DOT_HOURS, DOT_MAX_STACK,
     cardById, packById, tierById, skillOf, cardOfPack, tierBetter,
     packTicketsOf, packTicketTotal, BOSS_TICKET_ODDS, rollBossTicketTier,
     pickWeighted, rollRarity, rollTier, skillDamage, dmgMult,
