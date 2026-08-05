@@ -162,7 +162,7 @@
   const RESPEC_COST = 3000;                 // 洗點費用（金幣回收池）
   const TALENT_TREES = [
     { key:'coin', icon:'💰', name:'財富', unit:'任務金幣',
-      add:[0, 0.03, 0.06, 0.09, 0.12, 0.15], cost:[5, 10, 15, 20, 25] },   // 全滿 75（永久終極目標，最貴）
+      add:[0, 0.03, 0.06, 0.09, 0.12, 0.15], cost:[5, 10, 15, 35, 65] },   // 全滿 130（永久終極目標，最貴）
     { key:'luck', icon:'🍀', name:'幸運', unit:'抽獎幸運',
       add:[0, 0.05, 0.10, 0.15, 0.20, 0.30], cost:[3,  5, 10, 15, 15] },
     { key:'xp',   icon:'📈', name:'經驗', unit:'任務 XP',
@@ -512,6 +512,34 @@
        { id:'ignite',  name:'幻影射球',        ep:80,  dmg:80,  cd:2,  sp:null }]},
   ];
 
+  /* ===== 卡包券分等級（v2.0 起）=====
+     資料結構：packTickets = { normal:n, gold:n, diamond:n, rainbow:n }
+     舊資料是純數字 → 一律視為普通券，不會消失 */
+  function packTicketsOf(p){
+    const t = (p && p.packTickets);
+    if(typeof t === 'number') return { normal: t, gold:0, diamond:0, rainbow:0 };   // 舊資料相容
+    const m = t || {};
+    return {
+      normal:  m.normal  || 0, gold:    m.gold    || 0,
+      diamond: m.diamond || 0, rainbow: m.rainbow || 0,
+    };
+  }
+  const packTicketTotal = p => TIER_ORDER.reduce((a,k)=> a + packTicketsOf(p)[k], 0);
+
+  /* Boss 擊破發的券：等級用機率決定（與卡包商店的出現率不同，這是專屬機率） */
+  const BOSS_TICKET_ODDS = [
+    { id:'normal',  prob:75 },
+    { id:'gold',    prob:15 },
+    { id:'diamond', prob:9  },
+    { id:'rainbow', prob:1  },
+  ];
+  function rollBossTicketTier(){
+    const r = Math.random() * 100;
+    let acc = 0;
+    for(const t of BOSS_TICKET_ODDS){ acc += t.prob; if(r < acc) return t.id; }
+    return 'normal';
+  }
+
   const cardById  = id => CARDS.find(c => c.id === id) || null;
   const packById  = id => PACKS.find(p => p.id === id) || null;
   const tierById  = id => PACK_TIERS.find(t => t.id === id) || PACK_TIERS[0];
@@ -683,6 +711,7 @@
     PACKS, RARITIES, PACK_TIERS, TIER_ORDER, PACK_PITY_MAX, CARDS,
     EQUIP_MAX, EQUIP_LOCK_MS, BUFF_MULT, ZONE_MULT, ZONE_MS, DOT_HOURS,
     cardById, packById, tierById, skillOf, cardOfPack, tierBetter,
+    packTicketsOf, packTicketTotal, BOSS_TICKET_ODDS, rollBossTicketTier,
     pickWeighted, rollRarity, rollTier, skillDamage, dmgMult,
     // Boss
     BOSSES, MILESTONES, bossOfStage, bossImg,
