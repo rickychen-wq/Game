@@ -1899,7 +1899,7 @@ async function ensureDailyTasks(){
         assignee:me, status:'open', claimedBy:null, wasRejected:false,
         createdAt: serverTimestamp()
       });
-    } catch(e){}
+    } catch(e){ console.error('ensureDailyTasks failed:', e); }
   }
   // 過期：自己的、昨天以前、還 open 的每日任務（pending 不動，留給媽媽補審）
   for(const t of tasks){
@@ -2698,10 +2698,12 @@ const cardImg   = id => `assets/cards/${id}.png`;
 const packImg   = id => `assets/packs/${id}.png`;
 
 /* 每日 4 包：台灣時間 00:00 換新，用懶重置 */
+let packsEnsuring = false;
 async function ensureDailyPacks(){
-  if(!me || !players[me]) return;
+  if(!me || !players[me] || packsEnsuring) return;
   const dp = players[me].dailyPacks;
   if(dp && dp.date === todayKey()) return;
+  packsEnsuring = true;
   const offers = Array.from({length:4}, ()=>({
     packId: PACKS[Math.floor(Math.random()*PACKS.length)].id,
     tierId: rollTier(),
@@ -2714,8 +2716,14 @@ async function ensureDailyPacks(){
       if(cur.dailyPacks && cur.dailyPacks.date === todayKey()) return;   // 別台裝置已產生
       tx.update(ref, { dailyPacks: { date: todayKey(), offers, bought:[false,false,false,false] } });
     });
-  } catch(e){}
+  } catch(e){
+    // 不要吞錯誤：補貨失敗會讓玩家永遠停在「正在補貨⋯」而不知道原因
+    console.error('ensureDailyPacks failed:', e);
+    toast('卡包補貨失敗：' + e.message);
+  }
+  packsEnsuring = false;
 }
+window.ensureDailyPacks = ensureDailyPacks;   // 供「手動補貨」按鈕使用
 
 /* 開包共用：抽卡 → 寫入 → 演出 */
 function applyCardGain(cur, upd, cardId, tierId){
@@ -2835,6 +2843,7 @@ function renderPackShop(){
   const tkTotal = packTicketTotal(p);
 
   const offers = (dp && dp.date === todayKey()) ? dp.offers : [];
+  if(!offers.length) ensureDailyPacks();          // 沒卡包就補一次，不用等玩家重新點進來
   $('packShopBody').innerHTML = `
     <div class="lotBox" style="margin-bottom:14px">
       <div class="lbl">距離保底 S 卡還有</div>
@@ -2870,7 +2879,8 @@ function renderPackShop(){
         ${bought ? '<button class="btn gray" disabled style="width:100%">已購買</button>'
           : actionBtn(`<button class="btn gold" style="width:100%" onclick="buyPack(${i})">購買</button>`)}
       </div>`;
-    }).join('')}</div>` : '<div class="empty">正在補貨⋯</div>'}
+    }).join('')}</div>` : `<div class="empty">正在補貨⋯<br>
+      <button class="btn gold" style="margin-top:12px" onclick="ensureDailyPacks()">手動補貨</button></div>`}
 
     <h2>機率公示</h2>
     <div class="poolBox">
@@ -3151,7 +3161,7 @@ async function settleBoss(){
       const hp = Math.max(0, cb.hp - rr.dmg);
       tx.update(ref, { boss: { ...cb, hp, dots: rr.dots, lastTickAt: now } });
     });
-  } catch(e){}
+  } catch(e){ console.error('settleBoss failed:', e); }
 }
 
 window.useSkill = async (cardId, skillId, ev)=>{
@@ -4437,7 +4447,8 @@ async function finishTutorial(){
   closeTutorial();
   if(!me || !tutKind) return;
   const flag = TUT_FLAG[tutKind] || 'tutBoss';
-  try { await updateDoc(doc(db,'players',me), { [flag]: true }); } catch(e){}
+  try { await updateDoc(doc(db,'players',me), { [flag]: true }); }
+  catch(e){ console.error('finishTutorial failed:', e); }
 }
 $('tutSkip').onclick = ()=> finishTutorial();      // 跳過也算看過
 $('tutNext').onclick = ()=>{
