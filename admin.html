@@ -339,6 +339,7 @@
       </div>
       <button class="btn ok" id="addTplBtn" style="width:100%">建立模板</button>
       <div id="tplList" style="margin-top:14px"></div>
+      <div id="orphanDaily" style="margin-top:12px"></div>
     </section>
     <section>
       <h2>發布新任務</h2>
@@ -626,6 +627,7 @@ onSnapshot(collection(db,'players'), snap=>{
   renderPlayers();
   renderAssignBtns();
   renderTasks();
+  renderTemplates();
   renderReview();
   renderDisputes();
   renderBuyReview();
@@ -817,6 +819,15 @@ window.approveTask = async (id)=>{
 window.rejectTask = async (id)=>{
   const t = tasks.find(x=>x.id===id);
   if(!t) return;
+  // 每日任務退回：直接標記為「已退回而作廢」，不要放回 open
+  // （放回 open 的話 dateKey 還是舊的 → 玩家在前台看不到，卻永遠卡在後台的進行中）
+  if(t.isDaily){
+    if(!confirm(`確定退回每日任務「${t.title}」嗎？\n這次不算完成，${
+      pName(t.assignee)} 要等明天的新任務。`)) return;
+    await updateDoc(doc(db,'tasks',id), { status:'rejected', wasRejected:true });
+    toast('已退回，這次不算完成');
+    return;
+  }
   await updateDoc(doc(db,'tasks',id), {
     status: 'open',
     wasRejected: true,
@@ -1029,6 +1040,7 @@ window.delTask = async (id)=>{
 
 function renderTasks(){
   const list = tasks.filter(t=>t.status==='open' || t.status==='claimed');   // claimed 為舊資料相容
+  const tplIds = new Set(dailyTemplates.map(x=>x.id));
   setCount('cTask', list.length);
   $('taskList').innerHTML = list.length ? list.map(t=>{
     let pill;
@@ -1037,7 +1049,11 @@ function renderTasks(){
       pill = `<span class="pill claimed">🤝 合作</span> <span class="pill grab">${pg.done.length}/${pg.total} 完成</span>`;
     }
     else pill = `<span class="pill a">${esc(pName(t.assignee))}</span>`;
-    const dailyPill = t.isDaily ? '<span class="pill a">📅每日</span> ' : '';
+    // 模板已刪除的每日任務 = 孤兒，玩家端已看不到，這裡標出來讓媽媽刪掉
+    const orphanTpl = t.isDaily && t.templateId && !tplIds.has(t.templateId);
+    const dailyPill = t.isDaily
+      ? `<span class="pill a">📅每日</span> ${orphanTpl ? '<span class="pill lock">⚠️ 模板已刪除</span> ' : ''}`
+      : '';
     return `<div class="card">
       <div class="title">${dailyPill}${esc(t.title)} ${pill}</div>
       <div class="sub"><span class="coin">🪙 ${t.reward}</span></div>
@@ -1064,12 +1080,39 @@ window.toggleTpl = async (id)=>{
   toast(t.active ? '已停用（隔天起不再生成）' : '已啟用');
 };
 window.delTpl = async (id)=>{
-  if(!confirm('確定刪除這個每日任務模板？\n（已生成的歷史任務不受影響）')) return;
+  const live = tasks.filter(t => t.templateId === id &&
+    (t.status === 'open' || t.status === 'pending')).length;
+  if(!confirm(`確定刪除這個每日任務模板？\n${
+    live ? `\n⚠️ 目前有 ${live} 筆進行中的任務用這個模板，刪掉後它們會變成孤兒（玩家看不到但留在列表），\n可以用下方的「清除這些任務」一併處理。\n` : ''
+  }（已完成的歷史紀錄不受影響）`)) return;
   await deleteDoc(doc(db,'dailyTemplates',id));
   toast('模板已刪除');
 };
+window.cleanOrphanDaily = async ()=>{
+  const tplIds = new Set(dailyTemplates.map(x=>x.id));
+  const orphans = tasks.filter(t => t.isDaily && t.templateId && !tplIds.has(t.templateId));
+  if(!orphans.length) return;
+  const byTitle = {};
+  orphans.forEach(t=>{ byTitle[t.title] = (byTitle[t.title] || 0) + 1; });
+  const detail = Object.entries(byTitle).map(([k,v])=>`・${k} ×${v}`).join('\n');
+  if(!confirm(`確定清除這些「模板已刪除」的每日任務嗎？\n\n${detail}\n\n合計 ${orphans.length} 筆，不能復原。`)) return;
+  try {
+    for(const t of orphans) await deleteDoc(doc(db,'tasks',t.id));
+    toast(`已清除 ${orphans.length} 筆孤兒每日任務`);
+  } catch(e){ toast('清除失敗：' + e.message); }
+};
+
 function renderTemplates(){
   setCount('cTpl', dailyTemplates.length);
+  // 孤兒每日任務提示
+  const tplIds = new Set(dailyTemplates.map(x=>x.id));
+  const orphans = tasks.filter(t => t.isDaily && t.templateId && !tplIds.has(t.templateId));
+  $('orphanDaily').innerHTML = orphans.length ? `
+    <div class="card lockCard">
+      <div class="title">⚠️ 有 ${orphans.length} 筆每日任務的模板已被刪除</div>
+      <div class="sub">這些任務玩家端已經看不到，但會一直留在「進行中」列表</div>
+      <div class="row"><button class="btn no" onclick="cleanOrphanDaily()">🧹 清除這些任務</button></div>
+    </div>` : '';
   $('tplList').innerHTML = dailyTemplates.length ? dailyTemplates.map(t=>`
     <div class="card">
       <div class="title">${esc(t.title)} ${t.active?'<span class="pill claimed">啟用中</span>':'<span class="pill grab">已停用</span>'}</div>
