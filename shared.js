@@ -542,6 +542,41 @@
     return 'normal';
   }
 
+  /* ==============================================================
+     卡片各等級張數（v2.1 起）
+     結構：cards[id] = { tier:'rainbow', count:6, counts:{normal:3,gold:1,diamond:1,rainbow:1} }
+       tier  = 目前最高等級（傷害計算用，保留不動）
+       count = 總張數（保留不動）
+       counts= 各等級張數（新增，未來合成系統要用）
+     舊資料沒有 counts → 用 migrateCounts 推算，不會遺失張數
+  ============================================================== */
+  // 舊資料轉換：從最高等級往下每級各 1 張，分完還有剩就全塞最高等級
+  //   彩虹×2 → 彩虹1 鑽石1
+  //   鑽石×3 → 鑽石1 黃金1 普通1
+  //   黃金×3 → 黃金2 普通1（逐級分完剩 1 張 → 塞回最高）
+  function migrateCounts(tier, count){
+    const out = { normal:0, gold:0, diamond:0, rainbow:0 };
+    const top = Math.max(0, TIER_ORDER.indexOf(tier));
+    let left = Math.max(0, Number(count) || 0);
+    if(!left) return out;
+    for(let i = top; i >= 0 && left > 0; i--){    // 由高往低各發 1 張
+      out[TIER_ORDER[i]] += 1;
+      left--;
+    }
+    if(left > 0) out[TIER_ORDER[top]] += left;    // 還有剩 → 全給最高等級
+    return out;
+  }
+  // 取得各等級張數（沒有 counts 就即時推算，不寫回 DB）
+  function cardCounts(owned){
+    if(!owned) return { normal:0, gold:0, diamond:0, rainbow:0 };
+    const c = owned.counts;
+    if(c && typeof c === 'object'){
+      return { normal:c.normal||0, gold:c.gold||0, diamond:c.diamond||0, rainbow:c.rainbow||0 };
+    }
+    return migrateCounts(owned.tier || 'normal', owned.count || 1);
+  }
+  const cardCountTotal = owned => TIER_ORDER.reduce((a,k)=> a + cardCounts(owned)[k], 0);
+
   const cardById  = id => CARDS.find(c => c.id === id) || null;
   const packById  = id => PACKS.find(p => p.id === id) || null;
   const tierById  = id => PACK_TIERS.find(t => t.id === id) || PACK_TIERS[0];
@@ -714,6 +749,7 @@
     EQUIP_MAX, EQUIP_LOCK_MS, BUFF_MULT, ZONE_MULT, ZONE_MS, DOT_HOURS, DOT_MAX_STACK,
     cardById, packById, tierById, skillOf, cardOfPack, tierBetter,
     packTicketsOf, packTicketTotal, BOSS_TICKET_ODDS, rollBossTicketTier,
+    migrateCounts, cardCounts, cardCountTotal,
     pickWeighted, rollRarity, rollTier, skillDamage, dmgMult,
     // Boss
     BOSSES, MILESTONES, bossOfStage, bossImg,
