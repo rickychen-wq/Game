@@ -1478,7 +1478,7 @@ const {
   getWeights, todayKey, prevKey,
   EP_START_LV, epTotal, epAvail,
   PACKS, RARITIES, PACK_TIERS, PACK_PITY_MAX, CARDS,
-  EQUIP_MAX, EQUIP_LOCK_MS, BUFF_MULT, ZONE_MULT, ZONE_MS, DOT_HOURS,
+  EQUIP_MAX, EQUIP_LOCK_MS, BUFF_MULT, ZONE_MULT, ZONE_MS, DOT_HOURS, DOT_MAX_STACK,
   cardById, packById, tierById, skillOf, cardOfPack, tierBetter,
   packTicketsOf, packTicketTotal, rollBossTicketTier,
   rollRarity, rollTier, skillDamage, dmgMult,
@@ -3009,7 +3009,7 @@ function renderCards(){
       }
       const skills = c.skills.map(k=>{
         const real = skillDamage(k.dmg, own.tier, {});
-        const tag = k.sp === 'DOT' ? '<span class="sTag">持續 10 小時</span>'
+        const tag = k.sp === 'DOT' ? `<span class="sTag">持續 ${DOT_HOURS} 小時・最多 ${DOT_MAX_STACK} 層</span>`
                   : k.sp === 'BUFF' ? '<span class="sTag">下次傷害 +35%</span>'
                   : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>' : '';
         const usedNow = castUsed(bossOf(p), c.id, k.id);
@@ -3179,6 +3179,12 @@ window.useSkill = async (cardId, skillId, ev)=>{
     `⏰ 攻擊時段已結束，下次開放還有 ${msLeftTxt(windowEdge() - Date.now())}`);
   if(castUsed(bossOf(p), cardId, skillId)) return skillNope(btn, '這招本時段已經用過了');
   if(epAvail(p) < k.ep)  return skillNope(btn, `EP 不夠，還差 ${k.ep - epAvail(p)}`);
+  // DOT 滿層：擋在這裡，不會消耗 EP 也不會用掉本時段的使用次數
+  if(k.sp === 'DOT'){
+    const live = dotDamage(bossOf(p), Date.now()).dots.length;
+    if(live >= DOT_MAX_STACK)
+      return skillNope(btn, `☠️ 持續傷害已達上限 ${DOT_MAX_STACK} 層，等其中一層結束再放`);
+  }
 
   if(btn && !REDUCED){ btn.classList.remove('fire'); void btn.offsetWidth; btn.classList.add('fire'); }
 
@@ -3222,6 +3228,8 @@ window.useSkill = async (cardId, skillId, ev)=>{
       } else if(k.sp === 'ZONE'){
         zoneUntil = now + ZONE_MS;                          // 8 小時內 +35%
       } else if(k.sp === 'DOT'){
+        if(dots.length >= DOT_MAX_STACK)
+          throw new Error(`持續傷害已達上限 ${DOT_MAX_STACK} 層`);
         const total = skillDamage(k.dmg, tierId, { buff, zone: zoneOn });
         dots = [...dots, { dmgPerHour: total / DOT_HOURS, startAt: now, endAt: now + DOT_HOURS*3600000 }];
         if(buff) buff = false;
@@ -3432,7 +3440,8 @@ function renderBoss(){
         const tag = k.sp === 'DOT' ? '<span class="sTag">10 小時持續</span>'
                   : k.sp === 'BUFF' ? '<span class="sTag">下次 +35%</span>'
                   : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>' : '';
-        const unusable = used || noEp || isLocked() || !canAttack;
+        const dotFull = k.sp === 'DOT' && preview.dots.length >= DOT_MAX_STACK;
+        const unusable = used || noEp || isLocked() || !canAttack || dotFull;
         return `<button class="skillBtn ${unusable ? 'dis' : ''}" onclick="useSkill('${id}','${k.id}', event)">
           <div class="sTop2"><span class="sN">${esc(k.name)}</span>${tag}</div>
           <div class="sInfo">
@@ -3443,6 +3452,7 @@ function renderBoss(){
             ${!canAttack && !used ? '　<span style="color:var(--muted)">等下個時段</span>' : ''}
             ${!winOpen && canAttack && !used ? '　<span style="color:var(--cyan)">用券</span>' : ''}
             ${noEp ? '　<span style="color:var(--pink)">EP 不足</span>' : ''}
+            ${dotFull ? `　<span style="color:var(--pink)">已達 ${DOT_MAX_STACK} 層上限</span>` : ''}
           </div>
         </button>`;
       }).join('')}
@@ -3484,7 +3494,7 @@ function renderBoss(){
     </div>
 
     ${(preview.dots.length || b.buff || zoneOn) ? `<div class="sub" style="font-family:var(--mono);font-size:11px;color:var(--gold);margin-top:8px;line-height:1.8">
-      ${preview.dots.length ? `🔥 持續傷害 ${preview.dots.length} 層（每小時約 ${Math.round(preview.dots.reduce((a,d)=>a+d.dmgPerHour,0))}）・最久還有 ${tickSpan(Math.max(...preview.dots.map(d=>d.endAt)), { rerender:true, done:'已結束' })}<br>` : ''}
+      ${preview.dots.length ? `🔥 持續傷害 <b style="color:${preview.dots.length >= DOT_MAX_STACK ? 'var(--pink)' : 'var(--gold)'}">${preview.dots.length}/${DOT_MAX_STACK}</b> 層（每小時約 ${Math.round(preview.dots.reduce((a,d)=>a+d.dmgPerHour,0))}）・最久還有 ${tickSpan(Math.max(...preview.dots.map(d=>d.endAt)), { rerender:true, done:'已結束' })}<br>` : ''}
       ${b.buff ? '<span class="dotPill">✨ 幻影傳球生效中：下一個傷害技能 +35%</span><br>' : ''}
       ${zoneOn ? `🔵 ZONE 生效中：${tickSpan(b.zoneUntil, { rerender:true, done:'已結束' })}內所有技能 +35%` : ''}
     </div>` : ''}
