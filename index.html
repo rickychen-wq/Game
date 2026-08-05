@@ -1480,6 +1480,7 @@ const {
   PACKS, RARITIES, PACK_TIERS, PACK_PITY_MAX, CARDS,
   EQUIP_MAX, EQUIP_LOCK_MS, BUFF_MULT, ZONE_MULT, ZONE_MS, DOT_HOURS,
   cardById, packById, tierById, skillOf, cardOfPack, tierBetter,
+  packTicketsOf, packTicketTotal, rollBossTicketTier,
   rollRarity, rollTier, skillDamage, dmgMult,
   BOSSES, MILESTONES, bossOfStage, bossImg,
   BOSS_FORCE_OPEN, bossOpenMap, bossStageOpen, bossMaxOpen,
@@ -2774,26 +2775,32 @@ window.buyPack = async (idx)=>{
 };
 
 /* 卡包券：免費開一包，等級隨機，不佔當日 4 包額度 */
-window.openFreePack = async ()=>{
+/* 用指定等級的券開包：等級由券決定，動漫仍隨機 */
+window.openFreePack = async (tierId)=>{
   if(lockGuard()) return;
-  if((players[me]?.packTickets ?? 0) <= 0){ toast('沒有卡包券'); return; }
+  const tier = tierById(tierId);
+  if(packTicketsOf(players[me])[tierId] <= 0){ toast(`沒有${tier.name}券`); return; }
   const packId = PACKS[Math.floor(Math.random()*PACKS.length)].id;
-  const tierId = rollTier();
-  if(!confirm(`要使用 1 張卡包券開「${packById(packId).name}」嗎？\n等級隨機`)) return;
+  if(!confirm(`要使用 1 張「${tier.name}券」開「${packById(packId).name}」嗎？\n傷害倍率 ×${tier.mult}`)) return;
   let result = null;
   try {
     await runTransaction(db, async tx=>{
       const ref = doc(db,'players',me);
       const s = await tx.get(ref);
       const cur = s.data() || {};
-      if((cur.packTickets ?? 0) <= 0) throw new Error('沒有卡包券');
+      const have = packTicketsOf(cur);
+      if(have[tierId] <= 0) throw new Error(`沒有${tier.name}券`);
       const pity = cur.packPity ?? 0;
       const rar  = rollRarity(pity);
       const card = cardOfPack(packId, rar);
-      const upd = { packTickets: increment(-1), packPity: (rar === 'S') ? 0 : increment(1) };
+      // 舊資料是數字 → 先整份改寫成 map，之後才能用 dotted path
+      const upd = (typeof cur.packTickets === 'number')
+        ? { packTickets: { ...have, [tierId]: have[tierId] - 1 } }
+        : { ['packTickets.' + tierId]: increment(-1) };
+      upd.packPity = (rar === 'S') ? 0 : increment(1);
       const g = applyCardGain(cur, upd, card.id, tierId);
       tx.update(ref, upd);
-      tx.set(ledgerRef(), ledgerData('pack', 0, `${packById(packId).name} ${tierById(tierId).name}（券）`,
+      tx.set(ledgerRef(), ledgerData('pack', 0, `${packById(packId).name} ${tier.name}（券）`,
         { cardId: card.id, rar, tier: tierId, dup: g.dup, free: true }));
       result = { card, rar, tierId, ...g };
     });
@@ -2824,7 +2831,8 @@ function renderPackShop(){
   const dp = p.dailyPacks;
   const pity = p.packPity ?? 0;
   const left = PACK_PITY_MAX - pity;
-  const tks = p.packTickets ?? 0;
+  const tks = packTicketsOf(p);
+  const tkTotal = packTicketTotal(p);
 
   const offers = (dp && dp.date === todayKey()) ? dp.offers : [];
   $('packShopBody').innerHTML = `
@@ -2834,12 +2842,20 @@ function renderPackShop(){
       <div class="pityBar"><div class="pityFill" style="width:${Math.min(100, pity/PACK_PITY_MAX*100)}%"></div></div>
     </div>
 
-    ${tks > 0 ? `<div class="card">
-      <div class="title">🎟️ 卡包券 ×${tks}</div>
-      <div class="sub">打 Boss 得到的獎勵，可免費開一包（等級隨機，不佔今日 4 包額度）</div>
-      <div class="row"><div class="reward">免費</div>
-        ${actionBtn('<button class="btn gold" onclick="openFreePack()">開包</button>')}</div>
-    </div>` : ''}
+    ${tkTotal > 0 ? `<h2>🎟️ 我的卡包券</h2>
+      <div class="sub" style="font-family:var(--mono);font-size:11px;color:var(--muted);margin:-4px 0 10px">
+        打 Boss 得到的獎勵，開出來的等級就是券的等級（動漫隨機，不佔今日 4 包額度）
+      </div>
+      ${PACK_TIERS.filter(t => tks[t.id] > 0).map(t=>`
+        <div class="card ${t.id==='rainbow'?'rainbowBorder':''}"
+             style="${t.id==='rainbow'?'':`border-color:${t.color}`}">
+          <div class="title">🎟️ ${t.name}券
+            <span class="tierPill" style="background:${t.color}22;color:${t.color};border:1px solid ${t.color}">×${t.mult} 傷害</span>
+            <span class="tierPill" style="background:#1a1d28;color:var(--muted)">持有 ${tks[t.id]}</span>
+          </div>
+          <div class="row"><div class="reward">免費</div>
+            ${actionBtn(`<button class="btn gold" onclick="openFreePack('${t.id}')">開包</button>`)}</div>
+        </div>`).join('')}` : ''}
 
     <h2>今日卡包</h2>
     ${offers.length ? `<div class="packGrid">${offers.map((o,i)=>{
@@ -3148,14 +3164,15 @@ window.useSkill = async (cardId, skillId, ev)=>{
   // 前置檢查：不可用時要讓玩家知道為什麼（抖動 + 音效 + 說明）
   if(isLocked())  return skillNope(btn, '🔒 禁閉中，先完成贖罪任務');
   if(bossOf(p).stage > bossMaxOpen()) return skillNope(btn, '目前開放的關卡都通關了');
-  if(!inAttackWindow()) return skillNope(btn,
+  const hasFreePass = (p.bossFreePass ?? 0) > 0;
+  if(!inAttackWindow() && !hasFreePass) return skillNope(btn,
     `⏰ 攻擊時段已結束，下次開放還有 ${msLeftTxt(windowEdge() - Date.now())}`);
   if(castUsed(bossOf(p), cardId, skillId)) return skillNope(btn, '這招本時段已經用過了');
   if(epAvail(p) < k.ep)  return skillNope(btn, `EP 不夠，還差 ${k.ep - epAvail(p)}`);
 
   if(btn && !REDUCED){ btn.classList.remove('fire'); void btn.offsetWidth; btn.classList.add('fire'); }
 
-  let killed = null, fx = null;
+  let killed = null, fx = null, killedTicket = null;
   try {
     await runTransaction(db, async tx=>{
       const ref = doc(db,'players',me);
@@ -3164,7 +3181,12 @@ window.useSkill = async (cardId, skillId, ev)=>{
       const now = Date.now();
 
       if(epAvail(cur) < k.ep) throw new Error(`EP 不夠，還差 ${k.ep - epAvail(cur)}`);
-      if(!inAttackWindow(now)) throw new Error('攻擊時段已結束');
+      // 時段外：需要免時段券，且成功放招才扣（時段內不消耗）
+      let useFreePass = false;
+      if(!inAttackWindow(now)){
+        if((cur.bossFreePass ?? 0) <= 0) throw new Error('攻擊時段已結束');
+        useFreePass = true;
+      }
 
       const b = bossOf(cur);
       if(castUsed(b, cardId, skillId, now)) throw new Error('這招本時段已經用過了');
@@ -3180,6 +3202,7 @@ window.useSkill = async (cardId, skillId, ev)=>{
       const tierId = own.tier || 'normal';
       const zoneOn = zoneUntil > now;
       const upd = { epSpent: increment(k.ep) };   // 舊的 skillReady 不再讀寫
+      if(useFreePass) upd.bossFreePass = increment(-1);
       const castMap = { ...(b.lastCastWindow || {}) };
       castMap[skillKey(cardId, skillId)] = windowId(now);
 
@@ -3215,7 +3238,15 @@ window.useSkill = async (cardId, skillId, ev)=>{
         const next = bossOfStage(b.stage + 1);
         upd.coins        = increment(boss.coin);                   // 不加 totalEarned / xp
         upd.bonusTokens  = increment(boss.token);
-        upd.packTickets  = increment(boss.ticket);
+        // 券等級用專屬機率決定（普通75 黃金15 鑽石9 彩虹1）
+        const tkTier = rollBossTicketTier();
+        const haveTk = packTicketsOf(cur);
+        if(typeof cur.packTickets === 'number'){        // 舊資料 → 整份改寫成 map
+          upd.packTickets = { ...haveTk, [tkTier]: haveTk[tkTier] + boss.ticket };
+        } else {
+          upd['packTickets.' + tkTier] = increment(boss.ticket);
+        }
+        killedTicket = { tier: tkTier, n: boss.ticket };
         upd.epBonus      = increment(boss.ep);                     // ⚠️ 絕不可寫進 xp
         upd.boss = { stage: b.stage + 1, hp: next ? next.hp : 0,
                      dots: [], milestones: [], lastTickAt: now, buff:false, zoneUntil:0,
@@ -3231,7 +3262,7 @@ window.useSkill = async (cardId, skillId, ev)=>{
       tx.update(ref, upd);
     });
 
-    if(killed){ showKill(killed); }
+    if(killed){ showKill(killed, killedTicket); }
     else if(fx){
       if(fx.sp === 'DOT'){
         dotCast(`☠️ 每小時 ${fx.perHour} 傷害・持續 ${DOT_HOURS} 小時`);
@@ -3247,7 +3278,7 @@ window.useSkill = async (cardId, skillId, ev)=>{
   } catch(e){ sfxError(); toast(e.message); }
 };
 
-function showKill(boss){
+function showKill(boss, tk){
   const stage = BOSSES.indexOf(boss) + 1;
   $('kpName').textContent = boss.name;
   // Boss 圖裂開／震動後淡出
@@ -3256,7 +3287,7 @@ function showKill(boss){
   const rw = [
     `🪙 ${boss.coin.toLocaleString()}`,
     `${TALENT_ICON} ${boss.token}`,
-    `🎟️ 卡包券 ${boss.ticket}`,
+    tk ? `🎟️ ${tierById(tk.tier).name}券 ${tk.n}` : `🎟️ 卡包券 ${boss.ticket}`,
     `⚡ EP ${boss.ep.toLocaleString()}`,
   ];
   $('kpRewards').innerHTML = rw.map((t,i)=>
@@ -3361,6 +3392,8 @@ function renderBoss(){
   const dmgX = dmgMult();
   // 血條殘影：先畫在「上一次的血量」，下一幀才追上 → 看得出這一擊打掉多少
   const winOpen = inAttackWindow(now);
+  const freePass = p.bossFreePass ?? 0;
+  const canAttack = winOpen || freePass > 0;
   const winEdge = windowEdge(now);
   const winLeft = winEdge - now;
   const nh = new Date(winEdge);
@@ -3389,7 +3422,7 @@ function renderBoss(){
         const tag = k.sp === 'DOT' ? '<span class="sTag">10 小時持續</span>'
                   : k.sp === 'BUFF' ? '<span class="sTag">下次 +35%</span>'
                   : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>' : '';
-        const unusable = used || noEp || isLocked() || !winOpen;
+        const unusable = used || noEp || isLocked() || !canAttack;
         return `<button class="skillBtn ${unusable ? 'dis' : ''}" onclick="useSkill('${id}','${k.id}', event)">
           <div class="sTop2"><span class="sN">${esc(k.name)}</span>${tag}</div>
           <div class="sInfo">
@@ -3397,7 +3430,8 @@ function renderBoss(){
               ? `傷害 <span class="dm ${dmgX > 1 ? 'evt' : ''}">${real}${dmgX > 1 ? ' ⚔️×2' : ''}</span>`
               : '無傷害'}
             ${used ? '　<span style="color:var(--pink)">本時段已使用</span>' : ''}
-            ${!winOpen && !used ? '　<span style="color:var(--muted)">等下個時段</span>' : ''}
+            ${!canAttack && !used ? '　<span style="color:var(--muted)">等下個時段</span>' : ''}
+            ${!winOpen && canAttack && !used ? '　<span style="color:var(--cyan)">用券</span>' : ''}
             ${noEp ? '　<span style="color:var(--pink)">EP 不足</span>' : ''}
           </div>
         </button>`;
@@ -3406,10 +3440,12 @@ function renderBoss(){
   }).join('') : `<div class="empty">還沒裝備卡片，先去「🎴 卡片」裝備最多 ${EQUIP_MAX} 張</div>`;
 
   $('bossBody').innerHTML = `
-    <div class="winBar ${winOpen ? (winLeft <= 180000 ? 'urgent' : 'open') : 'closed'}">
+    <div class="winBar ${winOpen ? (winLeft <= 180000 ? 'urgent' : 'open') : (freePass > 0 ? 'open' : 'closed')}">
       ${winOpen
         ? `⚔️ 攻擊時段進行中　剩 ${tickSpan(winEdge, { rerender:true, done:'已結束' })}`
-        : `⏰ 攻擊時段已結束　下次開放 ${nextHourTxt}（還有 ${tickSpan(winEdge, { rerender:true, done:'開放中！' })}）`}
+        : freePass > 0
+          ? `🎫 免時段券 ×${freePass}　現在也能打（放一招消耗一張）`
+          : `⏰ 攻擊時段已結束　下次開放 ${nextHourTxt}（還有 ${tickSpan(winEdge, { rerender:true, done:'開放中！' })}）`}
     </div>
 
     <div class="bossWrap">
@@ -3426,7 +3462,7 @@ function renderBoss(){
       </div>
       <div class="hpTxt2">${hp.toLocaleString()} / ${boss.hp.toLocaleString()}　${pct.toFixed(1)}%</div>
       <div class="sub" id="bossReward" style="font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.8">
-        擊破獎勵：🪙 ${boss.coin}　${TALENT_ICON} ${boss.token}　🎟️ ${boss.ticket}　⚡ ${boss.ep}
+        擊破獎勵：🪙 ${boss.coin}　${TALENT_ICON} ${boss.token}　🎟️ 卡包券 ${boss.ticket}（等級隨機）　⚡ ${boss.ep}
       </div>
     </div>
 
