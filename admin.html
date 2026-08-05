@@ -583,7 +583,7 @@ async function createDefaultTemplates(){
       { title:'每日作業', reward:150, note:'', active:true, createdAt:serverTimestamp() });
     await setDoc(doc(db,'dailyTemplates','tpl_phone'),
       { title:'當日手機使用時間低於 1.5 小時', reward:300, note:'以螢幕使用時間為準，隔天由媽媽查驗', active:true, createdAt:serverTimestamp() });
-  } catch(e){}
+  } catch(e){ console.error('createDefaultTemplates failed:', e); }
 }
 
 // 對每個 active 模板 × 每個玩家補生成當日實例 + 過期所有玩家舊 open 每日任務
