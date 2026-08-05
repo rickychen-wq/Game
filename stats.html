@@ -407,6 +407,11 @@
     <div id="bossOpenList"></div>
     <div id="bossMsList" class="ctlHist"></div>
 
+    <h3>🔄 全體刷商店</h3>
+    <div class="ctlRow"><span class="ctlLbl">等級</span><div id="shopAllBtns" class="ctlBtns"></div></div>
+    <button class="evBtn go" id="shopAllSend" style="width:100%;margin-top:6px">🔄 重刷全體今日卡包</button>
+    <div class="ctlHist" id="shopAllHint"></div>
+
     <h3>🎁 全體發獎</h3>
     <div class="ctlRow"><span class="ctlLbl">類型</span><div id="giftTypeBtns" class="ctlBtns"></div></div>
     <div id="giftExtra"></div>
@@ -518,7 +523,7 @@ const {
   EVENTS, setRuntime, eventOn, eventExpired, eventAdd, eventUntil, activeEvents,
   r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
   todayKey, getWeights, TICKET_PRICE, SALE_TICKET_PRICE, LUCK_MAX,
-  epTotal, epAvail, PACK_TIERS, CARDS, cardById, tierById,
+  epTotal, epAvail, PACK_TIERS, CARDS, cardById, tierById, packTicketsOf, packTicketTotal,
   ADMIN_EVENTS, ADMIN_DURATIONS, adminEventById, adminEventOn, adminEventUntil,
   BOSS_FORCE_OPEN, bossOpenMap, bossStageOpen, bossMaxOpen,
   BOSS_MILESTONES, bossMilestoneAt, bossMilestoneWinner, BOSSES,
@@ -1353,6 +1358,49 @@ window.dbgSetCrafted = async (id)=>{
   await dbgWrite(patch, `設定合成稱號 ${t.name} ×${n}`, { field:'craftedTitles.'+id, from, to:n });
 };
 
+/* ---- 每日卡包刷新（可各別指定動漫與等級）---- */
+let shopDraft = [
+  { pack:'', tier:'' }, { pack:'', tier:'' }, { pack:'', tier:'' }, { pack:'', tier:'' },
+];   // 空字串 = 隨機
+
+window.setShopSlot = (i, field, v)=>{ shopDraft[i][field] = v; renderDebug(); };
+window.shopAllTier = (tier)=>{ shopDraft.forEach(d=> d.tier = tier); renderDebug(); };
+window.shopAllRandom = ()=>{ shopDraft = shopDraft.map(()=>({ pack:'', tier:'' })); renderDebug(); };
+
+// 依草稿產生 offers（空 = 隨機）
+function buildOffers(draft){
+  return draft.map(d=>({
+    packId: d.pack || PACKS[Math.floor(Math.random()*PACKS.length)].id,
+    tierId: d.tier || window.GAME.rollTier(),
+  }));
+}
+
+window.dbgRefreshShop = async ()=>{
+  const p = dbgP(); if(!p) return;
+  const offers = buildOffers(shopDraft);
+  const lines = offers.map((o,i)=>
+    `${i+1}. ${packById(o.packId).name}・${tierById(o.tierId).name}（🪙${tierById(o.tierId).price}）`).join('\n');
+  if(!confirm(`確定重刷「${p.name}」的今日卡包嗎？\n\n${lines}\n\n（已購買的紀錄會一併清空）`)) return;
+  await dbgWrite({ dailyPacks: { date: todayKey(), offers, bought:[false,false,false,false] } },
+    '重刷今日卡包', { offers });
+};
+
+/* ---- 卡包券（分等級）---- */
+window.dbgSetTicket = async (tierId)=>{
+  const p = dbgP(); if(!p) return;
+  const n = Math.max(0, dbgNum('dbg_pt_'+tierId));
+  const have = packTicketsOf(p);
+  const from = have[tierId];
+  if(from === n) return;
+  const t = tierById(tierId);
+  if(!confirm(`確定把「${p.name}」的 ${t.name}券 從 ${from} 改成 ${n} 嗎？`)) return;
+  // 舊資料是數字 → 整份改寫成 map
+  const patch = (typeof p.packTickets === 'number')
+    ? { packTickets: { ...have, [tierId]: n } }
+    : { ['packTickets.' + tierId]: n };
+  await dbgWrite(patch, `設定 ${t.name}券 ×${n}`, { field:'packTickets.'+tierId, from, to:n });
+};
+
 /* ---- 材料 ---- */
 window.dbgSetMat = async (key)=>{
   const p = dbgP(); if(!p) return;
@@ -1434,6 +1482,7 @@ window.dbgSetStreak = async (tplId)=>{
 const QUICK = {
   packs:    { t:'🔄 重置今日卡包', run:p=>({ patch:{ dailyPacks:null }, label:'重置今日卡包' }) },
   cd:       { t:'⏱️ 清除所有技能 CD', run:p=>({ patch:{ skillReady:{} }, label:'清除所有技能 CD' }) },
+  freepass: { t:'🎫 給 1 張免時段券', run:p=>({ patch:{ bossFreePass:(p.bossFreePass ?? 0) + 1 }, label:'給免時段券 ×1' }) },
   eqlock:   { t:'🔓 解除換卡鎖', run:p=>({ patch:{ equipSlotReadyAt:0 }, label:'解除換卡鎖' }) },
   dots:     { t:'💥 清空 Boss DOT', run:p=>({ patch:{ 'boss.dots':[], 'boss.lastTickAt':Date.now() }, label:'清空 Boss DOT' }) },
   lotpity:  { t:'🎯 抽獎保底拉滿', run:p=>({ patch:{ lotteryPity:69 }, label:'抽獎保底拉滿（69）' }) },
@@ -1480,7 +1529,7 @@ const DANGER = {
               materials:{}, craftedTitles:{}, shopTitles:[], equippedTitle:null,
               lotteryPity:0, lotteryCount:0,
               cards:{}, equipped:[], equipSlotReadyAt:0, skillReady:{},
-              packTickets:0, packPity:0, dailyPacks:null, dailyStreaks:{},
+              packTickets:{}, packPity:0, dailyPacks:null, dailyStreaks:{}, bossFreePass:0,
               boss:{ stage:1, hp:BOSSES[0].hp, dots:[], milestones:[],
                      lastTickAt:Date.now(), buff:false, zoneUntil:0 },
               tutorialDone:false, tutBoss:false, tutTalent:false, tutRank:false,
@@ -1536,7 +1585,8 @@ function renderDebug(){
       成就 ${((p.achievements)||[]).length}/${ACHIEVEMENTS.length}
       ／ 抽獎 pity ${p.lotteryPity ?? 0}
       ／ 卡包 pity ${p.packPity ?? 0}
-      ／ 卡包券 ${p.packTickets ?? 0}<br>
+      ／ 卡包券 ${PACK_TIERS.map(t=>`${t.name}${packTicketsOf(p)[t.id]}`).join(' ')}
+      ／ 🎫 免時段券 ${p.bossFreePass ?? 0}<br>
       Boss 第 ${boss.stage ?? 1} 關 HP ${(boss.hp ?? 0).toLocaleString()}/${(bossDef?.hp ?? 0).toLocaleString()}
       ／ 卡片 ${cardCount} 張 ／ 稱號 ${titleCount} 個
       ／ 換卡鎖 ${eqLeft > 0 ? Math.ceil(eqLeft/60000) + ' 分' : '無'}
@@ -1652,7 +1702,37 @@ function renderDebug(){
       </div>`;
     }).join('')}
     ${dbgNumRow('全通關已領 bossClearReward','bossClearReward', p.bossClearReward ?? 0, 'dbg_bcr', 1)}
-    ${dbgNumRow('卡包券 packTickets','packTickets', p.packTickets ?? 0, 'dbg_pt', 1)}
+    ${dbgNumRow('🎫 免時段券 bossFreePass','bossFreePass', p.bossFreePass ?? 0, 'dbg_fp', 1)}
+
+    <h3 style="color:var(--pink)">重刷今日卡包</h3>
+    <div class="dbgRow">
+      <span class="dk">快速套用</span>
+      ${PACK_TIERS.map(t=>`<button class="dbgBtn" onclick="shopAllTier('${t.id}')">全${t.name}</button>`).join('')}
+      <button class="dbgBtn" onclick="shopAllRandom()">全隨機</button>
+    </div>
+    ${shopDraft.map((d,i)=>`<div class="dbgRow">
+      <span class="dk">第 ${i+1} 包</span>
+      <select onchange="setShopSlot(${i},'pack',this.value)">
+        <option value="" ${!d.pack?'selected':''}>動漫隨機</option>
+        ${PACKS.map(pk=>`<option value="${pk.id}" ${d.pack===pk.id?'selected':''}>${esc(pk.name)}</option>`).join('')}
+      </select>
+      <select onchange="setShopSlot(${i},'tier',this.value)">
+        <option value="" ${!d.tier?'selected':''}>等級隨機</option>
+        ${PACK_TIERS.map(t=>`<option value="${t.id}" ${d.tier===t.id?'selected':''}>${t.name} ×${t.mult}</option>`).join('')}
+      </select>
+    </div>`).join('')}
+    <div class="dbgRow">
+      <button class="dbgBtn danger" onclick="dbgRefreshShop()">🔄 套用並重刷</button>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--muted)">
+        目前：${(p.dailyPacks?.date) || '無'}</span>
+    </div>
+
+    ${PACK_TIERS.map(t=>`<div class="dbgRow">
+      <span class="dk">🎟️ ${t.name}券</span>
+      <span class="dv">${packTicketsOf(p)[t.id]}</span>
+      <input type="number" id="dbg_pt_${t.id}" min="0" value="${packTicketsOf(p)[t.id]}">
+      <button class="dbgBtn" onclick="dbgSetTicket('${t.id}')">設為</button>
+    </div>`).join('')}
     ${dbgNumRow('卡包保底 packPity','packPity', p.packPity ?? 0, 'dbg_pp', 1)}
     <div class="dbgRow">
       <span class="dk">換卡鎖</span>
@@ -1739,6 +1819,7 @@ window.dbgToggleTut = async ()=>{
 let bcStyle = 'admin', bcDur = 3000;
 let aeType = null, aeDur = 10;
 let giftType = 'coins', giftCard = CARDS[0].id, giftTier = 'normal', giftMat = MATERIALS[0].key;
+let giftPackTier = 'normal';        // 卡包券要發哪一種
 
 const BC_STYLES = [
   { id:'admin',  name:'📢 管理員' },
@@ -1752,6 +1833,7 @@ const GIFT_TYPES = [
   { id:'ticket',       name:'🎟️ 抽獎券' },
   { id:'packTickets',  name:'🎴 卡包券' },
   { id:'epBonus',      name:'⚡ EP' },
+  { id:'bossFreePass', name:'🎫 免時段券' },
   { id:'material',     name:'🟣 材料' },
   { id:'card',         name:'🃏 卡片' },
 ];
@@ -1764,6 +1846,7 @@ window.pickGiftType= v=>{ giftType = v; renderCtl(true); };
 window.pickGiftCard= v=>{ giftCard = v; renderCtl(true); };
 window.pickGiftTier= v=>{ giftTier = v; renderCtl(true); };
 window.pickGiftMat = v=>{ giftMat = v; renderCtl(true); };
+window.pickGiftPackTier = v=>{ giftPackTier = v; renderCtl(true); };
 
 function btns(list, cur, fn, cls){
   return list.map(o=>`<button class="ctlBtn ${cls||''} ${o.id===cur?'on':''}"
@@ -1875,6 +1958,37 @@ window.resetMilestone = async (stage)=>{
   } catch(e){ dbgToast('重置失敗：'+e.message, true); }
 };
 
+/* ---- 全體刷商店 ---- */
+let shopAllTierPick = '';        // 空字串 = 隨機
+window.pickShopAllTier = v=>{ shopAllTierPick = v; renderCtl(true); };
+
+$('shopAllSend').onclick = async ()=>{
+  const ids = Object.keys(players);
+  if(!ids.length){ dbgToast('沒有玩家', true); return; }
+  const label = shopAllTierPick ? `全部 ${tierById(shopAllTierPick).name}包` : '隨機';
+  if(!confirm(`確定重刷所有人的今日卡包嗎？\n\n等級：${label}\n對象：${
+    ids.map(id=>players[id].name || id).join('、')}\n\n（每人各自隨機動漫，已購買紀錄會清空）`)) return;
+  try {
+    await runTransaction(db, async tx=>{
+      const refs = ids.map(id=>doc(db,'players',id));
+      for(const r of refs) await tx.get(r);            // read 全部先做完
+      refs.forEach((r,i)=>{
+        // 每人各自抽，不會四個人拿到同一組
+        const offers = Array.from({length:4}, ()=>({
+          packId: PACKS[Math.floor(Math.random()*PACKS.length)].id,
+          tierId: shopAllTierPick || window.GAME.rollTier(),
+        }));
+        tx.update(r, { dailyPacks: { date: todayKey(), offers, bought:[false,false,false,false] } });
+        tx.set(doc(collection(db,'ledger')), {
+          playerId: ids[i], delta: 0, kind: 'debug', label: '全體刷商店（' + label + '）',
+          meta: { offers }, createdAt: serverTimestamp(),
+        });
+      });
+    });
+    dbgToast(`🔄 已重刷 ${ids.length} 人的卡包`);
+  } catch(e){ dbgToast('重刷失敗：'+e.message, true); }
+};
+
 /* ---- 全體發獎 ---- */
 function giftLabel(){
   const n = Math.max(1, Number($('giftAmt')?.value) || 1);
@@ -1886,6 +2000,7 @@ function giftLabel(){
     const m = MATERIALS.find(x=>x.key===giftMat);
     return `${m.icon} ${m.name} ×${n}`;
   }
+  if(giftType === 'packTickets') return `🎟️ ${tierById(giftPackTier).name}券 ×${n}`;
   return `${GIFT_TYPES.find(x=>x.id===giftType).name.replace(/^\S+\s/,'')} ×${n}`;
 }
 $('giftSend').onclick = async ()=>{
@@ -1910,8 +2025,14 @@ $('giftSend').onclick = async ()=>{
         let patch = {}, delta = 0;
         if(giftType === 'coins'){ patch = { coins: increment(n) }; delta = n; }   // 不加 totalEarned/xp
         else if(giftType === 'bonusTokens') patch = { bonusTokens: increment(n) };
-        else if(giftType === 'packTickets') patch = { packTickets: increment(n) };
+        else if(giftType === 'packTickets'){
+          const have = packTicketsOf(sn.data() || {});
+          patch = (typeof (sn.data()||{}).packTickets === 'number')
+            ? { packTickets: { ...have, [giftPackTier]: have[giftPackTier] + n } }
+            : { ['packTickets.' + giftPackTier]: increment(n) };
+        }
         else if(giftType === 'epBonus')     patch = { epBonus: increment(n) };
+        else if(giftType === 'bossFreePass') patch = { bossFreePass: increment(n) };
         else if(giftType === 'material')    patch = { ['materials.'+giftMat]: increment(n) };
         else if(giftType === 'card'){
           const cur = { ...((sn.data().cards) || {}) };
@@ -1998,9 +2119,24 @@ function renderCtl(force){
 
   ctlSafe('Boss 關卡開放', 'bossOpenList', renderBossOpen);
 
+  ctlSafe('全體刷商店', 'shopAllBtns', ()=>{
+    const sig = 'sa|' + shopAllTierPick;
+    const box = $('shopAllBtns');
+    if(force || box.dataset.sig !== sig){
+      box.dataset.sig = sig;
+      box.innerHTML = `<button class="ctlBtn ${!shopAllTierPick?'on':''}"
+          onclick="pickShopAllTier('')">🎲 隨機</button>` +
+        PACK_TIERS.map(t=>`<button class="ctlBtn ${t.id===shopAllTierPick?'on':''}"
+          onclick="pickShopAllTier('${t.id}')">${t.name} 🪙${t.price}</button>`).join('');
+    }
+    $('shopAllHint').innerHTML =
+      `<div class="hRow">選「隨機」＝照原本機率（普通70/黃金22/鑽石7.5/彩虹0.5）；
+       選特定等級＝四包全部指定成該等級</div>`;
+  });
+
   // 全體發獎
   ctlSafe('全體發獎', 'giftTypeBtns', ()=>{
-  const gSig = giftType + '|' + giftCard + '|' + giftTier + '|' + giftMat;
+  const gSig = giftType + '|' + giftCard + '|' + giftTier + '|' + giftMat + '|' + giftPackTier;
   const gt = $('giftTypeBtns');
   if(force || gt.dataset.sig !== gSig){
     gt.dataset.sig = gSig;
@@ -2013,6 +2149,10 @@ function renderCtl(force){
         <div class="ctlRow"><span class="ctlLbl">等級</span><div class="ctlBtns">${
         PACK_TIERS.map(t=>`<button class="ctlBtn ${t.id===giftTier?'on':''}"
           onclick="pickGiftTier('${t.id}')">${t.name} ×${t.mult}</button>`).join('')}</div></div>`;
+    } else if(giftType === 'packTickets'){
+      extra = `<div class="ctlRow"><span class="ctlLbl">等級</span><div class="ctlBtns">${
+        PACK_TIERS.map(t=>`<button class="ctlBtn ${t.id===giftPackTier?'on':''}"
+          onclick="pickGiftPackTier('${t.id}')">${t.name} ×${t.mult}</button>`).join('')}</div></div>`;
     } else if(giftType === 'material'){
       extra = `<div class="ctlRow"><span class="ctlLbl">材料</span><div class="ctlBtns">${
         MATERIALS.map(m=>`<button class="ctlBtn ${m.key===giftMat?'on':''}"
