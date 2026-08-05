@@ -524,6 +524,7 @@ const {
   r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
   todayKey, getWeights, TICKET_PRICE, SALE_TICKET_PRICE, LUCK_MAX,
   epTotal, epAvail, PACK_TIERS, CARDS, cardById, tierById, packTicketsOf, packTicketTotal,
+  PACKS, packById, rollTier,
   ADMIN_EVENTS, ADMIN_DURATIONS, adminEventById, adminEventOn, adminEventUntil,
   BOSS_FORCE_OPEN, bossOpenMap, bossStageOpen, bossMaxOpen,
   BOSS_MILESTONES, bossMilestoneAt, bossMilestoneWinner, BOSSES,
@@ -1105,7 +1106,7 @@ function daysLaterIso(n){
 }
 
 window.setDur = (key, v)=>{ durChoice[key] = v; renderConsole(); };
-window.setCustom = (key, v)=>{ durCustom[key] = v; };
+function setCustom(key, v){ durCustom[key] = v; };
 
 window.toggleEvent = async (key)=>{
   const e = EVENTS.find(x=>x.key===key);
@@ -1132,7 +1133,7 @@ window.toggleEvent = async (key)=>{
   catch(err){ alert('開啟失敗：' + err.message); }
 };
 
-window.killAllEvents = async ()=>{
+async function killAllEvents(){
   const live = activeEvents();
   if(!live.length) return;
   const lines = live.map(e=>{
@@ -1280,7 +1281,7 @@ window.dbgAdd = async (path, n, label)=>{
 };
 
 /* ---- xp 連鎖預覽 ---- */
-window.dbgXpPreview = ()=>{
+function dbgXpPreview(){
   const p = dbgP(); if(!p) return;
   const nx = dbgNum('dbg_xp');
   const before = { lv: levelFromXp(p.xp ?? 0), tk: talentEarned(p), ep: epAvail(p) };
@@ -1363,7 +1364,7 @@ let shopDraft = [
   { pack:'', tier:'' }, { pack:'', tier:'' }, { pack:'', tier:'' }, { pack:'', tier:'' },
 ];   // 空字串 = 隨機
 
-window.setShopSlot = (i, field, v)=>{ shopDraft[i][field] = v; renderDebug(); };
+function setShopSlot(i, field, v){ shopDraft[i][field] = v; renderDebug(); };
 window.shopAllTier = (tier)=>{ shopDraft.forEach(d=> d.tier = tier); renderDebug(); };
 window.shopAllRandom = ()=>{ shopDraft = shopDraft.map(()=>({ pack:'', tier:'' })); renderDebug(); };
 
@@ -1371,7 +1372,7 @@ window.shopAllRandom = ()=>{ shopDraft = shopDraft.map(()=>({ pack:'', tier:'' }
 function buildOffers(draft){
   return draft.map(d=>({
     packId: d.pack || PACKS[Math.floor(Math.random()*PACKS.length)].id,
-    tierId: d.tier || window.GAME.rollTier(),
+    tierId: d.tier || rollTier(),
   }));
 }
 
@@ -1792,7 +1793,7 @@ function renderDebug(){
   dbgXpPreview();
 }
 
-window.dbgFilterTitles = ()=>{
+function dbgFilterTitles(){
   const q = (dbgVal('dbg_ttSearch') || '').trim();
   $('dbg_ttList').querySelectorAll('.achChip').forEach(el=>{
     el.style.display = (!q || el.dataset.nm.includes(q)) ? '' : 'none';
@@ -1976,7 +1977,7 @@ $('shopAllSend').onclick = async ()=>{
         // 每人各自抽，不會四個人拿到同一組
         const offers = Array.from({length:4}, ()=>({
           packId: PACKS[Math.floor(Math.random()*PACKS.length)].id,
-          tierId: shopAllTierPick || window.GAME.rollTier(),
+          tierId: shopAllTierPick || rollTier(),
         }));
         tx.update(r, { dailyPacks: { date: todayKey(), offers, bought:[false,false,false,false] } });
         tx.set(doc(collection(db,'ledger')), {
@@ -2168,6 +2169,13 @@ function renderCtl(force){
       esc(h.label)}　→ ${h.n} 人</div>`;
   }).join('') || '<div class="hRow">還沒發過獎</div>';
 }
+
+// 供 HTML 的 inline onclick 使用（同時保留 module 內可直接呼叫）
+window.setCustom = setCustom;
+window.killAllEvents = killAllEvents;
+window.dbgXpPreview = dbgXpPreview;
+window.setShopSlot = setShopSlot;
+window.dbgFilterTitles = dbgFilterTitles;
 
 /* ===== 總繪製 ===== */
 let raf = null;
