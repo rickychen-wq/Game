@@ -1481,6 +1481,7 @@ const {
   EQUIP_MAX, EQUIP_LOCK_MS, BUFF_MULT, ZONE_MULT, ZONE_MS, DOT_HOURS, DOT_MAX_STACK,
   cardById, packById, tierById, skillOf, cardOfPack, tierBetter,
   packTicketsOf, packTicketTotal, rollBossTicketTier,
+  migrateCounts, cardCounts, cardCountTotal,
   rollRarity, rollTier, skillDamage, dmgMult,
   BOSSES, MILESTONES, bossOfStage, bossImg,
   BOSS_FORCE_OPEN, bossOpenMap, bossStageOpen, bossMaxOpen,
@@ -2736,8 +2737,19 @@ function applyCardGain(cur, upd, cardId, tierId){
     // 只有更好才覆蓋，低等級不會蓋掉高等級
     if(tierBetter(tierId, owned.tier || 'normal')) upd['cards.' + cardId + '.tier'] = tierId;
     else finalTier = owned.tier || 'normal';
+    // 各等級張數：舊資料沒有 counts 就先推算補齊，之後都是抽到什麼算什麼
+    if(owned.counts && typeof owned.counts === 'object'){
+      upd['cards.' + cardId + '.counts.' + tierId] = increment(1);
+    } else {
+      const base = migrateCounts(owned.tier || 'normal', owned.count || 1);
+      base[tierId] = (base[tierId] || 0) + 1;
+      upd['cards.' + cardId + '.counts'] = base;
+    }
   } else {
-    upd['cards.' + cardId] = { tier: tierId, count: 1 };
+    upd['cards.' + cardId] = {
+      tier: tierId, count: 1,
+      counts: { normal:0, gold:0, diamond:0, rainbow:0, [tierId]: 1 },
+    };
   }
   return { dup, count, finalTier };
 }
@@ -3024,8 +3036,14 @@ function renderCards(){
             <span class="cNm">${esc(c.name)}</span>
             <span class="rarPill" style="background:${rarColor(c.rar)}">${c.rar}</span>
             <span class="tierPill" style="background:${tier.color}22;color:${tier.color};border:1px solid ${tier.color}">${tier.name} ×${tier.mult}</span>
-            ${own.count > 1 ? `<span class="tierPill" style="background:#1a1d28;color:var(--muted)">×${own.count}</span>` : ''}
+            ${own.count > 1 ? `<span class="tierPill" style="background:#1a1d28;color:var(--muted)">共 ${own.count} 張</span>` : ''}
           </div>
+          ${(()=>{
+            const cc = cardCounts(own);
+            const rows = PACK_TIERS.filter(t=>cc[t.id] > 0)
+              .map(t=>`<span style="color:${t.color}">${t.name}×${cc[t.id]}</span>`).join('　');
+            return rows ? `<div class="skRow" style="margin-top:6px">持有：${rows}</div>` : '';
+          })()}
           ${skills}
           <div style="margin-top:9px">
             ${isEq
