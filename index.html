@@ -3890,7 +3890,11 @@ function renderDaily(){
   if(!me || !players[me]) return;
   const today = todayKey();
   const streaks = players[me].dailyStreaks || {};
-  const list = tasks.filter(t => t.isDaily && t.assignee===me && t.dateKey===today && t.status!=='expired');
+  const activeTplIds = new Set(dailyTemplates.map(x=>x.id));
+  const list = tasks.filter(t => t.isDaily && t.assignee===me && t.dateKey===today &&
+    t.status!=='expired' &&
+    // 模板已被刪除 → 這筆是孤兒，不該再出現（後台可用「清理孤兒每日任務」刪掉）
+    (!t.templateId || activeTplIds.has(t.templateId)));
   $('dailyTasks').innerHTML = list.length ? list.map(t=>{
     const sc = streaks[t.templateId]?.count || 0;
     const fire = sc > 0 ? `<span class="badge streak">🔥x${sc}</span>` : '';
@@ -3898,6 +3902,7 @@ function renderDaily(){
     if(t.status==='open')        ctrl = `<button class="btn gold" onclick="reportDone('${t.id}')">完成回報</button>`;
     else if(t.status==='pending') badge = '<span class="badge wait">審核中</span>';
     else if(t.status==='done')    badge = '<span class="badge done">已完成 ✅</span>';
+    else if(t.status==='rejected')badge = '<span class="badge back">被退回，明天再來</span>';
     return `<div class="${cardCls('daily',t.id)}">
       <div class="title">${esc(t.title)}${fire}${badge}</div>
       ${t.note ? `<div class="sub">${esc(t.note)}</div>` : ''}
