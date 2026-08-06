@@ -592,8 +592,97 @@
     let d = base * tierById(tierId).mult;
     if(o.buff) d *= BUFF_MULT;
     if(o.zone) d *= ZONE_MULT;
+    // 圖鑑完成度 + 傷害藥水：走加法池（1 + 0.1 + 0.5 + 藥水），不做乘法避免爆炸
+    const pool = 1 + (o.dexAdd || 0) + (o.potionAdd || 0);
+    if(pool !== 1) d *= pool;
     d *= (o.dmgMult ?? dmgMult());
     return Math.round(d);
+  }
+
+  /* ==============================================================
+     藥水（單次型：喝下去只對「下一次」生效，用完就沒）
+     資料：players.potions = { coin:{30:2,50:1}, dmg:{...}, luck:{...} }
+           players.activePotion = { coin:30, dmg:null, luck:100 }   ← 已喝下、等待生效
+     一律走加法池，不做乘法，避免倍率爆炸
+  ============================================================== */
+  const POTION_TYPES = [
+    { type:'coin', icon:'🪙', name:'金幣藥水', unit:'下一次任務獎勵' },
+    { type:'dmg',  icon:'⚔️', name:'傷害藥水', unit:'下一招傷害' },
+    { type:'luck', icon:'🍀', name:'幸運藥水', unit:'下一次開卡包的 S 機率' },
+  ];
+  const potionName = (type, v) =>
+    `${(POTION_TYPES.find(p=>p.type===type)||{}).name || type} +${v}%`;
+  // 取得持有的藥水：{ '30':2, '50':1 }
+  function potionsOf(p, type){
+    const m = ((p && p.potions) || {})[type] || {};
+    const out = {};
+    Object.entries(m).forEach(([k,v])=>{ if(Number(v) > 0) out[k] = Number(v); });
+    return out;
+  }
+  const potionTotal = (p, type) => Object.values(potionsOf(p, type)).reduce((a,b)=>a+b, 0);
+  // 已喝下、等待生效的藥水加成（0 = 沒有）
+  function activePotion(p, type){
+    const v = ((p && p.activePotion) || {})[type];
+    return Number(v) || 0;
+  }
+  const potionAdd = (p, type) => activePotion(p, type) / 100;   // 30 → 0.3
+
+  /* 卡包稀有度：幸運藥水只放大 S，缺口全部從 C 扣（A、B 不動） */
+  function rarityOdds(luckPct){
+    const base = {};
+    RARITIES.forEach(r=> base[r.id] = r.prob);
+    const boost = Math.max(0, Number(luckPct) || 0) / 100;
+    if(boost > 0){
+      const extra = base.S * boost;
+      base.S += extra;
+      base.C = Math.max(0, base.C - extra);
+      const sum = base.S + base.A + base.B + base.C;
+      base.C += 100 - sum;                       // 浮點誤差補回
+    }
+    return base;
+  }
+  function rollRarityWithLuck(pity, luckPct){
+    if((pity ?? 0) >= PACK_PITY_MAX - 1) return 'S';       // 保底不受藥水影響
+    const odds = rarityOdds(luckPct);
+    let r = Math.random() * 100, acc = 0;
+    for(const k of ['S','A','B','C']){ acc += odds[k]; if(r < acc) return k; }
+    return 'C';
+  }
+
+  /* ==============================================================
+     圖鑑完成度（各卡包等級獨立計算）
+     單一動漫集滿 4 張 → 該系列傷害 +10%
+     該等級全 16 張集滿 → 額外 +50%
+  ============================================================== */
+  const DEX_PACK_BONUS = 0.10;      // 單一動漫集滿
+  const DEX_FULL_BONUS = 0.50;      // 全 16 張集滿
+  const ownedCard = (p, id) => ((p && p.cards) || {})[id] || null;
+  // 某個動漫是否集滿 4 張
+  function dexPackDone(p, packId){
+    return ['S','A','B','C'].every(r=>{
+      const c = cardOfPack(packId, r);
+      return c && ownedCard(p, c.id);
+    });
+  }
+  const dexFullDone = p => PACKS.every(pk => dexPackDone(p, pk.id));
+  // 對某張卡的圖鑑加成（該系列集滿 + 全集滿）
+  function dexBonusFor(p, cardId){
+    const c = cardById(cardId);
+    if(!c) return 0;
+    let add = 0;
+    if(dexPackDone(p, c.pack)) add += DEX_PACK_BONUS;
+    if(dexFullDone(p))         add += DEX_FULL_BONUS;
+    return add;
+  }
+  function dexProgress(p){
+    const packs = PACKS.map(pk=>({
+      id: pk.id, name: pk.name,
+      have: ['S','A','B','C'].filter(r=>{
+        const c = cardOfPack(pk.id, r); return c && ownedCard(p, c.id);
+      }).length,
+      done: dexPackDone(p, pk.id),
+    }));
+    return { packs, full: dexFullDone(p), haveTotal: packs.reduce((a,b)=>a+b.have,0) };
   }
 
   /* ==============================================================
@@ -609,8 +698,32 @@
     { id:'boss07', name:'宇智波鼬',   from:'火影忍者', hp:17600, coin:450, token:1, ticket:1, ep:750  },
     { id:'boss08', name:'童磨',       from:'鬼滅之刃', hp:21200, coin:500, token:1, ticket:1, ep:950  },
     { id:'boss09', name:'佩恩',       from:'火影忍者', hp:24800, coin:600, token:2, ticket:2, ep:1100 },
-    { id:'boss10', name:'多佛朗明哥', from:'海賊王',   hp:28600, coin:600, token:2, ticket:2, ep:1500 },
+    { id:'boss10', name:'多佛朗明哥', from:'海賊王',   hp: 28600, coin: 600, token:2, ticket:2, ep:1500 },
+    // ===== 11-20 關（預設關閉，在 stats 後台逐關開放）=====
+    // drop 為藥水掉落，n = 瓶數；折價券見 COUPON_DROP
+    { id:'boss11', name:'弗利沙',       from:'七龍珠',   hp: 75000, coin: 500, token:1, ticket:1, ep:1700,
+      drops:[{type:'coin',v:30,n:1},{type:'dmg',v:30,n:1},{type:'luck',v:50,n:1}] },
+    { id:'boss12', name:'真人',         from:'咒術迴戰', hp: 85000, coin: 500, token:1, ticket:1, ep:1900,
+      drops:[{type:'coin',v:30,n:1},{type:'dmg',v:30,n:2},{type:'luck',v:50,n:2}] },
+    { id:'boss13', name:'沙魯',         from:'七龍珠',   hp: 96000, coin: 500, token:2, ticket:1, ep:2100,
+      drops:[{type:'coin',v:30,n:1},{type:'dmg',v:30,n:2},{type:'luck',v:80,n:1}] },
+    { id:'boss14', name:'藍染惣右介',   from:'死神',     hp:108000, coin: 500, token:2, ticket:1, ep:2300,
+      drops:[{type:'coin',v:30,n:1},{type:'dmg',v:40,n:1},{type:'luck',v:80,n:2}] },
+    { id:'boss15', name:'宇智波斑',     from:'火影忍者', hp:120000, coin: 500, token:2, ticket:1, ep:2500,
+      drops:[{type:'coin',v:50,n:1},{type:'dmg',v:40,n:2},{type:'luck',v:100,n:1}] },
+    { id:'boss16', name:'鬼舞辻無慘',   from:'鬼滅之刃', hp:133000, coin: 600, token:2, ticket:2, ep:2800,
+      drops:[{type:'coin',v:50,n:1},{type:'dmg',v:50,n:1},{type:'luck',v:100,n:2}] },
+    { id:'boss17', name:'凱多',         from:'海賊王',   hp:148000, coin: 600, token:3, ticket:2, ep:3100,
+      drops:[{type:'coin',v:50,n:1},{type:'dmg',v:50,n:2},{type:'luck',v:120,n:1}] },
+    { id:'boss18', name:'梅路艾姆',     from:'獵人',     hp:165000, coin: 600, token:4, ticket:2, ep:3400,
+      drops:[{type:'coin',v:50,n:1},{type:'dmg',v:100,n:1},{type:'luck',v:120,n:2}] },
+    { id:'boss19', name:'兩面宿儺',     from:'咒術迴戰', hp:182000, coin: 700, token:5, ticket:2, ep:3700,
+      drops:[{type:'coin',v:60,n:1},{type:'dmg',v:100,n:2},{type:'luck',v:150,n:1}] },
+    { id:'boss20', name:'破壞神比魯斯', from:'七龍珠',   hp:200000, coin:1000, token:5, ticket:2, ep:4000,
+      drops:[{type:'coin',v:70,n:1},{type:'dmg',v:200,n:2},{type:'luck',v:150,n:2}] },
   ];
+  const COUPON_FROM_STAGE = 11;      // 第 11 關起擊破必掉一張折價券
+  const COUPON_MAX_PRICE = 20000;    // 折價券只能用在 20000 以下的商品
   /* ===== 攻擊時段：每個整點的 00~15 分才能打 Boss =====
      用 windowId 比對取代小時制 CD，不需要任何倒數就能判斷「這時段用過沒」 */
   const ATTACK_WINDOW_MIN = 15;
@@ -736,6 +849,12 @@
     migrateCounts, cardCounts, cardCountTotal,
     pickWeighted, rollRarity, rollTier, skillDamage, dmgMult,
     // Boss
+    // 藥水
+    POTION_TYPES, potionName, potionsOf, potionTotal, activePotion, potionAdd,
+    rarityOdds, rollRarityWithLuck,
+    // 圖鑑完成度
+    DEX_PACK_BONUS, DEX_FULL_BONUS, dexPackDone, dexFullDone, dexBonusFor, dexProgress,
+    COUPON_FROM_STAGE, COUPON_MAX_PRICE,
     BOSSES, MILESTONES, bossOfStage, bossImg,
     BOSS_FORCE_OPEN, bossOpenMap, bossStageOpen, bossMaxOpen,
     BOSS_MILESTONES, bossMilestoneAt, bossMilestoneWinner,
