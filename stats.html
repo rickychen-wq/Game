@@ -526,6 +526,7 @@ const {
   todayKey, getWeights, TICKET_PRICE, SALE_TICKET_PRICE, LUCK_MAX,
   epTotal, epAvail, PACK_TIERS, CARDS, cardById, tierById, packTicketsOf, packTicketTotal,
   PACKS, packById, rollTier, cardCounts, migrateCounts,
+  POTION_TYPES, potionsOf, potionTotal, activePotion, dexProgress,
   ADMIN_EVENTS, ADMIN_DURATIONS, adminEventById, adminEventOn, adminEventUntil,
   BOSS_FORCE_OPEN, bossOpenMap, bossStageOpen, bossMaxOpen,
   BOSS_MILESTONES, bossMilestoneAt, bossMilestoneWinner, BOSSES,
@@ -1415,6 +1416,23 @@ window.dbgRefreshShop = async ()=>{
     '重刷今日卡包', { offers });
 };
 
+/* ---- 藥水 ---- */
+window.dbgGivePotion = async ()=>{
+  const p = dbgP(); if(!p) return;
+  const type = dbgVal('dbg_potType');
+  const v = Math.max(1, dbgNum('dbg_potV'));
+  const n = Math.max(1, dbgNum('dbg_potN'));
+  const t = POTION_TYPES.find(x=>x.type===type);
+  if(!confirm(`確定給「${p.name}」${t.name} +${v}% ×${n} 嗎？`)) return;
+  await dbgWrite({ [`potions.${type}.${v}`]: increment(n) },
+    `給予 ${t.name} +${v}% ×${n}`, { field:`potions.${type}.${v}`, to:n });
+};
+window.dbgClearPotions = async ()=>{
+  const p = dbgP(); if(!p) return;
+  if(!confirm(`確定清空「${p.name}」所有藥水與生效中的效果嗎？`)) return;
+  await dbgWrite({ potions: {}, activePotion: {} }, '清空所有藥水', { field:'potions' });
+};
+
 /* ---- 卡包券（分等級）---- */
 window.dbgSetTicket = async (tierId)=>{
   const p = dbgP(); if(!p) return;
@@ -1561,6 +1579,7 @@ const DANGER = {
               lotteryPity:0, lotteryCount:0,
               cards:{}, equipped:[], equipSlotReadyAt:0, skillReady:{},
               packTickets:{}, packPity:0, dailyPacks:null, dailyStreaks:{}, bossFreePass:0,
+              potions:{}, activePotion:{}, coupons:0,
               boss:{ stage:1, hp:BOSSES[0].hp, dots:[], milestones:[],
                      lastTickAt:Date.now(), buff:false, zoneUntil:0 },
               tutorialDone:false, tutBoss:false, tutTalent:false, tutRank:false,
@@ -1617,7 +1636,8 @@ function renderDebug(){
       ／ 抽獎 pity ${p.lotteryPity ?? 0}
       ／ 卡包 pity ${p.packPity ?? 0}
       ／ 卡包券 ${PACK_TIERS.map(t=>`${t.name}${packTicketsOf(p)[t.id]}`).join(' ')}
-      ／ 🎫 免時段券 ${p.bossFreePass ?? 0}<br>
+      ／ 🎫 免時段券 ${p.bossFreePass ?? 0} ／ 🎟️ 折價券 ${p.coupons ?? 0}
+      ／ 📖 圖鑑 ${dexProgress(p).haveTotal}/16<br>
       Boss 第 ${boss.stage ?? 1} 關 HP ${(boss.hp ?? 0).toLocaleString()}/${(bossDef?.hp ?? 0).toLocaleString()}
       ／ 卡片 ${cardCount} 張 ／ 稱號 ${titleCount} 個
       ／ 換卡鎖 ${eqLeft > 0 ? Math.ceil(eqLeft/60000) + ' 分' : '無'}
@@ -1736,6 +1756,27 @@ function renderDebug(){
     }).join('')}
     ${dbgNumRow('全通關已領 bossClearReward','bossClearReward', p.bossClearReward ?? 0, 'dbg_bcr', 1)}
     ${dbgNumRow('🎫 免時段券 bossFreePass','bossFreePass', p.bossFreePass ?? 0, 'dbg_fp', 1)}
+    ${dbgNumRow('🎟️ 折價券 coupons','coupons', p.coupons ?? 0, 'dbg_cp', 1)}
+    <div class="dbgRow">
+      <span class="dk">🧪 藥水</span>
+      <span style="font-family:var(--mono);font-size:10.5px;color:var(--muted);flex:1">
+        ${POTION_TYPES.map(t=>{
+          const have = potionsOf(p, t.type);
+          const txt = Object.keys(have).map(v=>`+${v}%×${have[v]}`).join(' ') || '無';
+          const act = activePotion(p, t.type);
+          return `${t.icon}${t.name}: ${txt}${act ? `　<b style="color:var(--cyan)">生效中 +${act}%</b>` : ''}`;
+        }).join('<br>')}
+      </span>
+      <button class="dbgBtn" onclick="dbgClearPotions()">清空</button>
+    </div>
+    <div class="dbgRow">
+      <span class="dk">給藥水</span>
+      <select id="dbg_potType">${POTION_TYPES.map(t=>
+        `<option value="${t.type}">${t.icon} ${esc(t.name)}</option>`).join('')}</select>
+      <input type="number" id="dbg_potV" value="50" style="width:70px" placeholder="%">
+      <input type="number" id="dbg_potN" value="1" min="1" style="width:60px">
+      <button class="dbgBtn" onclick="dbgGivePotion()">給予</button>
+    </div>
 
     <h3 style="color:var(--pink)">重刷今日卡包</h3>
     <div class="dbgRow">
@@ -1853,6 +1894,7 @@ let bcStyle = 'admin', bcDur = 3000;
 let aeType = null, aeDur = 10;
 let giftType = 'coins', giftCard = CARDS[0].id, giftTier = 'normal', giftMat = MATERIALS[0].key;
 let giftPackTier = 'normal';        // 卡包券要發哪一種
+let giftPotType = 'coin', giftPotV = 50;
 
 const BC_STYLES = [
   { id:'admin',  name:'📢 管理員' },
@@ -1867,6 +1909,8 @@ const GIFT_TYPES = [
   { id:'packTickets',  name:'🎴 卡包券' },
   { id:'epBonus',      name:'⚡ EP' },
   { id:'bossFreePass', name:'🎫 免時段券' },
+  { id:'coupons',      name:'🎟️ 折價券' },
+  { id:'potion',       name:'🧪 藥水' },
   { id:'material',     name:'🟣 材料' },
   { id:'card',         name:'🃏 卡片' },
 ];
@@ -1880,6 +1924,8 @@ window.pickGiftCard= v=>{ giftCard = v; renderCtl(true); };
 window.pickGiftTier= v=>{ giftTier = v; renderCtl(true); };
 window.pickGiftMat = v=>{ giftMat = v; renderCtl(true); };
 window.pickGiftPackTier = v=>{ giftPackTier = v; renderCtl(true); };
+window.pickGiftPotType = v=>{ giftPotType = v; renderCtl(true); };
+window.pickGiftPotV = v=>{ giftPotV = Number(v); renderCtl(true); };
 
 function btns(list, cur, fn, cls){
   return list.map(o=>`<button class="ctlBtn ${cls||''} ${o.id===cur?'on':''}"
@@ -2034,6 +2080,10 @@ function giftLabel(){
     return `${m.icon} ${m.name} ×${n}`;
   }
   if(giftType === 'packTickets') return `🎟️ ${tierById(giftPackTier).name}券 ×${n}`;
+  if(giftType === 'potion'){
+    const t = POTION_TYPES.find(x=>x.type===giftPotType);
+    return `${t.icon} ${t.name} +${giftPotV}% ×${n}`;
+  }
   return `${GIFT_TYPES.find(x=>x.id===giftType).name.replace(/^\S+\s/,'')} ×${n}`;
 }
 $('giftSend').onclick = async ()=>{
@@ -2066,6 +2116,8 @@ $('giftSend').onclick = async ()=>{
         }
         else if(giftType === 'epBonus')     patch = { epBonus: increment(n) };
         else if(giftType === 'bossFreePass') patch = { bossFreePass: increment(n) };
+        else if(giftType === 'coupons')      patch = { coupons: increment(n) };
+        else if(giftType === 'potion')       patch = { [`potions.${giftPotType}.${giftPotV}`]: increment(n) };
         else if(giftType === 'material')    patch = { ['materials.'+giftMat]: increment(n) };
         else if(giftType === 'card'){
           const cur = { ...((sn.data().cards) || {}) };
@@ -2169,7 +2221,7 @@ function renderCtl(force){
 
   // 全體發獎
   ctlSafe('全體發獎', 'giftTypeBtns', ()=>{
-  const gSig = giftType + '|' + giftCard + '|' + giftTier + '|' + giftMat + '|' + giftPackTier;
+  const gSig = [giftType,giftCard,giftTier,giftMat,giftPackTier,giftPotType,giftPotV].join('|');
   const gt = $('giftTypeBtns');
   if(force || gt.dataset.sig !== gSig){
     gt.dataset.sig = gSig;
@@ -2182,6 +2234,13 @@ function renderCtl(force){
         <div class="ctlRow"><span class="ctlLbl">等級</span><div class="ctlBtns">${
         PACK_TIERS.map(t=>`<button class="ctlBtn ${t.id===giftTier?'on':''}"
           onclick="pickGiftTier('${t.id}')">${t.name} ×${t.mult}</button>`).join('')}</div></div>`;
+    } else if(giftType === 'potion'){
+      extra = `<div class="ctlRow"><span class="ctlLbl">種類</span><div class="ctlBtns">${
+        POTION_TYPES.map(t=>`<button class="ctlBtn ${t.type===giftPotType?'on':''}"
+          onclick="pickGiftPotType('${t.type}')">${t.icon} ${esc(t.name)}</button>`).join('')}</div></div>
+        <div class="ctlRow"><span class="ctlLbl">加成</span><div class="ctlBtns">${
+        [30,50,80,100,120,150,200].map(v=>`<button class="ctlBtn ${v===giftPotV?'on':''}"
+          onclick="pickGiftPotV(${v})">+${v}%</button>`).join('')}</div></div>`;
     } else if(giftType === 'packTickets'){
       extra = `<div class="ctlRow"><span class="ctlLbl">等級</span><div class="ctlBtns">${
         PACK_TIERS.map(t=>`<button class="ctlBtn ${t.id===giftPackTier?'on':''}"
