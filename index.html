@@ -921,6 +921,29 @@
     animation:soulGlow 1.3s ease-in-out infinite; }
   @keyframes soulGlow{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.5); } }
 
+  /* ===== 藥水 ===== */
+  .potActive{
+    font-family:var(--mono); font-size:12.5px; line-height:1.9; color:#d9b3ff;
+    background:rgba(154,106,224,.12); border:1px solid rgba(201,160,255,.5);
+    border-radius:10px; padding:11px 13px; margin-bottom:12px;
+  }
+  .potGrid{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .potBtn{ position:relative; min-width:78px; }
+  .potBtn .potN{ display:block; font-size:10px; opacity:.8; margin-top:2px; }
+
+  /* ===== 圖鑑完成度 ===== */
+  .dexBar{
+    border-radius:12px; padding:13px 15px; margin-bottom:14px;
+    background:linear-gradient(160deg,#1a2230,#0b0f18); border:1px solid rgba(95,240,220,.4);
+  }
+  .dexBar.full{ border-color:var(--gold); box-shadow:0 0 20px rgba(233,196,106,.25); }
+  .dexRow{ display:flex; align-items:center; justify-content:space-between; gap:10px;
+    font-family:var(--mono); font-size:12px; color:var(--muted); padding:4px 0; }
+  .dexRow b{ color:var(--cyan); }
+  .dexRow.done b{ color:var(--gold); }
+  .dexTotal{ border-top:1px solid var(--line); margin-top:7px; padding-top:8px;
+    font-family:var(--mono); font-size:12.5px; font-weight:800; color:var(--gold); }
+
   /* ===== 合作任務 ===== */
   .coopMems{ margin:10px 0 4px; }
   .coopMem{ display:flex; align-items:center; justify-content:space-between; gap:10px;
@@ -1159,6 +1182,7 @@
 
   <!-- 商店頁（券寫死在最上方，底下才是 Firestore 分類商品） -->
   <div class="page" id="page-shop">
+    <div id="couponBar"></div>
     <h2>抽獎</h2>
     <div id="ticketCard"></div>
     <div id="shopList"></div>
@@ -1253,6 +1277,7 @@
 
   <!-- 背包頁 -->
   <div class="page" id="page-bag">
+    <div id="potionBox"></div>
     <h2>可使用</h2>
     <div id="ownedList"></div>
     <h2>等媽媽核銷</h2>
@@ -1442,6 +1467,10 @@ const {
   packTicketsOf, packTicketTotal, rollBossTicketTier,
   migrateCounts, cardCounts, cardCountTotal,
   rollRarity, rollTier, skillDamage, dmgMult,
+  POTION_TYPES, potionName, potionsOf, potionTotal, activePotion, potionAdd,
+  rarityOdds, rollRarityWithLuck,
+  DEX_PACK_BONUS, DEX_FULL_BONUS, dexPackDone, dexFullDone, dexBonusFor, dexProgress,
+  COUPON_FROM_STAGE, COUPON_MAX_PRICE,
   BOSSES, MILESTONES, bossOfStage, bossImg,
   BOSS_FORCE_OPEN, bossOpenMap, bossStageOpen, bossMaxOpen,
   BOSS_MILESTONES, bossMilestoneAt, bossMilestoneWinner,
@@ -1798,7 +1827,7 @@ function goTab(name){
   const dItem = document.querySelector(`.drawerItem[data-p="${name}"]`);
   if(dItem){ dItem.classList.add('on'); $('moreBtn').classList.add('on'); }
   if(name === 'rank'){ renderRank(); settleWeekly(); maybeAutoTut('rank'); }
-  if(name === 'bag') renderBag();
+  if(name === 'bag') renderPotions();
   if(name === 'lottery') renderLottery();
   if(name === 'penalty') renderPenalty();
   if(name === 'craft') renderCraftPage();
@@ -2038,27 +2067,38 @@ window.reportDone = async (id)=>{
 };
 
 /* ===== 購買（→ 進背包 owned） ===== */
-window.buyItem = async (itemId)=>{
+window.buyItem = async (itemId, useCoupon)=>{
   if(lockGuard()) return;
   const item = shopItems.find(i=>i.id===itemId);
   if(!item) return;
-  if(!confirm(`要用 ${item.price} 金幣買「${item.name}」嗎？`)) return;
+  const p = players[me] || {};
+  const canCoupon = item.price <= COUPON_MAX_PRICE && (p.coupons ?? 0) > 0;
+  const use = !!useCoupon && canCoupon;
+  const pay = use ? Math.round(item.price * 0.9) : item.price;
+  if(!confirm(use
+    ? `要用折價券買「${item.name}」嗎？\n原價 ${item.price} → 九折 ${pay}（省 ${item.price - pay}）`
+    : `要用 ${item.price} 金幣買「${item.name}」嗎？`)) return;
   try {
     await runTransaction(db, async tx=>{
       const pRef = doc(db,'players',me);
       const s = await tx.get(pRef);
-      const coins = s.data().coins || 0;
-      if(coins < item.price) throw new Error('金幣不夠，先去做任務吧 💪');
-      tx.update(pRef, { coins: coins - item.price });
+      const d = s.data() || {};
+      const coins = d.coins || 0;
+      if(use && (d.coupons ?? 0) <= 0) throw new Error('沒有折價券了');
+      if(coins < pay) throw new Error('金幣不夠，先去做任務吧 💪');
+      tx.update(pRef, {
+        coins: coins - pay,
+        ...(use ? { coupons: increment(-1) } : {}),
+      });
       const buyRef = doc(collection(db,'purchases'));
       tx.set(buyRef, {
-        playerId: me, itemName: item.name, price: item.price,
+        playerId: me, itemName: item.name, price: pay,
         status: 'owned', createdAt: serverTimestamp()
       });
-      tx.set(ledgerRef(), ledgerData('shop', -item.price, item.name));
+      tx.set(ledgerRef(), ledgerData('shop', -pay, item.name, use ? { coupon:true, origin:item.price } : {}));
     });
     sfxBuy();
-    toast('已放進背包 🎒');
+    toast(use ? '已用折價券買下 🎟️' : '已放進背包 🎒');
   } catch(e){ sfxError(); toast(e.message); }
 };
 
@@ -2726,7 +2766,8 @@ window.buyPack = async (idx)=>{
       if((cur.coins || 0) < tier.price) throw new Error('金幣不夠，先去做任務吧 💪');
 
       const pity = cur.packPity ?? 0;
-      const rar  = rollRarity(pity);                        // 30 包保底
+      const luckPot = activePotion(cur, 'luck');            // 幸運藥水：只放大 S，單次型
+      const rar  = rollRarityWithLuck(pity, luckPot);       // 30 包保底
       const card = cardOfPack(offer.packId, rar);
       const bought = [...cdp.bought]; bought[idx] = true;
 
@@ -2734,6 +2775,7 @@ window.buyPack = async (idx)=>{
         coins: increment(-tier.price),
         'dailyPacks.bought': bought,
         packPity: (rar === 'S') ? 0 : increment(1),
+        ...(luckPot > 0 ? { 'activePotion.luck': null } : {}),
       };
       const g = applyCardGain(cur, upd, card.id, offer.tierId);
       tx.update(ref, upd);
@@ -2762,13 +2804,15 @@ window.openFreePack = async (tierId)=>{
       const have = packTicketsOf(cur);
       if(have[tierId] <= 0) throw new Error(`沒有${tier.name}券`);
       const pity = cur.packPity ?? 0;
-      const rar  = rollRarity(pity);
+      const luckPot = activePotion(cur, 'luck');
+      const rar  = rollRarityWithLuck(pity, luckPot);
       const card = cardOfPack(packId, rar);
       // 舊資料是數字 → 先整份改寫成 map，之後才能用 dotted path
       const upd = (typeof cur.packTickets === 'number')
         ? { packTickets: { ...have, [tierId]: have[tierId] - 1 } }
         : { ['packTickets.' + tierId]: increment(-1) };
       upd.packPity = (rar === 'S') ? 0 : increment(1);
+      if(luckPot > 0) upd['activePotion.luck'] = null;
       const g = applyCardGain(cur, upd, card.id, tierId);
       tx.update(ref, upd);
       tx.set(ledgerRef(), ledgerData('pack', 0, `${packById(packId).name} ${tier.name}（券）`,
@@ -2971,7 +3015,7 @@ function renderCards(){
           </div></div>`;
       }
       const skills = c.skills.map(k=>{
-        const real = skillDamage(k.dmg, own.tier, {});
+        const real = skillDamage(k.dmg, own.tier, { dexAdd: dexBonusFor(p, c.id) });
         const tag = k.sp === 'DOT' ? `<span class="sTag">持續 ${DOT_HOURS} 小時・最多 ${DOT_MAX_STACK} 層</span>`
                   : k.sp === 'BUFF' ? '<span class="sTag">下次傷害 +35%</span>'
                   : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>' : '';
@@ -3006,7 +3050,19 @@ function renderCards(){
     }).join('');
   }).join('');
 
-  $('cardsBody').innerHTML = `
+  const dex = dexProgress(p);
+  const dexHtml = `<div class="dexBar ${dex.full ? 'full' : ''}">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--gold-dim);letter-spacing:1.5px;margin-bottom:8px">
+      📖 圖鑑完成度</div>
+    ${dex.packs.map(pk=>`<div class="dexRow ${pk.done?'done':''}">
+      <span>${esc(pk.name)}</span>
+      <b>${pk.have}/4${pk.done ? `　傷害 +${Math.round(DEX_PACK_BONUS*100)}%` : ''}</b>
+    </div>`).join('')}
+    <div class="dexTotal">全圖鑑 ${dex.haveTotal}/${CARDS.length}${
+      dex.full ? `　✨ 額外傷害 +${Math.round(DEX_FULL_BONUS*100)}%` : `　（集滿再 +${Math.round(DEX_FULL_BONUS*100)}%）`}</div>
+  </div>`;
+
+  $('cardsBody').innerHTML = dexHtml + `
     <div class="tkBar" style="background:linear-gradient(160deg,#1a2230,#0b0f18);border-color:rgba(95,240,220,.4)">
       <span class="tkIc">🎴</span>
       <div class="tkMain">
@@ -3157,7 +3213,7 @@ window.useSkill = async (cardId, skillId, ev)=>{
 
   if(btn && !REDUCED){ btn.classList.remove('fire'); void btn.offsetWidth; btn.classList.add('fire'); }
 
-  let killed = null, fx = null, killedTicket = null;
+  let killed = null, fx = null, killedTicket = null, killedDrops = [];
   try {
     await runTransaction(db, async tx=>{
       const ref = doc(db,'players',me);
@@ -3187,6 +3243,8 @@ window.useSkill = async (cardId, skillId, ev)=>{
       const tierId = own.tier || 'normal';
       const zoneOn = zoneUntil > now;
       const upd = { epSpent: increment(k.ep) };   // 舊的 skillReady 不再讀寫
+      // 傷害藥水是單次型：這一招用掉就消失
+      if(activePotion(cur, 'dmg') > 0 && k.dmg > 0) upd['activePotion.dmg'] = null;
       if(useFreePass) upd.bossFreePass = increment(-1);
       const castMap = { ...(b.lastCastWindow || {}) };
       castMap[skillKey(cardId, skillId)] = windowId(now);
@@ -3199,12 +3257,14 @@ window.useSkill = async (cardId, skillId, ev)=>{
       } else if(k.sp === 'DOT'){
         if(dots.length >= DOT_MAX_STACK)
           throw new Error(`持續傷害已達上限 ${DOT_MAX_STACK} 層`);
-        const total = skillDamage(k.dmg, tierId, { buff, zone: zoneOn });
+        const total = skillDamage(k.dmg, tierId, { buff, zone: zoneOn,
+          dexAdd: dexBonusFor(cur, cardId), potionAdd: potionAdd(cur, 'dmg') });
         dots = [...dots, { dmgPerHour: total / DOT_HOURS, startAt: now, endAt: now + DOT_HOURS*3600000 }];
         if(buff) buff = false;
         dealt = total;                                      // 只用於顯示，血是之後每小時扣
       } else {
-        dealt = skillDamage(k.dmg, tierId, { buff, zone: zoneOn });
+        dealt = skillDamage(k.dmg, tierId, { buff, zone: zoneOn,
+          dexAdd: dexBonusFor(cur, cardId), potionAdd: potionAdd(cur, 'dmg') });
         if(buff) buff = false;
         hp = Math.max(0, hp - dealt);
       }
@@ -3235,6 +3295,13 @@ window.useSkill = async (cardId, skillId, ev)=>{
         }
         killedTicket = { tier: tkTier, n: boss.ticket };
         upd.epBonus      = increment(boss.ep);                     // ⚠️ 絕不可寫進 xp
+        // 藥水掉落（11 關起才有）
+        (boss.drops || []).forEach(d=>{
+          upd[`potions.${d.type}.${d.v}`] = increment(d.n);
+        });
+        killedDrops = boss.drops || [];
+        // 折價券：第 11 關起必掉一張
+        if(b.stage >= COUPON_FROM_STAGE) upd.coupons = increment(1);
         upd.boss = { stage: b.stage + 1, hp: next ? next.hp : 0,
                      dots: [], milestones: [], lastTickAt: now, buff:false, zoneUntil:0,
                      lastCastWindow: castMap };
@@ -3249,7 +3316,7 @@ window.useSkill = async (cardId, skillId, ev)=>{
       tx.update(ref, upd);
     });
 
-    if(killed){ showKill(killed, killedTicket); }
+    if(killed){ showKill(killed, killedTicket, killedDrops); }
     else if(fx){
       if(fx.sp === 'DOT'){
         dotCast(`☠️ 每小時 ${fx.perHour} 傷害・持續 ${DOT_HOURS} 小時`);
@@ -3265,7 +3332,7 @@ window.useSkill = async (cardId, skillId, ev)=>{
   } catch(e){ sfxError(); toast(e.message); }
 };
 
-function showKill(boss, tk){
+function showKill(boss, tk, drops){
   const stage = BOSSES.indexOf(boss) + 1;
   $('kpName').textContent = boss.name;
   // Boss 圖裂開／震動後淡出
@@ -3276,6 +3343,11 @@ function showKill(boss, tk){
     `${TALENT_ICON} ${boss.token}`,
     tk ? `🎟️ ${tierById(tk.tier).name}券 ${tk.n}` : `🎟️ 卡包券 ${boss.ticket}`,
     `⚡ EP ${boss.ep.toLocaleString()}`,
+    ...(drops || []).map(d=>{
+      const t = POTION_TYPES.find(x=>x.type===d.type);
+      return `${t.icon} ${t.name} +${d.v}%${d.n > 1 ? ` ×${d.n}` : ''}`;
+    }),
+    ...(stage >= COUPON_FROM_STAGE ? ['🎫 折價券 ×1'] : []),
   ];
   $('kpRewards').innerHTML = rw.map((t,i)=>
     `<div class="rw" style="animation-delay:${600 + i*150}ms">${t}</div>`).join('');
@@ -3404,7 +3476,8 @@ function renderBoss(){
       <div class="title">${esc(c.name)} <span class="tierPill" style="background:${tier.color}22;color:${tier.color};border:1px solid ${tier.color}">${tier.name} ×${tier.mult}</span></div>
       ${c.skills.map(k=>{
         const used = castUsed(b, id, k.id, now);
-        const real = skillDamage(k.dmg, own.tier, { buff: b.buff, zone: zoneOn });
+        const real = skillDamage(k.dmg, own.tier, { buff: b.buff, zone: zoneOn,
+          dexAdd: dexBonusFor(p, id), potionAdd: potionAdd(p, 'dmg') });
         const noEp = ep < k.ep;
         const tag = k.sp === 'DOT' ? '<span class="sTag">10 小時持續</span>'
                   : k.sp === 'BUFF' ? '<span class="sTag">下次 +35%</span>'
@@ -3495,6 +3568,63 @@ function renderCraftPage(){
         重複的卡片已經照等級記錄下來了，之後可以拿來合成更高等級的卡
       </div>
     </div>`;
+}
+
+/* ==================================================================
+   藥水（單次型：喝下去只對「下一次」生效）
+================================================================== */
+window.drinkPotion = async (type, v)=>{
+  if(lockGuard()) return;
+  const p = players[me] || {};
+  const t = POTION_TYPES.find(x=>x.type===type);
+  if((potionsOf(p, type)[String(v)] || 0) <= 0){ toast('沒有這瓶藥水'); return; }
+  const cur = activePotion(p, type);
+  if(cur > 0 && !confirm(`你已經喝了「+${cur}%」還沒用掉，\n再喝一瓶會覆蓋它（舊的不會退回）。確定嗎？`)) return;
+  if(cur === 0 && !confirm(`要喝「${t.name} +${v}%」嗎？\n效果：${t.unit} +${v}%\n只對下一次生效，用完就沒了。`)) return;
+  try {
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'players',me);
+      const s = await tx.get(ref);
+      const d = s.data() || {};
+      if((potionsOf(d, type)[String(v)] || 0) <= 0) throw new Error('沒有這瓶藥水');
+      tx.update(ref, {
+        [`potions.${type}.${v}`]: increment(-1),
+        [`activePotion.${type}`]: v,
+      });
+      tx.set(ledgerRef(), ledgerData('potion', 0, `${t.name} +${v}%`, { type, v }));
+    });
+    sfxBuy();
+    toast(`${t.icon} ${t.name} +${v}% 生效中！`);
+  } catch(e){ sfxError(); toast(e.message); }
+};
+
+function renderPotions(){
+  if(!me || !players[me]) return;
+  const p = players[me];
+  const box = $('potionBox');
+  if(!box) return;
+  const total = POTION_TYPES.reduce((a,t)=> a + potionTotal(p, t.type), 0);
+  const anyActive = POTION_TYPES.some(t=> activePotion(p, t.type) > 0);
+  if(!total && !anyActive){ box.innerHTML = ''; return; }
+
+  box.innerHTML = `<h2>🧪 藥水</h2>
+    ${anyActive ? `<div class="potActive">
+      ${POTION_TYPES.filter(t=>activePotion(p,t.type)>0).map(t=>
+        `${t.icon} ${esc(t.name)} <b>+${activePotion(p,t.type)}%</b>　<span style="opacity:.75">${esc(t.unit)}</span>`
+      ).join('<br>')}
+    </div>` : ''}
+    ${POTION_TYPES.map(t=>{
+      const have = potionsOf(p, t.type);
+      const keys = Object.keys(have).map(Number).sort((a,b)=>a-b);
+      if(!keys.length) return '';
+      return `<div class="card">
+        <div class="title">${t.icon} ${esc(t.name)}</div>
+        <div class="sub">${esc(t.unit)}・喝下去只對下一次生效</div>
+        <div class="potGrid">${keys.map(v=>
+          actionBtn(`<button class="btn gold potBtn" onclick="drinkPotion('${t.type}',${v})">
+            +${v}%<span class="potN">×${have[v]}</span></button>`)).join('')}</div>
+      </div>`;
+    }).join('')}`;
 }
 
 /* ==================================================================
@@ -3674,6 +3804,7 @@ function renderAll(){
     return taskCard('myTasks', t, `<button class="btn gold" onclick="reportDone('${t.id}')">完成回報</button>`, badge);
   }).join('') : '<div class="empty">目前沒有任務，爽 😎</div>';
 
+  safe('potions', renderPotions);
   safe('coop', renderCoop);
 
   const pending = tasks.filter(t => !t.isDaily && t.status==='pending' &&
@@ -3745,6 +3876,11 @@ function renderShop(){
         ${actionBtn('<button class="btn gold" onclick="buyTicket()">購買</button>')}
       </div>
     </div>`;
+  const cp = players[me]?.coupons ?? 0;
+  $('couponBar').innerHTML = cp > 0
+    ? `<div class="potActive" style="background:rgba(233,196,106,.1);border-color:rgba(233,196,106,.5);color:var(--gold)">
+        🎟️ 折價券 ×${cp}　<span style="opacity:.8">可用在 ${COUPON_MAX_PRICE.toLocaleString()} 以下的商品，打九折</span>
+      </div>` : '';
   const entry = `
     <div class="shopEntry" onclick="goTab('titleshop')">
       <span class="seIc">🏷️</span>
@@ -3770,7 +3906,12 @@ function renderShop(){
       ${i.desc ? `<div class="sub">${esc(i.desc)}</div>` : ''}
       <div class="row">
         <div class="reward">🪙 ${i.price}</div>
-        ${actionBtn(`<button class="btn gold" onclick="buyItem('${i.id}')">購買</button>`)}
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          ${(i.price <= COUPON_MAX_PRICE && (players[me]?.coupons ?? 0) > 0)
+            ? actionBtn(`<button class="btn blue" onclick="buyItem('${i.id}', true)">
+                🎟️ 九折 ${Math.round(i.price*0.9)}</button>`) : ''}
+          ${actionBtn(`<button class="btn gold" onclick="buyItem('${i.id}')">購買</button>`)}
+        </div>
       </div>
     </div>`).join('')
   ).join('') + entry;
