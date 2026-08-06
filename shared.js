@@ -772,6 +772,9 @@
     { stage: 5,  reward: 3 },
     { stage: 7,  reward: 3 },
     { stage: 10, reward: 5 },
+    { stage: 13, reward: 5 },
+    { stage: 16, reward: 5 },
+    { stage: 20, reward: 8 },
   ];
   const bossMilestoneAt = stage => BOSS_MILESTONES.find(m => m.stage === stage) || null;
   // 得獎紀錄存全域 config/system.bossClearWinners = { '5':'Ca', '7':null, ... }
