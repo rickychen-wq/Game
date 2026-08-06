@@ -471,6 +471,7 @@ const {
   r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
   todayKey, prevKey,
   COOP_ASSIGNEE, isCoop, coopMembers, coopDoneBy, coopProgress,
+  activePotion, potionAdd, potionName,
 } = window.GAME;
 
 const app = initializeApp(firebaseConfig);
@@ -725,9 +726,12 @@ window.approveTask = async (id)=>{
     const payee = t.assignee;
     const who = pName(payee);
     const cm = coinMultOf(players[payee]), xm = xpMultOf(players[payee]);
-    const payout = Math.round(t.reward * cm), xpGain = Math.round(t.reward * xm);
+    const pot = activePotion(players[payee], 'coin');
+    const cmP = r3(cm + pot/100);                       // 金幣藥水走加法池
+    const payout = Math.round(t.reward * cmP), xpGain = Math.round(t.reward * xm);
+    const potNote = pot > 0 ? `　🧪藥水 +${pot}%` : '';
     const evtNote = eventAdd('coin') > 0 ? `　⚡活動 +${Math.round(eventAdd('coin')*100)}%` : '';
-    const extra = cm > 1 ? `（${t.reward} × ${cm}${evtNote}）` : '';
+    const extra = cmP > 1 ? `（${t.reward} × ${cmP}${potNote}${evtNote}）` : '';
     const xpLine = xm !== cm ? `\nXP +${xpGain}（× ${xm}）` : '';
     if(!confirm(`確定通過「${t.title}」？\n將發給 ${who} 🪙 ${payout}${extra}${xpLine}`)) return;
   }
@@ -777,9 +781,12 @@ window.approveTask = async (id)=>{
       // 每人各拿全額，倍率各自計算
       pSnaps.forEach((snap, i)=>{
         const d = snap.data() || {};
-        const cm = coinMultOf(d), xm = xpMultOf(d);
+        // 金幣藥水：單次型，這次審核用掉就消失（走加法池，不做乘法）
+        const potion = potionAdd(d, 'coin');
+        const cm = r3(coinMultOf(d) + potion), xm = xpMultOf(d);
         const pay = Math.round(t.reward * cm), xg = Math.round(t.reward * xm);
         tx.update(pRefs[i], {
+          ...(potion > 0 ? { 'activePotion.coin': null } : {}),
           coins:       increment(pay),
           totalEarned: increment(pay),      // 用發放後金額累加
           xp:          increment(xg),       // XP 走自己的倍率
