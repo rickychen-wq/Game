@@ -685,6 +685,39 @@
   .skRow b{ color:var(--text); }
   .skRow .dmgv{ color:var(--gold); font-weight:800; }
 
+  /* ===== 卡片合成 ===== */
+  .cfBar{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:12px 14px; margin-bottom:14px;
+    border-radius:12px; border:1px solid rgba(255,140,66,.35);
+    background:linear-gradient(160deg,#241a13,#0b0d14); }
+  .cfMat{ font-family:var(--mono); font-size:12px; font-weight:800; color:var(--text);
+    background:#12141d; border:1px solid var(--line); border-radius:8px; padding:5px 10px; }
+  .cfMat.no{ color:var(--dim); border-color:var(--line-soft); }
+  .cfPacks{ display:flex; gap:7px; flex-wrap:wrap; margin-bottom:14px; }
+  .cfPack{ font-family:var(--mono); font-size:12px; font-weight:800; padding:8px 12px; border-radius:9px;
+    background:#12141d; color:var(--muted); border:1px solid var(--line); cursor:pointer; }
+  .cfPack.on{ background:rgba(255,140,66,.16); color:#ffb27a; border-color:#ff8c42; }
+  .cfSlot{ padding:11px 12px; border-radius:11px; border:1px solid var(--line);
+    background:var(--panel-2); margin-bottom:9px; }
+  .cfSlotTop{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-bottom:8px; }
+  .cfSlotNm{ font-size:13.5px; font-weight:900; }
+  .cfTiers{ display:flex; gap:6px; flex-wrap:wrap; }
+  .cfTier{ font-family:var(--mono); font-size:11px; font-weight:800; padding:6px 9px; border-radius:8px;
+    background:#12141d; border:1px solid var(--line-soft); color:var(--muted); cursor:pointer; }
+  .cfTier.on{ color:#0b0d14; }
+  .cfTier:disabled{ opacity:.3; cursor:not-allowed; }
+  .cfOdds{ padding:12px 14px; border-radius:12px; border:1px solid var(--line);
+    background:var(--panel-1); margin:14px 0; }
+  .cfOddRow{ display:flex; align-items:center; gap:9px; margin-top:7px;
+    font-family:var(--mono); font-size:11.5px; font-weight:800; }
+  .cfOddNm{ width:38px; flex-shrink:0; }
+  .cfOddBarWrap{ flex:1; height:10px; border-radius:99px; background:#12141d;
+    border:1px solid var(--line-soft); overflow:hidden; }
+  .cfOddBar{ height:100%; transition:width .25s ease; }
+  .cfOddPct{ width:46px; text-align:right; flex-shrink:0; font-variant-numeric:tabular-nums; }
+  .cfCost{ font-family:var(--mono); font-size:11.5px; color:var(--muted); line-height:1.9; margin-bottom:10px; }
+  .cfCost .bad{ color:var(--pink); font-weight:800; }
+  .cfCost .ok{ color:var(--cyan); font-weight:800; }
+
   .bossWrap{ text-align:center; }
   .bossImg{ width:100%; max-width:520px; aspect-ratio:16/9; object-fit:cover; border-radius:12px;
     border:1px solid var(--line); }
@@ -1462,6 +1495,11 @@ const {
   getWeights, todayKey, prevKey,
   EP_START_LV, epTotal, epAvail,
   PACKS, RARITIES, PACK_TIERS, PACK_PITY_MAX, CARDS,
+  FULL_RAR, rarColorOf, everOwned,
+  CRAFT_SLOTS, CRAFT_COIN, CRAFT_MATS, CRAFT_MAT_COST, craftOpen,
+  craftMatsOf, craftMatEnough, fullCardOf, isFullCard,
+  craftTierOdds, rollCraftTier, craftPickReady,
+  TASK_EXTRAS, extrasOf, extrasText, extrasTotal,
   EQUIP_MAX, EQUIP_LOCK_MS, BUFF_MULT, ZONE_MULT, ZONE_MS, DOT_HOURS, DOT_MAX_STACK,
   cardById, packById, tierById, skillOf, cardOfPack, tierBetter,
   packTicketsOf, packTicketTotal, rollBossTicketTier,
@@ -1976,7 +2014,8 @@ onSnapshot(doc(db,'config','broadcast'), snap=>{
 onSnapshot(doc(db,'config','system'), snap=>{
   const cfg = snap.exists() ? (snap.data() || {}) : {};
   setRuntime({ events: cfg.events || {}, adminEvent: cfg.adminEvent || null,
-               bossOpen: cfg.bossOpen || {}, bossClearWinners: cfg.bossClearWinners || {} });
+               bossOpen: cfg.bossOpen || {}, bossClearWinners: cfg.bossClearWinners || {},
+               craftOpen: cfg.craftOpen === true });
   onEventsChanged();
   renderAll();
 });
@@ -2685,7 +2724,7 @@ function imgWithFb(src, cls, fbCls, fbTxt, style){
       onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
     <div class="${fbCls} imgFallback" style="${style||''}">${fbTxt}</div>`;
 }
-const rarColor  = r => (RARITIES.find(x=>x.id===r) || RARITIES[3]).color;
+const rarColor  = rarColorOf;   // 全圖卡 X 有自己的顏色，不能 fallback 成 C 的灰
 const cardImg   = id => `assets/cards/${id}.png`;
 const packImg   = id => `assets/packs/${id}.png`;
 
@@ -2719,6 +2758,7 @@ window.ensureDailyPacks = ensureDailyPacks;   // 供「手動補貨」按鈕使�
 
 /* 開包共用：抽卡 → 寫入 → 演出 */
 function applyCardGain(cur, upd, cardId, tierId){
+  upd['dex.' + cardId] = true;          // 永久圖鑑紀錄：合成吃掉卡片也不會掉收集度
   const owned = (cur.cards || {})[cardId];
   let dup = false, count = 1, finalTier = tierId;
   if(owned){
@@ -2828,15 +2868,17 @@ function showPackResult(r){
   const el = $('packPop'), box = $('ppCard');
   box.className = 'ppCard' + (r.rar === 'S' ? ' sRar' : '') + (r.tierId === 'rainbow' ? ' rainbowBorder' : '');
   box.style.borderColor = r.tierId === 'rainbow' ? 'transparent' : tier.color;
-  $('ppRar').textContent = `${r.rar} 級`;
+  $('ppRar').textContent = r.rar === FULL_RAR ? '全圖卡' : `${r.rar} 級`;
   $('ppRar').style.color = rarColor(r.rar);
   $('ppImgBox').innerHTML = imgWithFb(cardImg(r.card.id), '', 'fb', '🎴',
     `background:${rarColor(r.rar)}22;border:1px solid ${rarColor(r.rar)}`);
   $('ppName').textContent = r.card.name + (r.dup ? ` ×${r.count}` : '');
-  $('ppMeta').innerHTML = `${esc(packById(r.card.pack).name)}・${tier.name}包　傷害 ×${tier.mult}` +
-    (r.dup ? `<br><span style="color:var(--muted)">（重複，可留給未來的合成系統）</span>` : '');
+  $('ppMeta').innerHTML = (r.rar === FULL_RAR
+      ? `${esc(packById(r.card.pack).name)}・${tier.name}　傷害 ×${tier.mult}`
+      : `${esc(packById(r.card.pack).name)}・${tier.name}包　傷害 ×${tier.mult}`) +
+    (r.dup ? `<br><span style="color:var(--muted)">（重複${r.rar === FULL_RAR ? '，只有更好的等級才會覆蓋' : '，可留給未來的合成系統'}）</span>` : '');
   el.classList.add('show');
-  if(r.rar === 'S') sfxRare(); else sfxBuy();
+  if(r.rar === 'S' || r.rar === FULL_RAR) sfxRare(); else sfxBuy();
 }
 $('ppBtn').onclick = ()=> $('packPop').classList.remove('show');
 
@@ -3000,25 +3042,33 @@ function renderCards(){
   const lockLeft = equipLockLeft(p);
 
   const groups = PACKS.map(pk=>{
-    const list = ['S','A','B','C'].map(r => cardOfPack(pk.id, r));
+    // 全圖卡（合成產物）接在四張基礎卡後面，圖鑑一包 5 張
+    const list = [...['S','A','B','C'].map(r => cardOfPack(pk.id, r)), fullCardOf(pk.id)].filter(Boolean);
     return `<h2>${esc(pk.name)}</h2>` + list.map(c=>{
       const own = cardOwned(p, c.id);
       const tier = tierById(own?.tier || 'normal');
       const isEq = eq.includes(c.id);
+      const isFull = c.rar === FULL_RAR;
+      const rarTxt = isFull ? '全圖' : c.rar;
+      const source = isFull ? '需要用同卡包的 2C+2B+1A+1S 合成' : `可從「${esc(pk.name)}」卡包獲得`;
       if(!own){
+        // 曾經擁有但被合成吃光 → 圖鑑仍算已收集，只是目前沒有持有
+        const seen = everOwned(p, c.id);
         return `<div class="cardTile locked">
           ${imgWithFb(cardImg(c.id), 'cImg', 'cFb', '🎴', 'background:#12141d')}
           <div class="cBody">
-            <div class="cTop"><span class="cNm" style="color:var(--dim)">???</span>
-              <span class="rarPill" style="background:${rarColor(c.rar)}">${c.rar}</span></div>
-            <div class="skRow">可從「${esc(pk.name)}」卡包獲得</div>
+            <div class="cTop"><span class="cNm" style="color:${seen ? 'var(--muted)' : 'var(--dim)'}">${seen ? esc(c.name) : '???'}</span>
+              <span class="rarPill" style="background:${rarColor(c.rar)}">${rarTxt}</span>
+              ${seen ? '<span class="tierPill" style="background:#1a1d28;color:var(--cyan)">已收集・目前 0 張</span>' : ''}</div>
+            <div class="skRow">${seen ? '合成時被消耗了，圖鑑收集紀錄會永久保留' : source}</div>
           </div></div>`;
       }
       const skills = c.skills.map(k=>{
         const real = skillDamage(k.dmg, own.tier, { dexAdd: dexBonusFor(p, c.id) });
         const tag = k.sp === 'DOT' ? `<span class="sTag">持續 ${DOT_HOURS} 小時・最多 ${DOT_MAX_STACK} 層</span>`
                   : k.sp === 'BUFF' ? '<span class="sTag">下次傷害 +35%</span>'
-                  : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>' : '';
+                  : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>'
+                  : k.sp === 'DMGZONE' ? '<span class="sTag">傷害 + 8 小時 +35%</span>' : '';
         const usedNow = castUsed(bossOf(p), c.id, k.id);
         return `<div class="skRow"><b>${esc(k.name)}</b> ${tag}<br>
           EP ${k.ep}　傷害 <span class="dmgv">${k.dmg > 0 ? real : '—'}</span>　
@@ -3029,7 +3079,7 @@ function renderCards(){
         <div class="cBody">
           <div class="cTop">
             <span class="cNm">${esc(c.name)}</span>
-            <span class="rarPill" style="background:${rarColor(c.rar)}">${c.rar}</span>
+            <span class="rarPill" style="background:${rarColor(c.rar)}">${rarTxt}</span>
             <span class="tierPill" style="background:${tier.color}22;color:${tier.color};border:1px solid ${tier.color}">${tier.name} ×${tier.mult}</span>
             ${own.count > 1 ? `<span class="tierPill" style="background:#1a1d28;color:var(--muted)">共 ${own.count} 張</span>` : ''}
           </div>
@@ -3055,10 +3105,10 @@ function renderCards(){
     <div style="font-family:var(--mono);font-size:11px;color:var(--gold-dim);letter-spacing:1.5px;margin-bottom:8px">
       📖 圖鑑完成度</div>
     ${dex.packs.map(pk=>`<div class="dexRow ${pk.done?'done':''}">
-      <span>${esc(pk.name)}</span>
+      <span>${esc(pk.name)}${pk.fullHave ? ' <span style="color:#ff8c42">◆</span>' : ''}</span>
       <b>${pk.have}/4${pk.done ? `　傷害 +${Math.round(DEX_PACK_BONUS*100)}%` : ''}</b>
     </div>`).join('')}
-    <div class="dexTotal">全圖鑑 ${dex.haveTotal}/${CARDS.length}${
+    <div class="dexTotal">全圖鑑 ${dex.haveTotal}/${dex.grandTotal}${
       dex.full ? `　✨ 額外傷害 +${Math.round(DEX_FULL_BONUS*100)}%` : `　（集滿再 +${Math.round(DEX_FULL_BONUS*100)}%）`}</div>
   </div>`;
 
@@ -3263,10 +3313,13 @@ window.useSkill = async (cardId, skillId, ev)=>{
         if(buff) buff = false;
         dealt = total;                                      // 只用於顯示，血是之後每小時扣
       } else {
+        // DMGZONE 也走這裡：傷害照算。zoneOn 是「施放前」的狀態，
+        // 所以這一招不會被自己開的 ZONE 加成，只有下一招起才吃得到
         dealt = skillDamage(k.dmg, tierId, { buff, zone: zoneOn,
           dexAdd: dexBonusFor(cur, cardId), potionAdd: potionAdd(cur, 'dmg') });
         if(buff) buff = false;
         hp = Math.max(0, hp - dealt);
+        if(k.sp === 'DMGZONE') zoneUntil = now + ZONE_MS;    // 傷害 + 開 ZONE
       }
       // 演出用資訊（倍率標記：BUFF / ZONE / 活動加倍）
       const marks = [];
@@ -3327,6 +3380,8 @@ window.useSkill = async (cardId, skillId, ev)=>{
         fxBar('🔵 ZONE 啟動・8 小時內 +35%', 'buff'); sfxGrab();
       } else {
         dmgPop(fx.dealt, fx.marks); bossHit(); sfxGrab();
+        // 傷害 + ZONE：數字先跳，ZONE 提示晚一點才出來，兩個才不會疊在一起看不清
+        if(fx.sp === 'DMGZONE') setTimeout(()=> fxBar('🔵 ZONE 啟動・8 小時內 +35%', 'buff'), 420);
       }
     }
   } catch(e){ sfxError(); toast(e.message); }
@@ -3481,7 +3536,8 @@ function renderBoss(){
         const noEp = ep < k.ep;
         const tag = k.sp === 'DOT' ? '<span class="sTag">10 小時持續</span>'
                   : k.sp === 'BUFF' ? '<span class="sTag">下次 +35%</span>'
-                  : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>' : '';
+                  : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>'
+                  : k.sp === 'DMGZONE' ? '<span class="sTag">傷害 + ZONE</span>' : '';
         const dotFull = k.sp === 'DOT' && preview.dots.length >= DOT_MAX_STACK;
         const unusable = used || noEp || isLocked() || !canAttack || dotFull;
         return `<button class="skillBtn ${unusable ? 'dis' : ''}" onclick="useSkill('${id}','${k.id}', event)">
@@ -3556,19 +3612,247 @@ function renderBoss(){
 /* ==================================================================
    卡片合成（開發中）
 ================================================================== */
+/* ==================================================================
+   卡片合成（全圖卡）
+   總開關在 config/system.craftOpen，由 stats 後台切換。
+   關閉時完全回到「敬請期待」，玩家端不會看到任何合成入口
+================================================================== */
+let craftPack = PACKS[0].id;
+let craftPick = {};          // { c1:'gold', c2:'normal', ... } ← 唯一真實來源，不放 DOM
+let crafting  = false;
+
+window.cfPickPack = (pid)=>{ craftPack = pid; craftPick = {}; renderCraftPage(); };
+window.cfPickTier = (slotKey, tierId)=>{
+  craftPick[slotKey] = (craftPick[slotKey] === tierId) ? null : tierId;   // 再按一次取消
+  renderCraftPage();
+};
+window.cfClear = ()=>{ craftPick = {}; renderCraftPage(); };
+
+/* 這一格這個等級還剩幾張可選：扣掉「其他格已經選走的同卡同等級」 */
+function cfAvail(p, slot, tierId){
+  const c = cardOfPack(craftPack, slot.rar);
+  if(!c) return 0;
+  const own = cardOwned(p, c.id);
+  if(!own) return 0;
+  const have = cardCounts(own)[tierId] || 0;
+  let used = 0;
+  CRAFT_SLOTS.forEach(s2=>{
+    if(s2.key !== slot.key && s2.rar === slot.rar && craftPick[s2.key] === tierId) used++;
+  });
+  return have - used;
+}
+
 function renderCraftPage(){
   if(!me || !players[me]) return;
-  $('craftBody').innerHTML = `
-    <div class="clearBox" style="background:linear-gradient(160deg,#1a2230,#0b0f18);
-         border-color:rgba(95,240,220,.5)">
-      <div class="cIc">🃏</div>
-      <div class="cT">卡片合成</div>
-      <div class="cS">敬請期待下次更新</div>
-      <div class="cS" style="margin-top:14px;opacity:.75">
-        重複的卡片已經照等級記錄下來了，之後可以拿來合成更高等級的卡
+  const p = players[me];
+
+  // 總開關關閉 → 維持原本的「敬請期待」，玩家完全看不出有這個系統
+  if(!craftOpen()){
+    $('craftBody').innerHTML = `
+      <div class="clearBox" style="background:linear-gradient(160deg,#1a2230,#0b0f18);
+           border-color:rgba(95,240,220,.5)">
+        <div class="cIc">🃏</div>
+        <div class="cT">卡片合成</div>
+        <div class="cS">敬請期待下次更新</div>
+        <div class="cS" style="margin-top:14px;opacity:.75">
+          重複的卡片已經照等級記錄下來了，之後可以拿來合成更高等級的卡
+        </div>
+      </div>`;
+    return;
+  }
+
+  const mats  = craftMatsOf(p);
+  const coins = p.coins ?? 0;
+  const target = fullCardOf(craftPack);
+  const pack   = packById(craftPack);
+
+  const matBar = `<div class="cfBar">
+    ${CRAFT_MATS.map(m=>{
+      const need = CRAFT_MAT_COST[m.id] || 0;
+      return `<span class="cfMat ${mats[m.id] < need ? 'no' : ''}">${m.icon} ${esc(m.name)} ×${mats[m.id]}</span>`;
+    }).join('')}
+    <span class="cfMat ${coins < CRAFT_COIN ? 'no' : ''}">🪙 ${coins.toLocaleString()}</span>
+  </div>`;
+
+  const packBtns = `<div class="cfPacks">${PACKS.map(pk=>
+    `<button class="cfPack ${pk.id === craftPack ? 'on' : ''}" onclick="cfPickPack('${pk.id}')">${esc(pk.name)}</button>`
+  ).join('')}</div>`;
+
+  // 六個材料格
+  const slots = CRAFT_SLOTS.map((slot, i)=>{
+    const c = cardOfPack(craftPack, slot.rar);
+    const own = c ? cardOwned(p, c.id) : null;
+    const sameRar = CRAFT_SLOTS.filter(x=>x.rar === slot.rar);
+    const nth = sameRar.length > 1 ? ` ${'①②③④'[sameRar.indexOf(slot)] || ''}` : '';
+    const tiers = PACK_TIERS.map(t=>{
+      const left = cfAvail(p, slot, t.id);
+      const on = craftPick[slot.key] === t.id;
+      const dis = (!on && left <= 0);
+      return `<button class="cfTier ${on?'on':''}" ${dis?'disabled':''}
+        style="${on ? `background:${t.color};border-color:${t.color}` : `color:${left>0?t.color:''}`}"
+        onclick="cfPickTier('${slot.key}','${t.id}')">${t.name} ${Math.max(0,left)}</button>`;
+    }).join('');
+    return `<div class="cfSlot" style="${craftPick[slot.key] ? 'border-color:#ff8c42' : ''}">
+      <div class="cfSlotTop">
+        <span class="rarPill" style="background:${rarColor(slot.rar)}">${slot.rar}</span>
+        <span class="cfSlotNm">${esc(c ? c.name : '?')}${nth}</span>
+        <span class="tierPill" style="background:#1a1d28;color:var(--muted)">權重 ${slot.w}%</span>
+        ${!own ? '<span class="tierPill" style="background:#2a1620;color:var(--pink)">尚未擁有</span>' : ''}
       </div>
+      <div class="cfTiers">${tiers}</div>
+    </div>`;
+  }).join('');
+
+  // 機率條（六格沒填滿就先不顯示，避免玩家誤讀成真實機率）
+  const ready = craftPickReady(craftPick);
+  const odds  = craftTierOdds(craftPick);
+  const oddsHtml = `<div class="cfOdds">
+    <div style="font-family:var(--mono);font-size:11px;color:#ffb27a;letter-spacing:1.5px">
+      🎲 成品等級機率</div>
+    ${ready ? PACK_TIERS.filter(t=>odds[t.id] > 0).map(t=>`
+      <div class="cfOddRow">
+        <span class="cfOddNm" style="color:${t.color}">${t.name}</span>
+        <span class="cfOddBarWrap"><span class="cfOddBar" style="width:${odds[t.id]}%;background:${t.color}"></span></span>
+        <span class="cfOddPct" style="color:${t.color}">${odds[t.id]}%</span>
+      </div>`).join('')
+    : '<div class="skRow" style="margin-top:8px">六個材料格都選好之後，這裡會顯示成品等級的機率</div>'}
+    <div class="skRow" style="margin-top:10px;line-height:1.7">
+      每一格都有自己的權重，抽中哪一格，成品等級就是那一格投入的卡片等級。<br>
+      想拚彩虹就把權重高的格子餵好卡 —— 但那張好卡也會被吃掉。
+    </div>
+  </div>`;
+
+  const matOk  = craftMatEnough(p);
+  const coinOk = coins >= CRAFT_COIN;
+  const canDo  = ready && matOk && coinOk && !!target && !crafting;
+  const costHtml = `<div class="cfCost">
+    消耗：6 張「${esc(pack ? pack.name : '')}」卡片
+    ${CRAFT_MATS.map(m=>`<span class="${mats[m.id] >= (CRAFT_MAT_COST[m.id]||0) ? 'ok' : 'bad'}">
+      ${m.icon}×${CRAFT_MAT_COST[m.id]||0}</span>`).join('')}
+    <span class="${coinOk ? 'ok' : 'bad'}">🪙 ${CRAFT_COIN.toLocaleString()}</span><br>
+    ${!matOk ? '<span class="bad">材料不足 —— 🔑 金鑰與 🧩 碎片只能從媽媽指定的特殊任務拿到</span><br>' : ''}
+    ${!coinOk ? '<span class="bad">金幣不足</span><br>' : ''}
+    ${!ready ? '<span style="color:var(--dim)">還有材料格沒選</span>' : ''}
+  </div>`;
+
+  const preview = target ? `
+    <div class="cardTile" style="border-color:#ff8c42;margin-bottom:14px">
+      ${imgWithFb(cardImg(target.id), 'cImg', 'cFb', '🎴', 'background:rgba(255,140,66,.13)')}
+      <div class="cBody">
+        <div class="cTop">
+          <span class="cNm">${esc(target.name)}</span>
+          <span class="rarPill" style="background:${rarColor(FULL_RAR)}">全圖</span>
+          ${everOwned(p, target.id) ? '<span class="tierPill" style="background:#1a1d28;color:var(--cyan)">已收集</span>' : ''}
+        </div>
+        ${target.skills.map(k=>`<div class="skRow"><b>${esc(k.name)}</b>
+          ${k.sp === 'DOT' ? `<span class="sTag">持續 ${DOT_HOURS} 小時</span>`
+            : k.sp === 'DMGZONE' ? '<span class="sTag">傷害 + 8 小時 +35%</span>' : ''}<br>
+          EP ${k.ep}　基礎傷害 <span class="dmgv">${k.dmg}</span></div>`).join('')}
+        <div class="skRow" style="margin-top:6px;color:var(--dim)">
+          實際傷害還會再乘上成品等級倍率（普通 ×1 ～ 彩虹 ×2.5）</div>
+      </div>
+    </div>` : '';
+
+  $('craftBody').innerHTML = matBar + packBtns + preview + slots + oddsHtml + costHtml + `
+    <div style="display:flex;gap:8px">
+      <button class="btn gold" style="flex:1" onclick="doCraft()" ${canDo ? '' : 'disabled'}>
+        ${crafting ? '合成中⋯' : '🃏 合成'}</button>
+      <button class="btn no" onclick="cfClear()">清空</button>
+    </div>
+    <div class="sub" style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:12px;line-height:1.8">
+      合成不會失敗，一定會拿到全圖卡，只有「等級」是隨機的。<br>
+      材料卡會被吃掉，但圖鑑收集紀錄是永久的，不會因為合成而倒退。<br>
+      已經有全圖卡還可以再合成一次 —— 開出更好的等級才會覆蓋，開到比較差的不會變爛。
     </div>`;
 }
+
+window.doCraft = async ()=>{
+  if(lockGuard() || crafting) return;
+  if(!craftPickReady(craftPick)) return;
+  const target = fullCardOf(craftPack);
+  if(!target) return;
+  const pack = packById(craftPack);
+  const odds = craftTierOdds(craftPick);
+  const oddTxt = PACK_TIERS.filter(t=>odds[t.id] > 0).map(t=>`${t.name} ${odds[t.id]}%`).join('　');
+  if(!confirm(`確定合成「${target.name}」嗎？\n\n會吃掉 6 張${pack.name}卡片`
+    + `　${CRAFT_MATS.map(m=>`${m.icon}×${CRAFT_MAT_COST[m.id]||0}`).join(' ')}　🪙 ${CRAFT_COIN}`
+    + `\n成品等級：${oddTxt}\n\n材料卡會永久消失，確定嗎？`)) return;
+
+  crafting = true; renderCraftPage();
+  let result = null;
+  try {
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'players',me);
+      const s = await tx.get(ref);                 // read 先做完，後面全是 write
+      const cur = s.data() || {};
+
+      if((cur.coins ?? 0) < CRAFT_COIN) throw new Error('金幣不夠');
+      const have = craftMatsOf(cur);
+      for(const m of CRAFT_MATS){
+        if(have[m.id] < (CRAFT_MAT_COST[m.id] || 0))
+          throw new Error(`${m.icon} ${m.name}不夠，要 ${CRAFT_MAT_COST[m.id]} 個`);
+      }
+
+      // 用最新資料重算要扣的張數（避免玩家在別的分頁把卡開掉/裝備）
+      const needByCard = {};      // { cardId: { normal:2, gold:1 } }
+      for(const slot of CRAFT_SLOTS){
+        const c = cardOfPack(craftPack, slot.rar);
+        const t = craftPick[slot.key];
+        if(!c || !t) throw new Error('材料格沒選滿');
+        needByCard[c.id] = needByCard[c.id] || {};
+        needByCard[c.id][t] = (needByCard[c.id][t] || 0) + 1;
+      }
+      const upd = {
+        coins: increment(-CRAFT_COIN),
+        ...Object.fromEntries(CRAFT_MATS.map(m=>['craftMats.'+m.id, increment(-(CRAFT_MAT_COST[m.id]||0))])),
+      };
+      const curCards = { ...(cur.cards || {}) };
+      let eq = [...(cur.equipped || [])];
+      let eqChanged = false;
+
+      for(const cardId in needByCard){
+        const own = curCards[cardId];
+        if(!own) throw new Error('材料卡不足，請重新整理');
+        const cc = { ...cardCounts(own) };
+        let total = 0;
+        for(const t in needByCard[cardId]){
+          if((cc[t] || 0) < needByCard[cardId][t]) throw new Error('材料卡不足，請重新整理');
+          cc[t] -= needByCard[cardId][t];
+          total += needByCard[cardId][t];
+        }
+        const left = (own.count || 0) - total;
+        if(left <= 0){
+          // 吃到 0 張 → 刪掉物件（圖鑑另外存在 dex，不會掉收集度）
+          delete curCards[cardId];
+          if(eq.includes(cardId)){ eq = eq.filter(x=>x !== cardId); eqChanged = true; }
+        } else {
+          // tier 是「持有中的最高等級」，卡片被吃掉後要往下修正。
+          // ⚠️ 這裡不能用 TIER_ORDER：本檔案第 87 行有個同名的「稱號」等級 ['D','C','B','A','S']，
+          //    用下去會查不到任何等級、無聲把彩虹卡降成普通。一律用 PACK_TIERS（順序 normal→rainbow）
+          const best = [...PACK_TIERS].reverse().find(t=>(cc[t.id] || 0) > 0)?.id || 'normal';
+          curCards[cardId] = { ...own, count: left, counts: cc, tier: best };
+        }
+      }
+      upd.cards = curCards;
+      if(eqChanged) upd.equipped = eq;
+
+      const tierId = rollCraftTier(craftPick);
+      // 產出全圖卡：沿用既有的加卡邏輯（含「只有更好才覆蓋 tier」與 dex 紀錄）
+      const g = applyCardGain({ ...cur, cards: curCards }, upd, target.id, tierId);
+      tx.update(ref, upd);
+      tx.set(ledgerRef(), ledgerData('craft', -CRAFT_COIN, `合成 ${target.name}・${tierById(tierId).name}`,
+        { cardId: target.id, tier: tierId, pack: craftPack, pick: { ...craftPick }, dup: g.dup }));
+      result = { card: target, rar: FULL_RAR, tierId, ...g };
+    });
+    if(result){
+      craftPick = {};
+      sfxCraft(); sfxRare(); flyCoins(6);
+      showPackResult(result);
+    }
+  } catch(e){ sfxError(); toast(e.message); }
+  crafting = false;
+  renderCraftPage();
+};
 
 /* ==================================================================
    藥水（單次型：喝下去只對「下一次」生效）
@@ -3739,8 +4023,12 @@ function cardCls(container, id){
 }
 
 function taskCard(container, t, btnHtml, badge=''){
+  // 附贈道具要顯示在任務卡上，不然弟弟不知道這個任務比較值得做
+  const ex = extrasTotal(t.extras)
+    ? `<span class="multPill" style="background:rgba(255,140,66,.16);color:#ffb27a;border-color:#ff8c42">${extrasText(t.extras)}</span>`
+    : '';
   return `<div class="${cardCls(container,t.id)}">
-    <div class="title">${esc(t.title)}${badge}</div>
+    <div class="title">${esc(t.title)}${badge}${ex}</div>
     <div class="row">
       ${rewardHtml(t.reward)}
       ${actionBtn(btnHtml)}
@@ -3915,6 +4203,7 @@ function renderAll(){
 
   safe('log', renderLog);
   if($('page-rank').classList.contains('on')) safe('rank', renderRank);
+  if($('page-craft').classList.contains('on')) safe('craft', renderCraftPage);
 }
 
 /* ===== 每日任務區塊（只顯示自己當天的） ===== */
@@ -4111,7 +4400,19 @@ function renderBag(){
   const pend  = purchases.filter(p=>p.playerId===me && p.status==='pending');
   const used  = purchases.filter(p=>p.playerId===me && p.status==='redeemed').slice(0,15);
 
-  $('ownedList').innerHTML = owned.length ? owned.map(p=>{
+  // 合成材料：只有拿到才顯示。合成系統還沒開放時也要看得見，
+  // 不然媽媽發了 🔑🧩 玩家會以為獎勵不見了
+  const mats = craftMatsOf(players[me] || {});
+  const matHtml = CRAFT_MATS.some(m=>mats[m.id] > 0)
+    ? `<div class="cfBar" style="margin-bottom:12px">
+        ${CRAFT_MATS.filter(m=>mats[m.id] > 0).map(m=>
+          `<span class="cfMat">${m.icon} ${esc(m.name)} ×${mats[m.id]}</span>`).join('')}
+        <span class="skRow" style="margin:0;flex-basis:100%">
+          ${craftOpen() ? '可以在「🃏 卡片合成」使用' : '合成系統開放後就能使用'}</span>
+      </div>`
+    : '';
+
+  $('ownedList').innerHTML = matHtml + (owned.length ? owned.map(p=>{
     // 抽獎券不能送核銷，改成「去抽獎」
     const ctrl = p.isTicket
       ? '<button class="btn blue" onclick="goTab(\'lottery\')">去抽獎 🎰</button>'
@@ -4123,7 +4424,7 @@ function renderBag(){
         ${ctrl}
       </div>
     </div>`;
-  }).join('') : '<div class="empty">背包是空的，去商店逛逛 🛒</div>';
+  }).join('') : '<div class="empty">背包是空的，去商店逛逛 🛒</div>');
 
   $('pendingBuys').innerHTML = pend.length ? pend.map(p=>`
     <div class="${cardCls('pbuy',p.id)}">
