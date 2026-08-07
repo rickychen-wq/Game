@@ -159,6 +159,15 @@
     display:flex; align-items:center; justify-content:center; font-size:20px; color:var(--dim); }
   .eqSlot.on{ border-style:solid; border-color:var(--gold); }
   .eqSlot img{ width:100%; height:100%; object-fit:cover; }
+  .eqSlot.sel{ border-style:solid; border-color:var(--cyan); background:rgba(95,240,220,.08);
+    color:var(--cyan); font-family:var(--mono); font-size:11px; font-weight:800; }
+  .eqSlot.cd{ opacity:.55; cursor:not-allowed; }
+  .eqSlot .slotCd{ position:absolute; left:0; right:0; bottom:0; padding:2px 0;
+    background:rgba(0,0,0,.72); color:var(--pink);
+    font-family:var(--mono); font-size:9px; font-weight:800; text-align:center; }
+  .eqSlot .slotCd.big{ position:static; background:none; font-size:10px; line-height:1.7; }
+  .pickHd{ font-family:var(--mono); font-size:11.5px; font-weight:800; color:var(--cyan);
+    margin:11px 0 8px; }
   .eqSlot .exX{ position:absolute; top:3px; right:3px; width:19px; height:19px;
     border-radius:50%; background:rgba(0,0,0,.72); color:var(--pink);
     font-size:12px; font-weight:900; display:flex; align-items:center; justify-content:center; }
@@ -249,13 +258,13 @@
 <div id="dmgPop"></div>
 <div id="clearBox"><div class="clearIn" id="clearIn"></div></div>
 
-<script src="./shared.js?v=6"></script>
+<script src="./shared.js?v=7"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 6;
+  var NEED = 7;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -302,6 +311,7 @@ const {
   dungeonDef, dungeonHp, dungeonMobs, dungeonApplyRegen, dungeonEpCost,
   dungeonFloorHp, dungeonFloorDone, dungeonLeftHp, dungeonProgress,
   dungeonExpired, dunEquipOf, dunEquipLocked, dunStateOf,
+  dunSlotsOf, dunSlotCds, dunSlotReady,
   DUNGEON_REWARDS, dunRewardsOf, setRuntime, dmgMult,
 } = window.GAME;
 
@@ -322,7 +332,7 @@ let penalties = [];   // 禁閉是從 penalties 即時算的，player 上沒有 
 const isLocked = () => penalties.some(x => x.playerId === me && x.type === 'lock' && x.status !== 'cleared');
 
 let selMob   = 0;     // 當前層選中的小兵 index
-let eqOpen   = false; // 裝備面板是否展開
+let selSlot  = null;  // 目前要放卡的格子 index（null = 沒在選）
 let rollTimer = null; // 獎勵數字滾動
 
 function toast(msg){
@@ -379,27 +389,42 @@ if(!me){
    出手
 ================================================================== */
 window.dunSel = (i)=>{ selMob = i; render(); };
-window.toggleEq = ()=>{ eqOpen = !eqOpen; render(); };
 
-window.dunEquip = async (cardId)=>{
+/* 點格子：空的就選起來準備放卡，選中的再點一次取消 */
+window.dunPickSlot = (i)=>{
+  selSlot = (selSlot === i) ? null : i;
+  render();
+};
+
+/* 把卡放進選中的格子。冷卻是「每一格各自的」，放這一格不會鎖住其他格 */
+window.dunPutCard = async (cardId)=>{
   if(busy || !P) return;
-  const cur = dunEquipOf(P);
-  const has = cur.includes(cardId);
-  if(!has){
-    if(dunEquipLocked(P, cardId)) return toast('這張已經裝在 Boss 那邊了');
-    if(cur.length >= DUN_EQUIP_MAX) return toast(`最多只能裝 ${DUN_EQUIP_MAX} 張`);
-    const ready = P.dungeonEquipReadyAt || 0;
-    if(Date.now() < ready) return toast(`換卡冷卻中，還要 ${leftTxt(ready - Date.now())}`);
-  }
-  const next = has ? cur.filter(x=>x !== cardId) : [...cur, cardId];
-  busy = true; render();
+  const i = selSlot;
+  if(i === null) return toast('先點一個格子');
+  const slots = dunSlotsOf(P);
+  if(dunEquipLocked(P, cardId))    return toast('這張已經裝在 Boss 那邊了');
+  if(slots.includes(cardId))       return toast('這張已經放在別的格子了');
+  if(!dunSlotReady(P, i))          return toast(`這一格還在冷卻，剩 ${leftTxt(dunSlotCds(P)[i] - Date.now())}`);
+
+  const next = [...slots]; next[i] = cardId;
+  const cds  = dunSlotCds(P); cds[i] = Date.now() + DUN_EQUIP_CD_H * 3600000;
+  busy = true; selSlot = null; render();
   try {
-    await updateDoc(doc(db,'players',me), {
-      dungeonEquipped: next,
-      // 只有「裝上」才進冷卻；卸下不罰，免得誤裝就卡兩小時
-      ...(has ? {} : { dungeonEquipReadyAt: Date.now() + DUN_EQUIP_CD_H * 3600000 }),
-    });
+    await updateDoc(doc(db,'players',me), { dungeonEquipped: next, dungeonSlotCd: cds });
   } catch(e){ toast(e.message); }
+  busy = false; render();
+};
+
+/* 拿下來：隨時都可以（誤放不會被卡住），但這一格的冷卻不會因此重置，
+   所以拿掉再放並不能繞過冷卻 */
+window.dunClearSlot = async (i)=>{
+  if(busy || !P) return;
+  const slots = dunSlotsOf(P);
+  if(!slots[i]) return;
+  const next = [...slots]; next[i] = null;
+  busy = true; render();
+  try { await updateDoc(doc(db,'players',me), { dungeonEquipped: next }); }
+  catch(e){ toast(e.message); }
   busy = false; render();
 };
 
@@ -599,8 +624,7 @@ function render(){
   if(!DUN || (cleared && !canClaim)){
     stopRoll();
     $('root').innerHTML = `<div class="empty"><div class="ic">🏰</div>
-      <div class="t">目前沒有地下城</div>
-      <div class="s">等媽媽或哥哥開新的一座<br>開了之後這裡就會出現地圖</div></div>`;
+      <div class="t">地下城未開啟</div></div>`;
     return;
   }
   if(!def){
@@ -763,44 +787,57 @@ function skillHtml(expired){
 }
 
 function equipHtml(){
-  const eq = dunEquipOf(P);
-  const ready = P.dungeonEquipReadyAt || 0;
-  const cd = ready > Date.now();
-  const slots = Array.from({ length: DUN_EQUIP_MAX }, (_, i)=>{
-    const cid = eq[i];
-    if(!cid) return `<div class="eqSlot">+</div>`;
-    const c = cardById(cid);
-    return `<div class="eqSlot on" onclick="dunEquip('${cid}')">
-      ${imgFb(cardImg(cid), '🎴')}
-      <span class="exX">×</span></div>`;
+  const now   = Date.now();
+  const slots = dunSlotsOf(P);
+  const cds   = dunSlotCds(P);
+  const used  = slots.filter(Boolean).length;
+
+  const slotHtml = slots.map((cid, i)=>{
+    const cd  = cds[i] > now;
+    const sel = selSlot === i;
+    if(cid){
+      return `<div class="eqSlot on ${cd ? 'cd' : ''}" onclick="dunClearSlot(${i})" title="點一下拿下來">
+        ${imgFb(cardImg(cid), '🎴')}
+        <span class="exX">×</span>
+        ${cd ? `<span class="slotCd">${leftTxt(cds[i] - now)}</span>` : ''}
+      </div>`;
+    }
+    // 空格：冷卻中不能點
+    return `<div class="eqSlot ${sel ? 'sel' : ''} ${cd ? 'cd' : ''}"
+      ${cd ? '' : `onclick="dunPickSlot(${i})"`}>
+      ${cd ? `<span class="slotCd big">🔒<br>${leftTxt(cds[i] - now)}</span>` : (sel ? '選卡 ↓' : '+')}
+    </div>`;
   }).join('');
 
+  // 選了格子才顯示卡片列表 —— 流程是「先點格子，再點卡」
   let picker = '';
-  if(eqOpen){
+  if(selSlot !== null){
     const list = CARDS.filter(c => cardOwned(P, c.id)).map(c=>{
-      const on = eq.includes(c.id);
-      const blocked = !on && dunEquipLocked(P, c.id);
-      const own = cardOwned(P, c.id);
+      const inSlot  = slots.includes(c.id);
+      const blocked = dunEquipLocked(P, c.id) || inSlot;
+      const why     = dunEquipLocked(P, c.id) ? '已裝在<br>Boss' : '已放在<br>別格';
+      const own  = cardOwned(P, c.id);
       const tier = tierById(own.tier || 'normal');
-      return `<div class="pk ${on ? 'on' : ''} ${blocked ? 'blocked' : ''}"
-        ${blocked ? '' : `onclick="dunEquip('${c.id}')"`}>
+      return `<div class="pk ${blocked ? 'blocked' : ''}"
+        ${blocked ? '' : `onclick="dunPutCard('${c.id}')"`}>
         <div class="pkImg">${imgFb(cardImg(c.id), '🎴')}</div>
         <div class="pkNm" style="color:${tier.color}">${esc(c.name)}</div>
-        ${blocked ? '<div class="pkLock">已裝在<br>Boss</div>' : ''}
+        ${blocked ? `<div class="pkLock">${why}</div>` : ''}
       </div>`;
     }).join('');
-    picker = `<div class="cardPick" style="margin-top:11px">${list || '<div class="hint">你還沒有任何卡片</div>'}</div>`;
+    picker = `<div class="pickHd">要放進第 ${selSlot + 1} 格　
+        <span onclick="dunPickSlot(${selSlot})" style="color:var(--pink);cursor:pointer">取消</span></div>
+      <div class="cardPick">${list || '<div class="hint">你還沒有任何卡片</div>'}</div>`;
   }
 
-  return `<h2>地下城裝備　<span style="color:var(--muted)">${eq.length}/${DUN_EQUIP_MAX}</span></h2>
+  return `<h2>地下城裝備　<span style="color:var(--muted)">${used}/${DUN_EQUIP_MAX}</span></h2>
     <div class="panel">
-      <div class="eqSlots">${slots}</div>
-      <button class="btn" style="width:100%" onclick="toggleEq()">
-        ${eqOpen ? '收起卡片列表' : '選擇卡片'}</button>
-      ${picker}
+      <div class="eqSlots">${slotHtml}</div>
+      ${picker || `<div class="hint">點一個空格子，再選要放的卡片。</div>`}
       <div class="hint" style="margin-top:10px">
-        ${cd ? `<span class="warn">換卡冷卻中，還要 ${leftTxt(ready - Date.now())}</span><br>` : ''}
-        裝上新卡會進入 <b>${DUN_EQUIP_CD_H} 小時</b>冷卻（卸下不會）。
+        每一格的冷卻是<b>獨立</b>的 —— 放卡進某一格只鎖住那一格
+        <b>${DUN_EQUIP_CD_H} 小時</b>，其他格照樣可以放。<br>
+        拿下來隨時可以（誤放不會被卡住），但冷卻不會因此重置。
         已裝在 Boss 的卡在這裡是黑色的，不能重複裝。
       </div>
     </div>`;
