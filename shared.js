@@ -9,6 +9,9 @@
    本檔案不得出現任何 Firebase 呼叫，只放純資料與純函式。
 ================================================================== */
 (function (global) {
+  /* ⚠️ 改動 shared.js 之後，這個數字和四個 HTML 的 ?v= 都要一起 +1。
+     不然瀏覽器會沿用舊的 shared.js，新函式全部 undefined，畫面直接變白。 */
+  const SHARED_VERSION = 6;
   'use strict';
 
   /* ==============================================================
@@ -1148,6 +1151,7 @@
     // EP
     EP_START_LV, epTotal, epAvail,
     // 卡牌
+    SHARED_VERSION,
     PACKS, RARITIES, PACK_TIERS, TIER_ORDER, PACK_PITY_MAX, CARDS,
     FULL_RAR, RARITY_X, rarColorOf,
     // 合成
