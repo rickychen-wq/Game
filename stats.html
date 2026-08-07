@@ -407,6 +407,10 @@
     <div id="bossOpenList"></div>
     <div id="bossMsList" class="ctlHist"></div>
 
+    <h3>🃏 功能開放</h3>
+    <div id="featList"></div>
+    <div id="featHint" class="ctlHist"></div>
+
     <h3>🔄 全體刷商店</h3>
     <div class="ctlRow"><span class="ctlLbl">等級</span><div id="shopAllBtns" class="ctlBtns"></div></div>
     <button class="evBtn go" id="shopAllSend" style="width:100%;margin-top:6px">🔄 重刷全體今日卡包</button>
@@ -531,6 +535,8 @@ const {
   BOSS_FORCE_OPEN, bossOpenMap, bossStageOpen, bossMaxOpen,
   BOSS_MILESTONES, bossMilestoneAt, bossMilestoneWinner, BOSSES,
   getWeightsAdmin,
+  craftOpen, CRAFT_MATS, CRAFT_COIN, CRAFT_SLOTS, craftMatsOf, fullCardOf,
+  FULL_RAR, TASK_EXTRAS,
 } = window.GAME;
 
 const app = initializeApp(firebaseConfig);
@@ -595,7 +601,8 @@ onSnapshot(doc(db,'config','broadcast'), d=>{
 onSnapshot(doc(db,'config','system'), d=>{
   sysCfg = d.exists() ? (d.data() || {}) : {};
   setRuntime({ events: sysCfg.events || {}, adminEvent: sysCfg.adminEvent || null,
-               bossOpen: sysCfg.bossOpen || {}, bossClearWinners: sysCfg.bossClearWinners || {} });
+               bossOpen: sysCfg.bossOpen || {}, bossClearWinners: sysCfg.bossClearWinners || {},
+               craftOpen: sysCfg.craftOpen === true });
   renderConsole();
   renderAll();
 });
@@ -1278,17 +1285,18 @@ function renderDbgPicker(){
 }
 window.dbgPickPlayer = (id)=>{
   dbgId = id || null;
-  renderDebug();
+  renderDebug(true);          // 換人一定要重繪
   const z = $('debugZone');
   if(z) z.scrollIntoView({ behavior:'smooth', block:'start' });
 };
 window.jumpDebug = ()=> $('debugZone').scrollIntoView({ behavior:'smooth', block:'start' });
+let dbgOvOpen = false;        // 展開狀態存 JS 變數，重繪後不會自己折回去
 window.toggleDbgOverview = ()=>{
   const el = $('dbgOverview');
   if(!el) return;
-  const open = el.style.display !== 'none';
-  el.style.display = open ? 'none' : '';
-  $('dbgOvArrow').textContent = open ? '▸' : '▾';
+  dbgOvOpen = !dbgOvOpen;
+  el.style.display = dbgOvOpen ? '' : 'none';
+  $('dbgOvArrow').textContent = dbgOvOpen ? '▾' : '▸';
 };
 
 /* ---- 一般數值：設為 / 加減 ---- */
@@ -1394,9 +1402,11 @@ let shopDraft = [
   { pack:'', tier:'' }, { pack:'', tier:'' }, { pack:'', tier:'' }, { pack:'', tier:'' },
 ];   // 空字串 = 隨機
 
-function setShopSlot(i, field, v){ shopDraft[i][field] = v; renderDebug(); };
-window.shopAllTier = (tier)=>{ shopDraft.forEach(d=> d.tier = tier); renderDebug(); };
-window.shopAllRandom = ()=>{ shopDraft = shopDraft.map(()=>({ pack:'', tier:'' })); renderDebug(); };
+/* ⚠️ shopDraft 是 UI 草稿、不屬於玩家資料，不在 renderDebug 的 signature 內，
+   所以這三個一定要 force=true，否則按了不會有反應 */
+function setShopSlot(i, field, v){ shopDraft[i][field] = v; renderDebug(true); };
+window.shopAllTier = (tier)=>{ shopDraft.forEach(d=> d.tier = tier); renderDebug(true); };
+window.shopAllRandom = ()=>{ shopDraft = shopDraft.map(()=>({ pack:'', tier:'' })); renderDebug(true); };
 
 // 依草稿產生 offers（空 = 隨機）
 function buildOffers(draft){
@@ -1567,7 +1577,7 @@ window.dbgGrantCard = async ()=>{
 
 /* ---- 危險操作（兩段 confirm，第二段要輸入玩家名）---- */
 const DANGER = {
-  cards:  { t:'🧹 清空所有卡片', patch:()=>({ cards:{}, equipped:[] }) },
+  cards:  { t:'🧹 清空所有卡片', patch:()=>({ cards:{}, equipped:[], dex:{} }) },
   titles: { t:'🧹 清空所有稱號', patch:()=>({ shopTitles:[], craftedTitles:{}, equippedTitle:null }) },
   talent: { t:'🧹 重置天賦',     patch:()=>({ talents:{} }) },
   boss:   { t:'🧹 重置 Boss 進度', patch:()=>({ boss:{ stage:1, hp:BOSSES[0].hp, dots:[], milestones:[],
@@ -1579,7 +1589,7 @@ const DANGER = {
               lotteryPity:0, lotteryCount:0,
               cards:{}, equipped:[], equipSlotReadyAt:0, skillReady:{},
               packTickets:{}, packPity:0, dailyPacks:null, dailyStreaks:{}, bossFreePass:0,
-              potions:{}, activePotion:{}, coupons:0,
+              potions:{}, activePotion:{}, coupons:0, craftMats:{}, dex:{},
               boss:{ stage:1, hp:BOSSES[0].hp, dots:[], milestones:[],
                      lastTickAt:Date.now(), buff:false, zoneUntil:0 },
               tutorialDone:false, tutBoss:false, tutTalent:false, tutRank:false,
@@ -1609,11 +1619,56 @@ function dbgNumRow(label, path, cur, id, step){
   </div>`;
 }
 
-function renderDebug(){
+/* ⚠️ §7.1 的第三次踩坑（原本躲在編輯區裡）：
+   renderDebug 掛在 players 的 onSnapshot 上，只要任何一個弟弟做了任何動作就整段 innerHTML 重寫，
+   結果是「選好的下拉選單被洗回預設、數字打到一半消失」。
+   兩道防護：
+     ① 選中玩家的資料沒變就完全不重繪（擋掉其他玩家造成的雜訊，也是絕大多數的情況）
+     ② 真的要重繪時，先把所有 dbg_* 欄位的當前值存起來，重繪後還原（換玩家時不還原） */
+let dbgSig = '';        // 上次重繪時的「選中玩家 id + 資料快照」
+let dbgHtml = '';       // 上次的 HTML，用來反推有哪些欄位要保存
+let dbgLastId = null;
+
+function dbgFieldIds(html){
+  const out = [];
+  const re = /id="(dbg_[^"]+)"/g; let m;
+  while((m = re.exec(html || ''))) out.push(m[1]);
+  return out;
+}
+function setDbgBody(html, keepValues){
+  const prev = {};
+  if(keepValues){
+    dbgFieldIds(dbgHtml).forEach(id=>{
+      const el = $(id);
+      if(el && el.value !== undefined && el.value !== '') prev[id] = el.value;
+    });
+  }
+  $('dbgBody').innerHTML = html;
+  dbgHtml = html;
+  // 還原使用者的操作。這裡是桌機後台，重繪後立即寫回 value 是可靠的；
+  // 玩家端 index.html 一律用「狀態存 JS 變數」的做法，不靠這個
+  Object.keys(prev).forEach(id=>{
+    const el = $(id);
+    if(el && el.value !== undefined) el.value = prev[id];
+  });
+}
+
+function renderDebug(force){
   renderDbgPicker();
 
   const p = dbgP();
-  if(!p){ $('dbgBody').innerHTML = '<div class="empty">選一個玩家開始編輯</div>'; return; }
+  if(!p){
+    dbgSig = ''; dbgHtml = ''; dbgLastId = null;
+    $('dbgBody').innerHTML = '<div class="empty">選一個玩家開始編輯</div>';
+    return;
+  }
+  // ① 資料沒變就別動 DOM
+  let sig;
+  try { sig = dbgId + '|' + JSON.stringify(p); }
+  catch(e){ sig = dbgId + '|' + Date.now(); }     // 循環參照等意外 → 一律重繪
+  if(!force && sig === dbgSig) return;
+  const samePlayer = (dbgLastId === dbgId);
+  dbgSig = sig; dbgLastId = dbgId;
 
   const lv = levelFromXp(p.xp ?? 0);
   const eqLeft = Math.max(0, ((p.equipSlotReadyAt) || 0) - Date.now());
@@ -1623,10 +1678,10 @@ function renderDebug(){
   const cardCount = Object.keys((p.cards) || {}).length;
   const titleCount = ((p.shopTitles)||[]).length + Object.keys((p.craftedTitles)||{}).length;
 
-  $('dbgBody').innerHTML = `
+  setDbgBody(`
     <h3 style="cursor:pointer" onclick="toggleDbgOverview()">
-      <span id="dbgOvArrow">▸</span> 目前狀態總覽</h3>
-    <div id="dbgOverview" style="display:none" class="dbgWarn"
+      <span id="dbgOvArrow">${dbgOvOpen ? '▾' : '▸'}</span> 目前狀態總覽</h3>
+    <div id="dbgOverview" style="display:${dbgOvOpen ? '' : 'none'}" class="dbgWarn"
          data-x="color:var(--text)">
       金幣 <b style="color:${(p.coins??0)<0?'var(--pink)':'var(--gold)'}">${(p.coins ?? 0).toLocaleString()}</b>
       ／ XP ${(p.xp ?? 0).toLocaleString()}（Lv.${lv}）
@@ -1637,7 +1692,8 @@ function renderDebug(){
       ／ 卡包 pity ${p.packPity ?? 0}
       ／ 卡包券 ${PACK_TIERS.map(t=>`${t.name}${packTicketsOf(p)[t.id]}`).join(' ')}
       ／ 🎫 免時段券 ${p.bossFreePass ?? 0} ／ 🎟️ 折價券 ${p.coupons ?? 0}
-      ／ 📖 圖鑑 ${dexProgress(p).haveTotal}/16<br>
+      ／ 📖 圖鑑 ${dexProgress(p).haveTotal}/${dexProgress(p).grandTotal}
+      ／ ${CRAFT_MATS.map(m=>`${m.icon}${craftMatsOf(p)[m.id]}`).join(' ')}<br>
       Boss 第 ${boss.stage ?? 1} 關 HP ${(boss.hp ?? 0).toLocaleString()}/${(bossDef?.hp ?? 0).toLocaleString()}
       ／ 卡片 ${cardCount} 張 ／ 稱號 ${titleCount} 個
       ／ 換卡鎖 ${eqLeft > 0 ? Math.ceil(eqLeft/60000) + ' 分' : '無'}
@@ -1660,6 +1716,11 @@ function renderDebug(){
     </div>
     ${dbgNumRow('已耗 EP epSpent','epSpent', p.epSpent ?? 0, 'dbg_eps', 100)}
     ${dbgNumRow('Boss EP epBonus','epBonus', p.epBonus ?? 0, 'dbg_epb', 100)}
+
+    <h3>🃏 合成材料</h3>
+    ${CRAFT_MATS.map(m=>dbgNumRow(
+        `${m.icon} ${m.name} craftMats.${m.id}`, 'craftMats.'+m.id,
+        craftMatsOf(p)[m.id], 'dbg_cm_'+m.id, 1)).join('')}
 
     <h3>天賦</h3>
     ${dbgNumRow('額外點 bonusTokens','bonusTokens', p.bonusTokens ?? 0, 'dbg_btk', 1)}
@@ -1861,7 +1922,8 @@ function renderDebug(){
 
     <h3 style="color:#ff3c5a">危險操作（需輸入玩家名稱）</h3>
     <div class="dbgGrid">${Object.entries(DANGER).map(([k,d])=>
-      `<button class="dbgBtn danger" onclick="dbgDanger('${k}')">${d.t}</button>`).join('')}</div>`;
+      `<button class="dbgBtn danger" onclick="dbgDanger('${k}')">${d.t}</button>`).join('')}</div>`,
+    samePlayer);        // 換玩家時不還原舊值，避免把 A 的輸入帶到 B 身上
 
   dbgXpPreview();
 }
@@ -1913,6 +1975,8 @@ const GIFT_TYPES = [
   { id:'potion',       name:'🧪 藥水' },
   { id:'material',     name:'🟣 材料' },
   { id:'card',         name:'🃏 卡片' },
+  // 合成材料：從 CRAFT_MATS 自動長出來，之後加第三種材料不用改這裡
+  ...CRAFT_MATS.map(m=>({ id:'craft_'+m.id, name:`${m.icon} ${m.name}` })),
 ];
 
 window.pickBcStyle = v=>{ bcStyle = v; renderCtl(); };
@@ -2025,6 +2089,51 @@ function renderBossOpen(){
     }).join('');
 }
 
+/* ===== 功能開放：玩家端的合成系統總開關 =====
+   關閉時玩家端完全看不到合成入口（維持「敬請期待下次更新」）。
+   要改版時先關掉 → 上傳新檔 → 測完再打開，玩家不會看到半成品 */
+const FEATURES = [
+  { id:'craftOpen', icon:'🃏', name:'卡片合成', page:'玩家端「🃏 卡片合成」分頁',
+    on:'玩家可以用 2C+2B+1A+1S 合成全圖卡',
+    off:'玩家端顯示「敬請期待下次更新」，材料仍可正常累積' },
+];
+window.toggleFeature = async (id)=>{
+  const f = FEATURES.find(x=>x.id === id);
+  if(!f) return;
+  const cur = sysCfg[id] === true;
+  if(!confirm(`確定要${cur?'關閉':'開放'}「${f.name}」嗎？\n\n${cur ? f.off : f.on}\n\n影響範圍：${f.page}\n所有玩家會立即生效，不需要重新整理。`)) return;
+  try {
+    await saveSystemConfig({ [id]: !cur });
+    dbgToast(cur ? `已關閉 ${f.name}` : `已開放 ${f.name}`);
+  } catch(e){ dbgToast('切換失敗：'+e.message, true); }
+};
+
+function renderFeatures(){
+  if(typeof craftOpen !== 'function'){
+    $('featList').innerHTML = '<div class="dbgErr">shared.js 版本過舊，請一併上傳最新的 shared.js</div>';
+    $('featHint').innerHTML = '';
+    return;
+  }
+  $('featList').innerHTML = FEATURES.map(f=>{
+    const on = sysCfg[f.id] === true;
+    return `<div class="stgRow ${on?'open':''}">
+      <span class="stgNo">${f.icon}</span>
+      <span class="stgNm">${esc(f.name)}</span>
+      <span class="stgHp">${esc(f.page)}</span>
+      <button class="stgBtn ${on?'on':''}" onclick="toggleFeature('${f.id}')">${on?'已開放':'關閉中'}</button>
+    </div>`;
+  }).join('');
+  const co = sysCfg.craftOpen === true;
+  $('featHint').innerHTML =
+    `<div class="hRow">合成配方：同卡包 <b>2C + 2B + 1A + 1S</b>　+　${
+      CRAFT_MATS.map(m=>`${m.icon}×1`).join(' ')}　+　🪙 ${CRAFT_COIN.toLocaleString()}</div>` +
+    `<div class="hRow">成品等級權重：${CRAFT_SLOTS.map(x=>`${x.rar} ${x.w}%`).join('　')}
+      　（抽中哪一格，成品等級就是那一格投入的卡片等級）</div>` +
+    `<div class="hRow">產出：${PACKS.map(p=>esc((fullCardOf(p.id)||{}).name || '?')).join('、')}</div>` +
+    `<div class="hRow" style="color:${co?'var(--cyan)':'var(--muted)'}">${
+      co ? '目前開放中：玩家可以合成' : '目前關閉中：玩家端顯示「敬請期待下次更新」，🔑🧩 仍會正常累積'}</div>`;
+}
+
 window.resetMilestone = async (stage)=>{
   const w = bossMilestoneWinner(stage);
   if(!w) return;
@@ -2119,6 +2228,7 @@ $('giftSend').onclick = async ()=>{
         else if(giftType === 'coupons')      patch = { coupons: increment(n) };
         else if(giftType === 'potion')       patch = { [`potions.${giftPotType}.${giftPotV}`]: increment(n) };
         else if(giftType === 'material')    patch = { ['materials.'+giftMat]: increment(n) };
+        else if(giftType.startsWith('craft_')) patch = { ['craftMats.'+giftType.slice(6)]: increment(n) };
         else if(giftType === 'card'){
           const cur = { ...((sn.data().cards) || {}) };
           const own = cur[giftCard];
@@ -2203,6 +2313,7 @@ function renderCtl(force){
   });
 
   ctlSafe('Boss 關卡開放', 'bossOpenList', renderBossOpen);
+  ctlSafe('功能開放', 'featList', renderFeatures);
 
   ctlSafe('全體刷商店', 'shopAllBtns', ()=>{
     const sig = 'sa|' + shopAllTierPick;
