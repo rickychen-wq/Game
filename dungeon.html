@@ -249,7 +249,33 @@
 <div id="dmgPop"></div>
 <div id="clearBox"><div class="clearIn" id="clearIn"></div></div>
 
-<script src="./shared.js"></script>
+<script src="./shared.js?v=6"></script>
+<script>
+/* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
+   render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
+   ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
+(function(){
+  var NEED = 6;
+  var G = window.GAME;
+  if(G && G.SHARED_VERSION === NEED) return;
+  var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
+  document.addEventListener('DOMContentLoaded', function(){
+    document.body.innerHTML =
+      '<div style="max-width:420px;margin:80px auto;padding:28px 24px;border-radius:16px;'
+      + 'border:1px solid rgba(233,196,106,.35);background:#10121c;color:#e8eaf2;'
+      + 'font-family:system-ui,sans-serif;text-align:center;line-height:1.9">'
+      + '<div style="font-size:44px;margin-bottom:12px">🔄</div>'
+      + '<div style="font-size:18px;font-weight:900;margin-bottom:10px">需要重新載入</div>'
+      + '<div style="font-size:13px;color:#757b90">'
+      + '瀏覽器用的是舊版的 shared.js（需要 v' + NEED + '，目前是 ' + have + '）。<br>'
+      + '按下面的按鈕，或用 Ctrl+Shift+R（Mac 是 Cmd+Shift+R）強制重新整理。</div>'
+      + '<button onclick="location.reload(true)" style="margin-top:18px;padding:12px 22px;'
+      + 'border-radius:10px;border:none;background:#e9c46a;color:#1a1408;'
+      + 'font-size:14px;font-weight:900;cursor:pointer">重新載入</button></div>';
+  });
+})();
+</script>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
