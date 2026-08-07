@@ -11,7 +11,7 @@
 (function (global) {
   /* ⚠️ 改動 shared.js 之後，這個數字和四個 HTML 的 ?v= 都要一起 +1。
      不然瀏覽器會沿用舊的 shared.js，新函式全部 undefined，畫面直接變白。 */
-  const SHARED_VERSION = 6;
+  const SHARED_VERSION = 7;
   'use strict';
 
   /* ==============================================================
@@ -1032,8 +1032,24 @@
     zoneUntil: (((p && p.dun) || {}).zoneUntil) || 0,
   });
 
-  /* 地下城裝備（與 Boss 的 equipped 完全獨立，且不可重複裝同一張卡） */
-  const dunEquipOf = p => (Array.isArray(p && p.dungeonEquipped) ? p.dungeonEquipped : []).slice(0, DUN_EQUIP_MAX);
+  /* 地下城裝備：固定 4 個格子，每一格獨立、每一格有自己的冷卻。
+     ⚠️ 不能用「一個全域冷卻」——那樣放完第一張就鎖住兩小時，其他三格永遠填不滿。
+     dungeonEquipped 是長度 4 的稀疏陣列（空格是 null），dungeonSlotCd 是對應的冷卻時間 */
+  function dunSlotsOf(p){
+    const raw = Array.isArray(p && p.dungeonEquipped) ? p.dungeonEquipped : [];
+    const out = [];
+    for(let i = 0; i < DUN_EQUIP_MAX; i++) out.push(raw[i] || null);
+    return out;
+  }
+  function dunSlotCds(p){
+    const raw = Array.isArray(p && p.dungeonSlotCd) ? p.dungeonSlotCd : [];
+    const out = [];
+    for(let i = 0; i < DUN_EQUIP_MAX; i++) out.push(Math.max(0, Number(raw[i]) || 0));
+    return out;
+  }
+  const dunSlotReady = (p, i, t) => dunSlotCds(p)[i] <= (t ?? Date.now());
+  // 舊用法相容：只要「有裝哪些卡」的清單時用這個
+  const dunEquipOf = p => dunSlotsOf(p).filter(Boolean);
   const dunEquipLocked = (p, cardId) => ((p && p.equipped) || []).includes(cardId);   // 已裝在 Boss → 這裡不能裝
 
   /* 獎勵：前台只看得到「種類」，數量藏起來（金幣顯示 1~99,000，其他 1~99） */
@@ -1181,7 +1197,7 @@
     dungeonRegenTicks, dungeonApplyRegen, dungeonEpCost,
     dungeonFloorHp, dungeonFloorDone, dungeonLeftHp, dungeonProgress,
     dungeonOpen, dungeonExpired, dungeonJoined,
-    dunEquipOf, dunEquipLocked, dunStateOf,
+    dunEquipOf, dunEquipLocked, dunStateOf, dunSlotsOf, dunSlotCds, dunSlotReady,
     DUNGEON_REWARDS, dunRewardById, dunRewardsOf, dunRewardTotal,
     // 管理員臨時活動
     SOUL_IDX, ADMIN_EVENTS, ADMIN_DURATIONS, adminEventById,
