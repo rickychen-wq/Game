@@ -425,6 +425,12 @@
     { id:'B', prob:35, color:'#5aa9ff' },
     { id:'C', prob:45, color:'#8a8f9e' },
   ];
+  /* 全圖卡專屬稀有度。⚠️ 絕對不可以放進 RARITIES ——
+     RARITIES 是 rollRarity() 的抽卡池，放進去卡包就會直接開出全圖卡 */
+  const FULL_RAR  = 'X';
+  const RARITY_X  = { id:'X', name:'全圖', color:'#ff8c42' };
+  const rarColorOf = r => r === FULL_RAR ? RARITY_X.color
+                        : ((RARITIES.find(x => x.id === r) || RARITIES[3]).color);
   // 卡包等級：傷害倍率只影響傷害，EP 與 CD 完全不變
   const PACK_TIERS = [
     { id:'normal',  name:'普通', prob:70,  price:500,  mult:1.0, color:'#8a8f9e' },
@@ -496,6 +502,24 @@
     { id:'kuroko',     pack:'kuroko',   rar:'C', name:'黑子',   skills:[
        { id:'phantom', name:'幻影傳球',        ep:50,  dmg:0,   cd:3,  sp:'BUFF' },
        { id:'ignite',  name:'幻影射球',        ep:80,  dmg:80,  cd:2,  sp:null }]},
+    /* ===== 全圖卡（rar:'X'）=====
+       只能用 CRAFT_SLOTS 合成取得，不會從任何卡包開出。
+       數值 = 該卡包 S 卡 × 倍率，倍率各包不同是為了把「傷害/EP 效率」拉平到 6.0：
+         海賊王 ×3.0（基準）／火影 ×3.0（DOT 有 3 層上限，吞吐已被壓低）
+         黑籃   ×3.4        ／排球 ×3.8（原本 S 卡效率最低，不補會變下位卡） */
+    { id:'strawhat',  pack:'onepiece', rar:'X', name:'草帽一夥', skills:[
+       { id:'haoshoku',   name:'霸王色衝擊',      ep:160, dmg:720,  cd:6,  sp:null },
+       { id:'onigashima', name:'萬國突入·總攻擊', ep:240, dmg:1440, cd:12, sp:null }]},
+    { id:'karasuno',  pack:'haikyu',   rar:'X', name:'烏野高校', skills:[
+       { id:'synchro',    name:'同步速攻連鎖',    ep:60,  dmg:296,  cd:1,  sp:null },
+       { id:'fly',        name:'飛翔吧，烏野！',  ep:120, dmg:730,  cd:5,  sp:null }]},
+    { id:'konoha',    pack:'naruto',   rar:'X', name:'木葉聯合', skills:[
+       { id:'kagebunshin',name:'影分身千人斬',    ep:150, dmg:675,  cd:5,  sp:null },
+       { id:'bijudama',   name:'尾獸玉齊射',      ep:250, dmg:1500, cd:14, sp:'DOT' }]},
+    { id:'kiseki',    pack:'kuroko',   rar:'X', name:'奇蹟世代', skills:[
+       { id:'muga',       name:'無我的境界',      ep:100, dmg:510,  cd:8,  sp:null },
+       // sp:'DMGZONE' = 打傷害的同時開 ZONE（青峰的 ZONE 是純增益、0 傷害，這個不一樣）
+       { id:'allstar',    name:'ZONE全開·全明星', ep:230, dmg:1408, cd:12, sp:'DMGZONE' }]},
   ];
 
   /* ===== 卡包券分等級（v2.0 起）=====
@@ -583,6 +607,86 @@
   }
   function rollTier(){ return pickWeighted(PACK_TIERS, 'prob').id; }
 
+  /* ==============================================================
+     全圖卡合成
+     配方：同一個卡包的 2C + 2B + 1A + 1S（共 6 張）+ 材料 + 金幣
+     成品等級：每一格自帶權重，抽中哪一格 → 成品等級 = 那一格「投入的卡片等級」
+       例：2 張 C 都餵彩虹、其餘餵普通
+           → 彩虹 10+10 = 20%，普通 10+10+25+35 = 80%
+     這不是平均值，是加權抽籤，所以變異度大（刻意的：要有賭博感）
+  ============================================================== */
+  const CRAFT_SLOTS = [
+    { key:'c1', rar:'C', w:10 },
+    { key:'c2', rar:'C', w:10 },
+    { key:'b1', rar:'B', w:10 },
+    { key:'b2', rar:'B', w:10 },
+    { key:'a1', rar:'A', w:25 },
+    { key:'s1', rar:'S', w:35 },
+  ];
+  const CRAFT_COIN = 1500;                 // 合成金幣花費
+
+  /* 合成材料。之後要加第三種，只要在這裡加一行，三個檔案的 UI 都會自動長出來 */
+  const CRAFT_MATS = [
+    { id:'key',   icon:'🔑', name:'金鑰' },
+    { id:'shard', icon:'🧩', name:'碎片' },
+  ];
+  const CRAFT_MAT_COST = { key:1, shard:1 };   // 一次合成消耗
+
+  /* 任務附贈品：目前等於合成材料，但保留 path 讓之後能附贈別種東西
+     （例如 { id:'token', icon:'🔮', name:'結晶', path:'bonusTokens' }） */
+  const TASK_EXTRAS = CRAFT_MATS.map(m => ({ ...m, path: 'craftMats.' + m.id }));
+  const extraById   = id => TASK_EXTRAS.find(x => x.id === id) || null;
+
+  /* 從 task/template 取出乾淨的附贈清單：只留認得的 id 且數量 > 0 */
+  function extrasOf(t){
+    const raw = (t && t.extras) || {}, out = {};
+    TASK_EXTRAS.forEach(d => { const n = Math.floor(Number(raw[d.id]) || 0); if(n > 0) out[d.id] = n; });
+    return out;
+  }
+  const extrasTotal = ex => Object.values(extrasOf({ extras: ex })).reduce((a, b) => a + b, 0);
+  function extrasText(ex){
+    const o = extrasOf({ extras: ex });
+    return TASK_EXTRAS.filter(d => o[d.id]).map(d => `${d.icon}×${o[d.id]}`).join(' ');
+  }
+
+  /* 玩家持有的合成材料（舊資料沒有 craftMats 欄位 → 一律補 0） */
+  function craftMatsOf(p){
+    const m = (p && p.craftMats) || {}, out = {};
+    CRAFT_MATS.forEach(d => out[d.id] = Math.max(0, Math.floor(Number(m[d.id]) || 0)));
+    return out;
+  }
+  const craftMatEnough = p => {
+    const have = craftMatsOf(p);
+    return CRAFT_MATS.every(d => have[d.id] >= (CRAFT_MAT_COST[d.id] || 0));
+  };
+
+  /* 各卡包的全圖卡 */
+  const fullCardOf = packId => CARDS.find(c => c.pack === packId && c.rar === FULL_RAR) || null;
+  const isFullCard = id => (cardById(id) || {}).rar === FULL_RAR;
+
+  /* pick = { c1:'gold', c2:'normal', b1:..., b2:..., a1:..., s1:... }
+     回傳各等級的百分比（總和 100，前提是六格都填滿） */
+  function craftTierOdds(pick){
+    const out = {};
+    TIER_ORDER.forEach(t => out[t] = 0);
+    CRAFT_SLOTS.forEach(s => {
+      const t = (pick || {})[s.key];
+      if(t && out[t] !== undefined) out[t] += s.w;
+    });
+    return out;
+  }
+  /* 抽出成品等級：先照權重抽中一格，成品等級就是那一格投入的等級 */
+  function rollCraftTier(pick){
+    const list = CRAFT_SLOTS.filter(s => (pick || {})[s.key]);
+    if(!list.length) return 'normal';
+    const hit = pickWeighted(list, 'w');
+    return pick[hit.key] || 'normal';
+  }
+  /* 六格是否都填了，且填的等級是合法的 */
+  function craftPickReady(pick){
+    return CRAFT_SLOTS.every(s => TIER_ORDER.includes(((pick || {})[s.key]) || ''));
+  }
+
   /* 活動：打 Boss 傷害倍率 */
   function dmgMult(){ return 1 + eventAdd('dmg'); }
 
@@ -657,11 +761,15 @@
   const DEX_PACK_BONUS = 0.10;      // 單一動漫集滿
   const DEX_FULL_BONUS = 0.50;      // 全 16 張集滿
   const ownedCard = (p, id) => ((p && p.cards) || {})[id] || null;
+  /* 圖鑑用的「曾經擁有」：合成會把材料卡吃到 0 張並刪掉 cards 物件，
+     所以收集紀錄要獨立存在 players.dex（只增不減）。
+     後面的 || 是舊資料 fallback：dex 還沒建立前，持有中就算收集過，不需要遷移腳本 */
+  const everOwned = (p, id) => !!((p && p.dex) || {})[id] || !!ownedCard(p, id);
   // 某個動漫是否集滿 4 張
   function dexPackDone(p, packId){
     return ['S','A','B','C'].every(r=>{
       const c = cardOfPack(packId, r);
-      return c && ownedCard(p, c.id);
+      return c && everOwned(p, c.id);
     });
   }
   const dexFullDone = p => PACKS.every(pk => dexPackDone(p, pk.id));
@@ -674,15 +782,27 @@
     if(dexFullDone(p))         add += DEX_FULL_BONUS;
     return add;
   }
+  /* ⚠️ 全圖卡「算進 haveTotal（20 張）」但「不算進 done / dexPackDone」——
+     加成門檻永遠只看基礎四張，不然新玩家會被合成系統擋在 +50% 之外 */
   function dexProgress(p){
-    const packs = PACKS.map(pk=>({
-      id: pk.id, name: pk.name,
-      have: ['S','A','B','C'].filter(r=>{
-        const c = cardOfPack(pk.id, r); return c && ownedCard(p, c.id);
-      }).length,
-      done: dexPackDone(p, pk.id),
-    }));
-    return { packs, full: dexFullDone(p), haveTotal: packs.reduce((a,b)=>a+b.have,0) };
+    const packs = PACKS.map(pk=>{
+      const fc = fullCardOf(pk.id);
+      return {
+        id: pk.id, name: pk.name,
+        have: ['S','A','B','C'].filter(r=>{
+          const c = cardOfPack(pk.id, r); return c && everOwned(p, c.id);
+        }).length,
+        done: dexPackDone(p, pk.id),
+        fullCard: fc,
+        fullHave: !!(fc && everOwned(p, fc.id)),
+      };
+    });
+    const fulls = packs.filter(x => x.fullHave).length;
+    return {
+      packs, full: dexFullDone(p), fulls,
+      haveTotal: packs.reduce((a,b)=>a+b.have,0) + fulls,
+      grandTotal: PACKS.length * 4 + PACKS.length,
+    };
   }
 
   /* ==============================================================
@@ -752,6 +872,10 @@
      1-3 關固定開啟不可關；4-10 關可手動切換 */
   const BOSS_FORCE_OPEN = 3;          // 前 N 關強制開啟
   // 目前開放到第幾關（連續開放；第 4 關關掉時，就算第 5 關是開的也到不了）
+  /* 合成系統總開關：預設關閉。stats 後台按下去才會在玩家端整個長出來，
+     出問題時關掉就回到「敬請期待下次更新」，不用改 code 也不用重新部署 */
+  const craftOpen = () => runtime.craftOpen === true;
+
   function bossOpenMap(){ return (runtime.bossOpen || {}); }
   function bossStageOpen(stage){
     if(stage <= BOSS_FORCE_OPEN) return true;
@@ -846,6 +970,12 @@
     EP_START_LV, epTotal, epAvail,
     // 卡牌
     PACKS, RARITIES, PACK_TIERS, TIER_ORDER, PACK_PITY_MAX, CARDS,
+    FULL_RAR, RARITY_X, rarColorOf,
+    // 合成
+    CRAFT_SLOTS, CRAFT_COIN, CRAFT_MATS, CRAFT_MAT_COST, craftOpen,
+    TASK_EXTRAS, extraById, extrasOf, extrasTotal, extrasText,
+    craftMatsOf, craftMatEnough, fullCardOf, isFullCard, everOwned,
+    craftTierOdds, rollCraftTier, craftPickReady,
     EQUIP_MAX, EQUIP_LOCK_MS, BUFF_MULT, ZONE_MULT, ZONE_MS, DOT_HOURS, DOT_MAX_STACK,
     cardById, packById, tierById, skillOf, cardOfPack, tierBetter,
     packTicketsOf, packTicketTotal, BOSS_TICKET_ODDS, rollBossTicketTier,
