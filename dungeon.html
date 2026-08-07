@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>🏰 地下城</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#07080d; --panel-1:#10121c; --panel-2:#0b0d14;
+    --line:rgba(233,196,106,.16); --line-soft:rgba(233,196,106,.10);
+    --gold:#e9c46a; --gold-hi:#f7e3a1; --gold-deep:#c9a227; --gold-dim:#8a7a4a;
+    --cyan:#5ff0dc; --pink:#ff6b81; --red:#ff3c5a;
+    --text:#e8eaf2; --muted:#757b90; --dim:#454a5e;
+    --mono:'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; padding:0; background:var(--bg); color:var(--text);
+    font-family:'Noto Sans TC', system-ui, sans-serif; }
+  body{ min-height:100dvh; }
+
+  /* CRT 掃描線：紅色門會加重 */
+  body::after{ content:''; position:fixed; inset:0; pointer-events:none; z-index:9;
+    background:repeating-linear-gradient(180deg, rgba(0,0,0,0) 0 2px, rgba(0,0,0,.16) 2px 3px);
+    opacity:.45; transition:opacity .4s ease; }
+  body.red::after{ opacity:.8; }
+  body.red{ background:#0d0509; }
+
+  .wrap{ max-width:760px; margin:0 auto; padding:14px 14px 90px;
+    min-height:100dvh; display:flex; flex-direction:column; }
+
+  /* ===== 頂欄 ===== */
+  .top{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .back{ font-family:var(--mono); font-size:12px; font-weight:800; padding:8px 12px;
+    border-radius:9px; background:#12141d; border:1px solid var(--line);
+    color:var(--muted); text-decoration:none; }
+  .ttl{ font-family:var(--mono); font-size:15px; font-weight:800; letter-spacing:2px;
+    color:var(--gold); flex:1; }
+  .epChip{ font-family:var(--mono); font-size:12px; font-weight:800;
+    padding:7px 11px; border-radius:9px; background:#12141d;
+    border:1px solid var(--line); color:var(--cyan); white-space:nowrap; }
+
+  /* ===== 空狀態 ===== */
+  .empty{ margin-top:52px; text-align:center; padding:40px 22px; border-radius:16px;
+    border:1px dashed var(--line); background:var(--panel-2); }
+  .empty .ic{ font-size:48px; margin-bottom:14px; opacity:.55; }
+  .empty .t{ font-size:17px; font-weight:900; margin-bottom:8px; }
+  .empty .s{ font-family:var(--mono); font-size:12px; color:var(--muted); line-height:1.9; }
+
+  /* ===== 副本標頭 ===== */
+  .dHead{ padding:14px 15px; border-radius:14px; margin-bottom:14px;
+    border:1px solid var(--line); background:linear-gradient(160deg,#141824,#0b0d14); }
+  .dHead.red{ border-color:rgba(255,60,90,.45);
+    background:linear-gradient(160deg,#241016,#0d0509);
+    box-shadow:0 0 26px rgba(255,60,90,.16) inset; }
+  .dTop{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:10px; }
+  .dRank{ font-family:var(--mono); font-size:20px; font-weight:900; letter-spacing:1px; }
+  .dNm{ font-size:17px; font-weight:900; }
+  .dChip{ font-family:var(--mono); font-size:10.5px; font-weight:800;
+    padding:3px 8px; border-radius:99px; background:#12141d;
+    border:1px solid var(--line-soft); color:var(--muted); }
+  .dBarWrap{ height:9px; border-radius:99px; background:#12141d;
+    border:1px solid var(--line-soft); overflow:hidden; margin-bottom:7px; }
+  .dBar{ height:100%; background:linear-gradient(90deg,var(--gold-deep),var(--gold-hi));
+    transition:width .5s cubic-bezier(.2,.9,.2,1); }
+  .dHead.red .dBar{ background:linear-gradient(90deg,#8a1226,#ff3c5a); }
+  .dMeta{ font-family:var(--mono); font-size:11px; color:var(--muted); line-height:1.8; }
+
+  /* ===== 節點地圖 ===== */
+  .mapBox{ position:relative; padding:18px 12px 12px; border-radius:14px; margin-bottom:14px;
+    border:1px solid var(--line); background:var(--panel-2); overflow:hidden; }
+  .mapBox::before{ content:''; position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(120% 70% at 50% 0%, rgba(233,196,106,.07), transparent 62%); }
+  .mapSvg{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .mapSvg .lk{ stroke:#232838; stroke-width:2.5; fill:none; }
+  .mapSvg .lk.on{ stroke:var(--gold-deep); stroke-width:3; filter:drop-shadow(0 0 5px rgba(233,196,106,.55)); }
+  body.red .mapSvg .lk.on{ stroke:var(--red); filter:drop-shadow(0 0 6px rgba(255,60,90,.6)); }
+  .mapSvg .flow{ stroke:var(--gold-hi); stroke-width:3; fill:none;
+    stroke-dasharray:7 190; animation:flow 2.6s linear infinite; opacity:.85; }
+  body.red .mapSvg .flow{ stroke:#ff8fa3; }
+  @keyframes flow{ to{ stroke-dashoffset:-197; } }
+
+  .nodes{ position:relative; display:flex; flex-direction:column-reverse; gap:16px; }
+  .node{ position:relative; display:flex; align-items:center; gap:11px;
+    padding:11px 13px; border-radius:12px; cursor:pointer;
+    border:1px solid var(--line-soft); background:#0f111a; }
+  .node.done{ opacity:.42; }
+  .node.cur{ border-color:var(--gold); background:rgba(233,196,106,.09);
+    animation:pulse 2.2s ease-in-out infinite; }
+  body.red .node.cur{ border-color:var(--red); background:rgba(255,60,90,.10); }
+  @keyframes pulse{
+    0%,100%{ box-shadow:0 0 0 0 rgba(233,196,106,.32); }
+    50%    { box-shadow:0 0 0 7px rgba(233,196,106,0); } }
+  .node.lock{ opacity:.34; filter:grayscale(1); cursor:not-allowed; }
+  .node.sel{ outline:1px solid var(--cyan); outline-offset:1px; }
+  .nIc{ width:36px; height:36px; flex-shrink:0; border-radius:9px;
+    display:flex; align-items:center; justify-content:center; font-size:19px;
+    background:#12141d; border:1px solid var(--line-soft); }
+  .node.cur .nIc{ background:rgba(233,196,106,.14); border-color:var(--gold); }
+  .nBody{ flex:1; min-width:0; }
+  .nNm{ font-size:14px; font-weight:800; margin-bottom:4px; }
+  .nSub{ font-family:var(--mono); font-size:10.5px; color:var(--muted); }
+  .nHpWrap{ height:5px; border-radius:99px; background:#12141d; margin-top:5px; overflow:hidden; }
+  .nHp{ height:100%; background:var(--gold-deep); transition:width .45s ease; }
+  .node.cur .nHp{ background:linear-gradient(90deg,var(--gold-deep),var(--gold-hi)); }
+  .nTag{ font-family:var(--mono); font-size:10px; font-weight:800; flex-shrink:0;
+    padding:3px 7px; border-radius:99px; }
+  .nTag.ok{ background:rgba(95,240,220,.14); color:var(--cyan); }
+  .nTag.lk{ background:#12141d; color:var(--dim); }
+
+  /* ===== 小兵 ===== */
+  .mobGrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr));
+    gap:8px; margin-bottom:14px; }
+  .mob{ padding:9px 8px; border-radius:11px; cursor:pointer; text-align:center;
+    border:1px solid var(--line-soft); background:#0f111a; }
+  .mob.sel{ border-color:var(--cyan); background:rgba(95,240,220,.08);
+    box-shadow:0 0 0 1px rgba(95,240,220,.3); }
+  .mob.dead{ opacity:.3; filter:grayscale(1); cursor:not-allowed; }
+  .mob.boss{ grid-column:1/-1; padding:14px 12px; }
+  .mIc{ font-size:24px; margin-bottom:5px; }
+  .mob.boss .mIc{ font-size:40px; }
+  .mHp{ font-family:var(--mono); font-size:10.5px; font-weight:800; color:var(--muted); }
+  .mob.sel .mHp{ color:var(--cyan); }
+  .mBar{ height:4px; border-radius:99px; background:#12141d; margin-top:5px; overflow:hidden; }
+  .mBarIn{ height:100%; background:var(--gold-deep); transition:width .4s ease; }
+  .mob.boss .mBar{ height:7px; }
+  .mob.boss .mBarIn{ background:linear-gradient(90deg,#8a1226,var(--pink)); }
+
+  /* ===== 區塊 ===== */
+  h2{ font-family:var(--mono); font-size:11px; font-weight:800; letter-spacing:2px;
+    color:var(--gold-dim); margin:18px 0 9px; }
+  .panel{ padding:13px 14px; border-radius:13px; border:1px solid var(--line);
+    background:var(--panel-1); margin-bottom:13px; }
+
+  /* ===== 技能 ===== */
+  .skGrid{ display:grid; gap:8px; }
+  .skBtn{ display:flex; align-items:center; gap:10px; padding:11px 12px; width:100%;
+    border-radius:11px; cursor:pointer; text-align:left;
+    border:1px solid var(--line-soft); background:#0f111a; color:var(--text); }
+  .skBtn:disabled{ opacity:.35; cursor:not-allowed; }
+  .skBtn.fire{ animation:fire .4s ease; }
+  @keyframes fire{ 0%{transform:scale(1)} 40%{transform:scale(.96)} 100%{transform:scale(1)} }
+  .skCard{ font-family:var(--mono); font-size:10px; color:var(--dim); }
+  .skNm{ font-size:13.5px; font-weight:800; }
+  .skR{ margin-left:auto; text-align:right; flex-shrink:0; }
+  .skEp{ font-family:var(--mono); font-size:11px; font-weight:800; color:var(--cyan); }
+  .skDmg{ font-family:var(--mono); font-size:14px; font-weight:900; color:var(--gold-hi); }
+  .sTag{ font-family:var(--mono); font-size:9.5px; font-weight:800; padding:2px 6px;
+    border-radius:99px; background:rgba(233,196,106,.12); color:var(--gold); margin-left:5px; }
+
+  /* ===== 裝備 ===== */
+  .eqSlots{ display:grid; grid-template-columns:repeat(4,1fr); gap:7px; margin-bottom:11px; }
+  .eqSlot{ aspect-ratio:3/4; border-radius:10px; overflow:hidden; position:relative;
+    border:1px dashed var(--line); background:#0d0f17;
+    display:flex; align-items:center; justify-content:center; font-size:20px; color:var(--dim); }
+  .eqSlot.on{ border-style:solid; border-color:var(--gold); }
+  .eqSlot img{ width:100%; height:100%; object-fit:cover; }
+  .eqSlot .exX{ position:absolute; top:3px; right:3px; width:19px; height:19px;
+    border-radius:50%; background:rgba(0,0,0,.72); color:var(--pink);
+    font-size:12px; font-weight:900; display:flex; align-items:center; justify-content:center; }
+  .cardPick{ display:grid; grid-template-columns:repeat(auto-fill,minmax(78px,1fr)); gap:7px; }
+  .pk{ border-radius:10px; overflow:hidden; cursor:pointer; position:relative;
+    border:1px solid var(--line-soft); background:#0d0f17; }
+  .pk .pkImg{ aspect-ratio:3/4; width:100%; }
+  .pk .pkImg img{ width:100%; height:100%; object-fit:cover; }
+  .pk .pkFb{ width:100%; height:100%; display:flex; align-items:center;
+    justify-content:center; font-size:22px; background:#12141d; }
+  .pk .pkNm{ font-family:var(--mono); font-size:9.5px; font-weight:800;
+    padding:4px 3px; text-align:center; color:var(--muted);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pk.on{ border-color:var(--gold); }
+  .pk.blocked{ opacity:.3; filter:grayscale(1) brightness(.5); cursor:not-allowed; }
+  .pk .pkLock{ position:absolute; inset:0; display:flex; align-items:center;
+    justify-content:center; font-size:11px; font-weight:800; color:var(--pink);
+    background:rgba(0,0,0,.66); text-align:center; padding:4px; line-height:1.4; }
+
+  /* ===== 獎勵（數量藏起來）===== */
+  .rwList{ display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:8px; }
+  .rw{ padding:10px 8px; border-radius:11px; text-align:center;
+    border:1px solid var(--line-soft); background:#0f111a; }
+  .rwIc{ font-size:20px; margin-bottom:4px; }
+  .rwNm{ font-family:var(--mono); font-size:10.5px; color:var(--muted); margin-bottom:3px; }
+  .rwQ{ font-family:var(--mono); font-size:14px; font-weight:900; color:var(--gold-hi);
+    font-variant-numeric:tabular-nums; }
+
+  /* ===== 按鈕 / 提示 ===== */
+  .btn{ padding:13px 16px; border-radius:11px; font-size:14px; font-weight:900;
+    cursor:pointer; border:1px solid var(--line); background:#12141d; color:var(--text); }
+  .btn.gold{ background:linear-gradient(160deg,var(--gold),var(--gold-deep));
+    color:#1a1408; border-color:var(--gold-hi); }
+  .btn:disabled{ opacity:.4; cursor:not-allowed; }
+  .hint{ font-family:var(--mono); font-size:11px; color:var(--muted); line-height:1.85; }
+  .hint b{ color:var(--gold); }
+  .warn{ color:var(--pink); }
+
+  #toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(18px);
+    background:#12141d; border:1px solid var(--line); color:var(--text);
+    padding:11px 17px; border-radius:11px; font-size:13px; font-weight:700;
+    opacity:0; pointer-events:none; transition:.24s ease; z-index:60; max-width:88vw; }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  #dmgPop{ position:fixed; left:50%; top:34%; transform:translateX(-50%);
+    font-family:var(--mono); font-size:40px; font-weight:900; color:var(--gold-hi);
+    text-shadow:0 0 22px rgba(233,196,106,.6); opacity:0; pointer-events:none; z-index:58; }
+  #dmgPop.go{ animation:pop .95s cubic-bezier(.2,.9,.2,1); }
+  @keyframes pop{ 0%{opacity:0;transform:translateX(-50%) scale(.5)}
+    22%{opacity:1;transform:translateX(-50%) scale(1.14)}
+    64%{opacity:1;transform:translateX(-50%) scale(1)}
+    100%{opacity:0;transform:translateX(-50%) translateY(-38px) scale(.94)} }
+
+  /* ===== 通關 ===== */
+  #clearBox{ position:fixed; inset:0; z-index:70; display:none;
+    align-items:center; justify-content:center; padding:22px;
+    background:rgba(4,5,9,.93); backdrop-filter:blur(5px); }
+  #clearBox.show{ display:flex; }
+  .clearIn{ max-width:420px; width:100%; text-align:center; padding:28px 22px;
+    border-radius:18px; border:1px solid var(--gold);
+    background:linear-gradient(160deg,#1c1a12,#0b0d14);
+    box-shadow:0 0 60px rgba(233,196,106,.2); }
+  .clearIn .ci{ font-size:52px; margin-bottom:10px; }
+  .clearIn .ct{ font-size:22px; font-weight:900; color:var(--gold-hi); margin-bottom:6px; }
+  .clearIn .cs{ font-family:var(--mono); font-size:12px; color:var(--muted);
+    line-height:1.9; margin-bottom:18px; }
+  .bigNum{ font-family:var(--mono); font-size:30px; font-weight:900;
+    color:var(--cyan); font-variant-numeric:tabular-nums; margin:4px 0 2px; }
+
+  @media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important; } }
+  @media (max-width:420px){
+    .wrap{ padding:11px 11px 84px; }
+    .eqSlots{ gap:5px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <a class="back" href="./index.html">← 返回</a>
+    <div class="ttl" id="pageTtl">DUNGEON</div>
+    <div class="epChip" id="epChip">⚡ —</div>
+  </div>
+  <div id="root"></div>
+</div>
+
+<div id="toast"></div>
+<div id="dmgPop"></div>
+<div id="clearBox"><div class="clearIn" id="clearIn"></div></div>
+
+<script src="./shared.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, collection, doc, onSnapshot, updateDoc,
+  runTransaction, increment, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCMjNCwB1jC8S-wgCMQ2wnkdZxG22Gg10c",
+  authDomain: "game-b556f.firebaseapp.com",
+  projectId: "game-b556f",
+  storageBucket: "game-b556f.firebasestorage.app",
+  messagingSenderId: "162254677726",
+  appId: "1:162254677726:web:5371b0c883d8b81b99844f"
+};
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+const {
+  CARDS, PACK_TIERS, cardById, cardOfPack, skillOf, ownedCard, cardCounts,
+  tierById, skillDamage, dexBonusFor, potionAdd, activePotion,
+  epAvail, rarColorOf, FULL_RAR, DOT_HOURS, ZONE_MS,
+  DUNGEONS, DUN_REGEN_PCT, DUN_EP_MULT, DUN_EQUIP_MAX, DUN_EQUIP_CD_H,
+  dungeonDef, dungeonHp, dungeonMobs, dungeonApplyRegen, dungeonEpCost,
+  dungeonFloorHp, dungeonFloorDone, dungeonLeftHp, dungeonProgress,
+  dungeonExpired, dunEquipOf, dunEquipLocked, dunStateOf,
+  DUNGEON_REWARDS, dunRewardsOf, setRuntime, dmgMult,
+} = window.GAME;
+
+const cardOwned = ownedCard;
+
+const $   = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let me   = localStorage.getItem('taskboard_me') || null;
+let P    = null;      // 我的玩家資料
+let DUN  = null;      // dungeons/active
+let busy = false;
+
+/* UI 狀態一律存 JS 變數，不放 DOM —— snapshot 隨時會重繪（§7.1） */
+let penalties = [];   // 禁閉是從 penalties 即時算的，player 上沒有 locked 欄位
+const isLocked = () => penalties.some(x => x.playerId === me && x.type === 'lock' && x.status !== 'cleared');
+
+let selMob   = 0;     // 當前層選中的小兵 index
+let eqOpen   = false; // 裝備面板是否展開
+let rollTimer = null; // 獎勵數字滾動
+
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(()=> t.classList.remove('show'), 2600);
+}
+function dmgPop(n, marks){
+  const el = $('dmgPop');
+  el.innerHTML = Number(n).toLocaleString() + (marks ? `<span style="font-size:17px;color:var(--cyan)"> ${marks}</span>` : '');
+  el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');
+}
+const cardImg = id => `assets/cards/${id}.png`;
+const dunImg  = id => `assets/dungeons/${String(id).toLowerCase()}.png`;
+function imgFb(src, fbEmoji){
+  return `<img src="${src}" alt="" loading="lazy"
+    onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+    <span class="pkFb" style="display:none">${fbEmoji}</span>`;
+}
+function leftTxt(ms){
+  if(ms <= 0) return '已結束';
+  const d = Math.floor(ms/86400000), h = Math.floor(ms/3600000) % 24, m = Math.floor(ms/60000) % 60;
+  return d ? `${d} 天 ${h} 小時` : (h ? `${h} 小時 ${m} 分` : `${m} 分`);
+}
+
+/* ===== 監聽 ===== */
+if(!me){
+  $('root').innerHTML = `<div class="empty"><div class="ic">🔒</div>
+    <div class="t">尚未登入</div>
+    <div class="s">請先回主頁登入，再進來地下城</div></div>`;
+} else {
+  onSnapshot(doc(db,'players',me), d=>{
+    P = d.exists() ? (d.data() || {}) : null;
+    render();
+  });
+  onSnapshot(collection(db,'penalties'), snap=>{
+    penalties = [];
+    snap.forEach(d => penalties.push({ id:d.id, ...d.data() }));
+    render();
+  });
+  onSnapshot(doc(db,'dungeons','active'), d=>{
+    DUN = d.exists() ? (d.data() || {}) : null;
+    setRuntime({ dungeon: DUN });
+    selMob = 0;
+    render();
+  });
+  onSnapshot(doc(db,'config','system'), d=>{
+    const c = d.exists() ? (d.data() || {}) : {};
+    setRuntime({ events: c.events || {}, adminEvent: c.adminEvent || null });
+    render();
+  });
+}
+
+/* ==================================================================
+   出手
+================================================================== */
+window.dunSel = (i)=>{ selMob = i; render(); };
+window.toggleEq = ()=>{ eqOpen = !eqOpen; render(); };
+
+window.dunEquip = async (cardId)=>{
+  if(busy || !P) return;
+  const cur = dunEquipOf(P);
+  const has = cur.includes(cardId);
+  if(!has){
+    if(dunEquipLocked(P, cardId)) return toast('這張已經裝在 Boss 那邊了');
+    if(cur.length >= DUN_EQUIP_MAX) return toast(`最多只能裝 ${DUN_EQUIP_MAX} 張`);
+    const ready = P.dungeonEquipReadyAt || 0;
+    if(Date.now() < ready) return toast(`換卡冷卻中，還要 ${leftTxt(ready - Date.now())}`);
+  }
+  const next = has ? cur.filter(x=>x !== cardId) : [...cur, cardId];
+  busy = true; render();
+  try {
+    await updateDoc(doc(db,'players',me), {
+      dungeonEquipped: next,
+      // 只有「裝上」才進冷卻；卸下不罰，免得誤裝就卡兩小時
+      ...(has ? {} : { dungeonEquipReadyAt: Date.now() + DUN_EQUIP_CD_H * 3600000 }),
+    });
+  } catch(e){ toast(e.message); }
+  busy = false; render();
+};
+
+window.dunCast = async (cardId, skillId, ev)=>{
+  if(busy) return;
+  const btn = ev && ev.currentTarget ? ev.currentTarget : null;
+  const k = skillOf(cardId, skillId);
+  if(!k || !P || !DUN || DUN.status !== 'open') return;
+  if(isLocked())            return toast('🔒 禁閉中，先完成贖罪任務');
+  if(dungeonExpired(DUN))   return toast('這座地下城已經過期了');
+  const cost = dungeonEpCost(k.ep);
+  if(epAvail(P) < cost)     return toast(`EP 不夠，還差 ${cost - epAvail(P)}`);
+
+  const def = dungeonDef(DUN.tier);
+  const fi  = DUN.cur || 0;
+  const fl  = (DUN.floors || [])[fi];
+  if(!def || !fl) return;
+  if((fl.hp[selMob] ?? 0) <= 0) return toast('先選一隻還活著的小兵');
+
+  if(btn && !REDUCED){ btn.classList.remove('fire'); void btn.offsetWidth; btn.classList.add('fire'); }
+  busy = true; render();
+
+  let fx = null, cleared = false;
+  try {
+    await runTransaction(db, async tx=>{
+      const pRef = doc(db,'players',me);
+      const dRef = doc(db,'dungeons','active');
+      // ⚠️ §7.6：所有 read 必須在任何 write 之前
+      const pS = await tx.get(pRef);
+      const dS = await tx.get(dRef);
+      const cur = pS.data() || {};
+      const d   = dS.data();
+      if(!d || d.status !== 'open') throw new Error('地下城已經關閉了');
+      if(d.endsAt && Date.now() > d.endsAt) throw new Error('這座地下城已經過期了');
+      if(epAvail(cur) < cost) throw new Error(`EP 不夠，還差 ${cost - epAvail(cur)}`);
+
+      const now = Date.now();
+      const dd  = dungeonDef(d.tier);
+      if(!dd) throw new Error('地下城資料異常');
+
+      // 先結算離線期間的回血（死掉的不復活、滿血的不變）
+      let floors = (d.floors || []).map(f=>({ hp:[...(f.hp || [])] }));
+      let lastRegenAt = d.lastRegenAt || d.openedAt || now;
+      const reg = dungeonApplyRegen({ ...d, floors, lastRegenAt }, now);
+      if(reg){ floors = reg.floors; lastRegenAt = reg.lastRegenAt; }
+
+      let ci = d.cur || 0;
+      let flr = floors[ci];
+      if(!flr) throw new Error('地下城資料異常');
+      // 目標可能在別人打的時候死了 → 自動改打同層第一隻還活著的
+      let ti = selMob;
+      if((flr.hp[ti] ?? 0) <= 0) ti = flr.hp.findIndex(h => h > 0);
+      if(ti < 0) throw new Error('這一層已經清空了，重新整理看看');
+
+      // ── 傷害 ──
+      const own = cardOwned(cur, cardId);
+      if(!own) throw new Error('你沒有這張卡了');
+      if(!dunEquipOf(cur).includes(cardId)) throw new Error('這張卡沒有裝在地下城');
+      const st = dunStateOf(cur);
+      const zoneOn = st.zoneUntil > now;
+      const upd = { epSpent: increment(cost) };
+      if(activePotion(cur,'dmg') > 0 && k.dmg > 0) upd['activePotion.dmg'] = null;
+
+      let dealt = 0, sp = k.sp;
+      if(k.sp === 'BUFF'){
+        upd['dun.buff'] = true;
+      } else if(k.sp === 'ZONE'){
+        upd['dun.zoneUntil'] = now + ZONE_MS;
+      } else {
+        // DOT 在地下城「立即打滿」，總傷害相同、只是不分 10 小時
+        dealt = skillDamage(k.dmg, own.tier || 'normal', { buff: st.buff, zone: zoneOn,
+          dexAdd: dexBonusFor(cur, cardId), potionAdd: potionAdd(cur, 'dmg') });
+        if(st.buff) upd['dun.buff'] = false;
+        if(k.sp === 'DMGZONE') upd['dun.zoneUntil'] = now + ZONE_MS;
+      }
+
+      const marks = [];
+      if(k.sp !== 'BUFF' && k.sp !== 'ZONE'){
+        if(zoneOn)    marks.push('×1.35');
+        if(st.buff)   marks.push('×1.35');
+        if(dmgMult() > 1) marks.push('×2');
+      }
+
+      // ── 扣血：溢出的傷害會自動打到同層下一隻，不浪費 ──
+      let rest = dealt;
+      while(rest > 0){
+        if((flr.hp[ti] ?? 0) <= 0){
+          ti = flr.hp.findIndex(h => h > 0);
+          if(ti < 0) break;
+        }
+        const cut = Math.min(flr.hp[ti], rest);
+        flr.hp[ti] -= cut; rest -= cut;
+      }
+
+      // ── 推進樓層 ──
+      while(ci < floors.length && dungeonFloorDone(floors[ci])) ci++;
+      const allDone = ci >= floors.length;
+
+      const dPatch = {
+        floors, lastRegenAt,
+        cur: Math.min(ci, floors.length - 1),
+        totalDmg: increment(dealt),          // ⚠️ 只記合計，永遠不存個人傷害
+        [`joined.${me}`]: true,              // 只存布林：有沒有出手過
+      };
+      if(allDone){ dPatch.status = 'cleared'; dPatch.clearedAt = now; }
+
+      tx.update(pRef, upd);
+      tx.update(dRef, dPatch);
+      fx = { dealt, sp, marks: marks.join(' '), name: k.name, ti };
+      cleared = allDone;
+    });
+  } catch(e){ toast(e.message); busy = false; render(); return; }
+
+  busy = false;
+  if(fx){
+    if(fx.sp === 'BUFF')      toast('✨ 下一招 +35%');
+    else if(fx.sp === 'ZONE') toast('🔵 ZONE 啟動・8 小時內 +35%');
+    else {
+      dmgPop(fx.dealt, fx.marks);
+      if(fx.sp === 'DOT')     setTimeout(()=> toast('☠️ 持續傷害在地下城會一次打滿'), 500);
+      if(fx.sp === 'DMGZONE') setTimeout(()=> toast('🔵 ZONE 啟動・8 小時內 +35%'), 500);
+    }
+  }
+  render();
+  if(cleared) setTimeout(showClear, 700);
+};
+
+/* ==================================================================
+   領獎
+================================================================== */
+window.dunClaim = async ()=>{
+  if(busy || !DUN || DUN.status !== 'cleared') return;
+  if((DUN.claimed || {})[me]) return toast('你已經領過了');
+  if(!(DUN.joined || {})[me]) return toast('這座地下城你沒有出手過，領不到獎勵');
+  busy = true; render();
+  try {
+    await runTransaction(db, async tx=>{
+      const pRef = doc(db,'players',me);
+      const dRef = doc(db,'dungeons','active');
+      const pS = await tx.get(pRef);           // read 全部先做完
+      const dS = await tx.get(dRef);
+      const cur = pS.data() || {};
+      const d = dS.data();
+      if(!d || d.status !== 'cleared') throw new Error('還沒通關');
+      if((d.claimed || {})[me])  throw new Error('你已經領過了');
+      if(!(d.joined || {})[me])  throw new Error('這座地下城你沒有出手過');
+
+      const rw = dunRewardsOf(d);
+      const upd = {};
+      DUNGEON_REWARDS.forEach(r=>{
+        const n = rw[r.id]; if(!n) return;
+        if(r.path.startsWith('packTickets.') && typeof cur.packTickets === 'number'){
+          // 舊資料 packTickets 是數字 → 先轉成 map 再加，不然會覆蓋掉
+          const tier = r.path.split('.')[1];
+          const base = { normal: cur.packTickets || 0, gold:0, diamond:0, rainbow:0 };
+          upd.packTickets = { ...base, [tier]: (base[tier] || 0) + n };
+        } else {
+          upd[r.path] = increment(n);
+        }
+      });
+      tx.update(pRef, upd);
+      tx.update(dRef, { [`claimed.${me}`]: true });
+      tx.set(doc(collection(db,'ledger')), {
+        playerId: me, kind:'dungeon', delta: rw.coins || 0,
+        label: `地下城 ${(dungeonDef(d.tier)||{}).name || d.tier} 通關`,
+        meta: { tier: d.tier, rewards: rw, totalDmg: d.totalDmg || 0 },
+        createdAt: serverTimestamp(),
+      });
+    });
+    toast('🎁 獎勵已入袋');
+    $('clearBox').classList.remove('show');
+  } catch(e){ toast(e.message); }
+  busy = false; render();
+};
+
+/* ==================================================================
+   渲染
+================================================================== */
+function render(){
+  if(!me) return;
+  $('epChip').textContent = P ? `⚡ ${epAvail(P).toLocaleString()}` : '⚡ —';
+
+  const def = DUN ? dungeonDef(DUN.tier) : null;
+  const red = !!(def && def.red);
+  document.body.classList.toggle('red', red && !!DUN && DUN.status === 'open');
+  $('pageTtl').textContent = def ? `${def.id} · ${def.name}` : 'DUNGEON';
+
+  if(!P){
+    $('root').innerHTML = `<div class="empty"><div class="ic">🔒</div>
+      <div class="t">找不到玩家資料</div>
+      <div class="s">回主頁重新登入試試</div></div>`;
+    return;
+  }
+  // 通關後也回到「沒有地下城」，但先讓還沒領獎的人領
+  const cleared = DUN && DUN.status === 'cleared';
+  const canClaim = cleared && (DUN.joined || {})[me] && !(DUN.claimed || {})[me];
+  if(!DUN || (cleared && !canClaim)){
+    stopRoll();
+    $('root').innerHTML = `<div class="empty"><div class="ic">🏰</div>
+      <div class="t">目前沒有地下城</div>
+      <div class="s">等媽媽或哥哥開新的一座<br>開了之後這裡就會出現地圖</div></div>`;
+    return;
+  }
+  if(!def){
+    $('root').innerHTML = `<div class="empty"><div class="ic">⚠️</div>
+      <div class="t">地下城資料異常</div>
+      <div class="s">請告訴哥哥：tier = ${esc(String(DUN.tier))}</div></div>`;
+    return;
+  }
+
+  if(cleared){ $('root').innerHTML = clearedHtml(def); startRoll(); return; }
+
+  const pg      = dungeonProgress(DUN);
+  const fi      = DUN.cur || 0;
+  const floors  = DUN.floors || [];
+  const expired = dungeonExpired(DUN);
+  const pending = dungeonApplyRegen(DUN, Date.now());
+
+  $('root').innerHTML =
+    headHtml(def, pg, expired, pending)
+    + mapHtml(def, floors, fi)
+    + mobHtml(def, floors, fi)
+    + skillHtml(expired)
+    + equipHtml()
+    + rewardHtml()
+    + `<div class="hint" style="margin-top:14px">
+        地下城的 EP 消耗是打 Boss 的 <b>一半</b>，而且<b>沒有時段限制</b>，有 EP 隨時能打。<br>
+        獎勵是<b>每個出手過的人都拿全額</b>，不看打了多少傷害 —— 打一下跟打一千下拿一樣多。<br>
+        沒出手過的人領不到。每 12 小時，還活著的小兵會回復最大血量的 ${Math.round(DUN_REGEN_PCT*100)}%。
+      </div>`;
+  startRoll();
+}
+
+function headHtml(def, pg, expired, pending){
+  return `<div class="dHead ${def.red ? 'red' : ''}">
+    <div class="dTop">
+      <span class="dRank" style="color:${def.color}">${def.id}</span>
+      <span class="dNm">${def.icon} ${esc(def.name)}</span>
+      <span class="dChip">${def.floors.length} 關</span>
+      <span class="dChip">${dungeonMobs(def)} 隻</span>
+      ${expired ? '<span class="dChip" style="color:var(--pink);border-color:var(--pink)">已過期</span>' : ''}
+    </div>
+    <div class="dBarWrap"><span class="dBar" style="width:${pg.pct}%"></span></div>
+    <div class="dMeta">
+      進度 ${pg.pct}%　剩餘 ${pg.left.toLocaleString()} / ${pg.max.toLocaleString()}<br>
+      我們一起打了 <b style="color:var(--cyan)">${(DUN.totalDmg || 0).toLocaleString()}</b> 傷害
+      　${DUN.endsAt ? `剩 ${leftTxt(DUN.endsAt - Date.now())}` : '不限時'}
+      ${pending && pending.healed > 0
+        ? `<br><span class="warn">⚠️ 太久沒人來，小兵回復了 ${pending.healed.toLocaleString()} 點血量</span>` : ''}
+    </div>
+  </div>`;
+}
+
+/* 節點地圖：由下往上推進（flex column-reverse），SVG 連線隨進度亮起 */
+function mapHtml(def, floors, fi){
+  const n = def.floors.length;
+  const seg = 100 / n;
+  const lines = def.floors.map((f, i)=>{
+    if(i === 0) return '';
+    const done = i <= fi;
+    const y1 = 100 - (i * seg) + seg * 0.18;
+    const y2 = 100 - (i * seg) - seg * 0.18;
+    return `<line class="lk ${done ? 'on' : ''}" x1="50%" y1="${y1}%" x2="50%" y2="${y2}%"/>`
+         + (i === fi ? `<line class="flow" x1="50%" y1="${y1}%" x2="50%" y2="${y2}%"/>` : '');
+  }).join('');
+
+  const nodes = def.floors.map((f, i)=>{
+    const fl = floors[i] || { hp:[] };
+    const max = f.mobHp * f.count;
+    const left = dungeonFloorHp(fl);
+    const done = left <= 0;
+    const cur  = i === fi && !done;
+    const lock = i > fi;
+    const alive = (fl.hp || []).filter(h => h > 0).length;
+    const cls = done ? 'done' : cur ? 'cur' : lock ? 'lock' : '';
+    return `<div class="node ${cls}">
+      <span class="nIc">${done ? '✅' : lock ? '🔒' : (f.boss ? '👑' : '⚔️')}</span>
+      <div class="nBody">
+        <div class="nNm">第 ${i+1} 關　${esc(f.name)}</div>
+        <div class="nSub">${done ? '已清空'
+          : lock ? `${f.count} 隻・單隻 ${f.mobHp.toLocaleString()}`
+          : `剩 ${alive}/${f.count} 隻　${left.toLocaleString()} / ${max.toLocaleString()}`}</div>
+        ${done || lock ? '' : `<div class="nHpWrap"><span class="nHp" style="width:${max?left/max*100:0}%"></span></div>`}
+      </div>
+      <span class="nTag ${done ? 'ok' : 'lk'}">${done ? '通過' : lock ? '未解鎖' : '進行中'}</span>
+    </div>`;
+  }).join('');
+
+  return `<div class="mapBox">
+    <svg class="mapSvg" preserveAspectRatio="none">${lines}</svg>
+    <div class="nodes">${nodes}</div>
+  </div>`;
+}
+
+function mobHtml(def, floors, fi){
+  const f  = def.floors[fi];
+  const fl = floors[fi];
+  if(!f || !fl) return '';
+  // 選中的死了就自動跳到第一隻活的
+  if((fl.hp[selMob] ?? 0) <= 0){
+    const alt = fl.hp.findIndex(h => h > 0);
+    if(alt >= 0) selMob = alt;
+  }
+  const cells = (fl.hp || []).map((hp, i)=>{
+    const dead = hp <= 0;
+    const pct  = f.mobHp ? hp / f.mobHp * 100 : 0;
+    return `<button class="mob ${f.boss ? 'boss' : ''} ${dead ? 'dead' : ''} ${(!dead && i === selMob) ? 'sel' : ''}"
+      ${dead ? 'disabled' : ''} onclick="dunSel(${i})">
+      <div class="mIc">${dead ? '💀' : (f.boss ? '👑' : '👺')}</div>
+      <div class="mHp">${dead ? '已擊倒' : hp.toLocaleString()}</div>
+      ${dead ? '' : `<div class="mBar"><span class="mBarIn" style="width:${pct}%"></span></div>`}
+    </button>`;
+  }).join('');
+  return `<h2>第 ${fi+1} 關　${esc(f.name)}</h2>
+    <div class="mobGrid">${cells}</div>`;
+}
+
+function skillHtml(expired){
+  const eq = dunEquipOf(P);
+  if(!eq.length){
+    return `<h2>技能</h2><div class="panel">
+      <div class="hint">還沒有裝備地下城卡片。<br>
+        地下城的裝備欄跟 Boss <b>完全獨立</b>，最多 ${DUN_EQUIP_MAX} 張，
+        已經裝在 Boss 那邊的卡不能重複裝。</div></div>`;
+  }
+  const st = dunStateOf(P);
+  const zoneOn = st.zoneUntil > Date.now();
+  const rows = eq.map(cid=>{
+    const c = cardById(cid), own = cardOwned(P, cid);
+    if(!c || !own) return '';
+    const tier = tierById(own.tier || 'normal');
+    return c.skills.map(k=>{
+      const cost = dungeonEpCost(k.ep);
+      const real = k.dmg > 0
+        ? skillDamage(k.dmg, own.tier || 'normal', { buff: st.buff, zone: zoneOn,
+            dexAdd: dexBonusFor(P, cid), potionAdd: potionAdd(P, 'dmg') })
+        : 0;
+      const dis = expired || busy || epAvail(P) < cost;
+      const tag = k.sp === 'DOT' ? '<span class="sTag">立即打滿</span>'
+                : k.sp === 'BUFF' ? '<span class="sTag">下次 +35%</span>'
+                : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>'
+                : k.sp === 'DMGZONE' ? '<span class="sTag">傷害 + ZONE</span>' : '';
+      return `<button class="skBtn" ${dis ? 'disabled' : ''} onclick="dunCast('${cid}','${k.id}',event)">
+        <div>
+          <div class="skCard">${esc(c.name)}
+            <span style="color:${tier.color}">${tier.name}</span></div>
+          <div class="skNm">${esc(k.name)}${tag}</div>
+        </div>
+        <div class="skR">
+          <div class="skEp">EP ${cost}</div>
+          <div class="skDmg">${real ? real.toLocaleString() : '—'}</div>
+        </div>
+      </button>`;
+    }).join('');
+  }).join('');
+  return `<h2>技能　<span style="color:var(--muted)">EP 消耗已砍半</span></h2>
+    ${st.buff || zoneOn ? `<div class="panel" style="margin-bottom:9px">
+      <div class="hint">${st.buff ? '✨ 下一個傷害技能 +35%　' : ''}
+        ${zoneOn ? `🔵 ZONE 生效中・剩 ${leftTxt(st.zoneUntil - Date.now())}` : ''}</div></div>` : ''}
+    <div class="skGrid">${rows}</div>`;
+}
+
+function equipHtml(){
+  const eq = dunEquipOf(P);
+  const ready = P.dungeonEquipReadyAt || 0;
+  const cd = ready > Date.now();
+  const slots = Array.from({ length: DUN_EQUIP_MAX }, (_, i)=>{
+    const cid = eq[i];
+    if(!cid) return `<div class="eqSlot">+</div>`;
+    const c = cardById(cid);
+    return `<div class="eqSlot on" onclick="dunEquip('${cid}')">
+      ${imgFb(cardImg(cid), '🎴')}
+      <span class="exX">×</span></div>`;
+  }).join('');
+
+  let picker = '';
+  if(eqOpen){
+    const list = CARDS.filter(c => cardOwned(P, c.id)).map(c=>{
+      const on = eq.includes(c.id);
+      const blocked = !on && dunEquipLocked(P, c.id);
+      const own = cardOwned(P, c.id);
+      const tier = tierById(own.tier || 'normal');
+      return `<div class="pk ${on ? 'on' : ''} ${blocked ? 'blocked' : ''}"
+        ${blocked ? '' : `onclick="dunEquip('${c.id}')"`}>
+        <div class="pkImg">${imgFb(cardImg(c.id), '🎴')}</div>
+        <div class="pkNm" style="color:${tier.color}">${esc(c.name)}</div>
+        ${blocked ? '<div class="pkLock">已裝在<br>Boss</div>' : ''}
+      </div>`;
+    }).join('');
+    picker = `<div class="cardPick" style="margin-top:11px">${list || '<div class="hint">你還沒有任何卡片</div>'}</div>`;
+  }
+
+  return `<h2>地下城裝備　<span style="color:var(--muted)">${eq.length}/${DUN_EQUIP_MAX}</span></h2>
+    <div class="panel">
+      <div class="eqSlots">${slots}</div>
+      <button class="btn" style="width:100%" onclick="toggleEq()">
+        ${eqOpen ? '收起卡片列表' : '選擇卡片'}</button>
+      ${picker}
+      <div class="hint" style="margin-top:10px">
+        ${cd ? `<span class="warn">換卡冷卻中，還要 ${leftTxt(ready - Date.now())}</span><br>` : ''}
+        裝上新卡會進入 <b>${DUN_EQUIP_CD_H} 小時</b>冷卻（卸下不會）。
+        已裝在 Boss 的卡在這裡是黑色的，不能重複裝。
+      </div>
+    </div>`;
+}
+
+/* 獎勵：只給種類，數量用滾動數字蓋住（金幣 1~99,000、其他 1~99） */
+function rewardHtml(){
+  const rw = dunRewardsOf(DUN);
+  const list = DUNGEON_REWARDS.filter(r => rw[r.id]);
+  if(!list.length) return '';
+  return `<h2>通關獎勵　<span style="color:var(--muted)">數量通關才知道</span></h2>
+    <div class="rwList">${list.map(r=>`
+      <div class="rw">
+        <div class="rwIc">${r.icon}</div>
+        <div class="rwNm">${esc(r.name)}</div>
+        <div class="rwQ" data-roll="${r.max}">?</div>
+      </div>`).join('')}</div>`;
+}
+
+function startRoll(){
+  stopRoll();
+  const els = Array.from(document.querySelectorAll('[data-roll]'));
+  if(!els.length || REDUCED) return;
+  rollTimer = setInterval(()=>{
+    els.forEach(el=>{
+      const max = Number(el.dataset.roll) || 99;
+      el.textContent = (1 + Math.floor(Math.random() * max)).toLocaleString();
+    });
+  }, 70);
+}
+function stopRoll(){ if(rollTimer){ clearInterval(rollTimer); rollTimer = null; } }
+
+function clearedHtml(def){
+  const rw = dunRewardsOf(DUN);
+  const list = DUNGEON_REWARDS.filter(r => rw[r.id]);
+  const claimed = !!(DUN.claimed || {})[me];
+  const joined  = !!(DUN.joined  || {})[me];
+  return `<div class="dHead ${def.red ? 'red' : ''}" style="text-align:center">
+      <div style="font-size:46px;margin-bottom:6px">🎉</div>
+      <div class="dNm" style="font-size:20px">${def.icon} ${esc(def.name)}　通關！</div>
+      <div class="dMeta" style="margin-top:10px">我們一起打穿了</div>
+      <div class="bigNum">${(DUN.totalDmg || 0).toLocaleString()}</div>
+      <div class="dMeta">點傷害</div>
+    </div>
+    <h2>獎勵</h2>
+    <div class="rwList">${list.map(r=>`
+      <div class="rw"><div class="rwIc">${r.icon}</div>
+        <div class="rwNm">${esc(r.name)}</div>
+        <div class="rwQ">${rw[r.id].toLocaleString()}</div></div>`).join('')}</div>
+    <button class="btn gold" style="width:100%;margin-top:14px"
+      onclick="dunClaim()" ${(claimed || !joined || busy) ? 'disabled' : ''}>
+      ${claimed ? '已領取' : !joined ? '你沒有出手過，領不到' : '🎁 領取獎勵'}</button>
+    <div class="hint" style="margin-top:12px">
+      每個出手過的人都拿全額，不看傷害多少。<br>
+      領完之後這裡會回到「目前沒有地下城」。
+    </div>`;
+}
+
+function showClear(){
+  const def = dungeonDef(DUN && DUN.tier);
+  if(!def) return;
+  $('clearIn').innerHTML = `<div class="ci">🎉</div>
+    <div class="ct">${esc(def.name)} 通關！</div>
+    <div class="cs">我們一起打穿了</div>
+    <div class="bigNum">${(DUN.totalDmg || 0).toLocaleString()}</div>
+    <div class="cs">點傷害</div>
+    <button class="btn gold" style="width:100%" onclick="document.getElementById('clearBox').classList.remove('show')">
+      去領獎勵</button>`;
+  $('clearBox').classList.add('show');
+}
+
+/* 倒數與冷卻是時間相關的，每分鐘重畫一次 */
+setInterval(()=>{ if(DUN && DUN.status === 'open') render(); }, 60000);
+</script>
+</body>
+</html>
