@@ -1363,7 +1363,7 @@
     <div class="drawerItem" data-p="cards"><span class="dic">🎴</span><span class="dname">卡片</span></div>
     <div class="drawerItem" data-p="boss"><span class="dic">⚔️</span><span class="dname">Boss</span></div>
     <div class="drawerItem" data-p="craft"><span class="dic">🃏</span><span class="dname">卡片合成</span></div>
-    <div class="drawerItem" id="drawerDungeon" onclick="location.href='./dungeon.html'"><span class="dic">🏰</span><span class="dname">地下城</span><span class="navBadge" id="drawerDunBadge" style="top:6px;right:10px">0</span></div>
+    <div class="drawerItem" id="drawerDungeon" data-href="./dungeon.html"><span class="dic">🏰</span><span class="dname">地下城</span><span class="navBadge" id="drawerDunBadge" style="top:6px;right:10px">0</span></div>
     <div class="drawerItem" data-p="penalty"><span class="dic">🔒</span><span class="dname">我的紀錄</span></div>
   </div>
   <div class="drawerSet">
@@ -1881,11 +1881,14 @@ $('switchBtn').onclick = ()=>{
 
 /* ===== tabs（nav 4 格 + 抽屜共用同一個切換函式） ===== */
 function goTab(name){
+  /* ⚠️ 必須先確認目標頁存在，再移除舊的 .on。
+     原本的順序是「先全部移除 → 找不到就 return」，只要 name 是 undefined，
+     所有頁面就會一起被隱藏，畫面只剩頂欄和導覽列，而且不會有任何錯誤訊息 */
+  const page = name ? $('page-' + name) : null;
+  if(!page) return;
   document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
   document.querySelectorAll('.drawerItem').forEach(x=>x.classList.remove('on'));
   document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));
-  const page = $('page-'+name);
-  if(!page) return;
   page.classList.add('on');
   const navBtn = document.querySelector(`nav button[data-p="${name}"]`);
   if(navBtn) navBtn.classList.add('on');
@@ -1914,7 +1917,13 @@ function closeDrawer(){ $('drawerMask').classList.remove('show'); $('drawer').cl
 $('moreBtn').onclick = openDrawer;
 $('drawerMask').onclick = closeDrawer;
 document.querySelectorAll('.drawerItem').forEach(el=>{
-  el.onclick = ()=>{ goTab(el.dataset.p); closeDrawer(); };
+  el.onclick = ()=>{
+    // 地下城是獨立的 HTML，不是分頁。這裡用 data-href 區分，
+    // 不能靠 inline onclick —— 這一行的 el.onclick 會把 inline 的蓋掉
+    if(el.dataset.href){ location.href = el.dataset.href; return; }
+    if(!el.dataset.p) return;                 // 沒有目標就別呼叫 goTab
+    goTab(el.dataset.p); closeDrawer();
+  };
 });
 
 /* ===== 排行榜排序切換 ===== */
