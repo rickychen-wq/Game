@@ -594,6 +594,7 @@ const {
   craftOpen, CRAFT_MATS, CRAFT_COIN, CRAFT_SLOTS, craftMatsOf, fullCardOf,
   FULL_RAR, TASK_EXTRAS,
   DUNGEONS, DUN_REGEN_PCT, DUN_EP_MULT, DUN_EQUIP_MAX, DUN_EQUIP_CD_H,
+  dunSlotsOf, dunSlotCds,
   dungeonDef, dungeonHp, dungeonMobs, dungeonInit, dungeonApplyRegen,
   dungeonLeftHp, dungeonProgress, dungeonExpired,
   DUNGEON_REWARDS, dunRewardsOf, dunRewardTotal,
@@ -1602,7 +1603,12 @@ const QUICK = {
   packs:    { t:'🔄 重置今日卡包', run:p=>({ patch:{ dailyPacks:null }, label:'重置今日卡包' }) },
   cd:       { t:'⏱️ 清除所有技能 CD', run:p=>({ patch:{ skillReady:{} }, label:'清除所有技能 CD' }) },
   freepass: { t:'🎫 給 1 張免時段券', run:p=>({ patch:{ bossFreePass:(p.bossFreePass ?? 0) + 1 }, label:'給免時段券 ×1' }) },
-  eqlock:   { t:'🔓 解除換卡鎖', run:p=>({ patch:{ equipSlotReadyAt:0 }, label:'解除換卡鎖' }) },
+  eqlock:   { t:'🔓 解除換卡鎖（Boss）', run:p=>({ patch:{ equipSlotReadyAt:0 }, label:'解除換卡鎖（Boss）' }) },
+  // 地下城的冷卻是每一格獨立的，所以要整個陣列歸零；
+  // 順手清掉 dungeonEquipReadyAt，那是舊版的全域冷卻欄位
+  dunlock:  { t:'🔓 解除換卡鎖（地下城）',
+              run:p=>({ patch:{ dungeonSlotCd: Array(DUN_EQUIP_MAX).fill(0), dungeonEquipReadyAt:0 },
+                        label:'解除地下城換卡鎖（4 格全部）' }) },
   dots:     { t:'💥 清空 Boss DOT', run:p=>({ patch:{ 'boss.dots':[], 'boss.lastTickAt':Date.now() }, label:'清空 Boss DOT' }) },
   lotpity:  { t:'🎯 抽獎保底拉滿', run:p=>({ patch:{ lotteryPity:69 }, label:'抽獎保底拉滿（69）' }) },
   packpity: { t:'🎴 卡包保底拉滿', run:p=>({ patch:{ packPity:29 }, label:'卡包保底拉滿（29）' }) },
@@ -1610,6 +1616,15 @@ const QUICK = {
   ep:       { t:'⚡ 補滿 EP', run:p=>({ patch:{ epBonus:(p.epBonus ?? 0) + 10000 }, label:'補 EP +10000' }) },
   coin:     { t:'🪙 給 10000 金幣', run:p=>({ patch:{ coins:(p.coins ?? 0) + 10000 }, label:'給 10000 金幣', coin:10000 }) },
 };
+/* 只解鎖某一格：地下城的冷卻是每格獨立的，通常不需要 4 格一起清 */
+window.dbgUnlockSlot = async (i)=>{
+  const p = dbgP(); if(!p) return;
+  const cd = dunSlotCds(p);
+  if(!confirm(`確定解除「${p.name}」地下城第 ${i+1} 格的換卡鎖嗎？`)) return;
+  cd[i] = 0;
+  await dbgWrite({ dungeonSlotCd: cd }, `解除地下城第 ${i+1} 格換卡鎖`, { action:'dunUnlockSlot', slot:i });
+};
+
 window.dbgQuick = async (key)=>{
   const p = dbgP(); if(!p) return;
   const q = QUICK[key];
@@ -1781,6 +1796,20 @@ function renderDebug(force){
     ${CRAFT_MATS.map(m=>dbgNumRow(
         `${m.icon} ${m.name} craftMats.${m.id}`, 'craftMats.'+m.id,
         craftMatsOf(p)[m.id], 'dbg_cm_'+m.id, 1)).join('')}
+
+    <h3>🏰 地下城裝備（4 格獨立冷卻）</h3>
+    ${(()=>{ const sl = dunSlotsOf(p), cd = dunSlotCds(p), now = Date.now();
+      return sl.map((cid, i)=>{
+        const c = cid ? cardById(cid) : null;
+        const lock = cd[i] > now;
+        return `<div class="dbgRow">
+          <span class="dk">第 ${i+1} 格</span>
+          <span class="dv" style="${c ? '' : 'color:var(--dim)'}">${c ? esc(c.name) : '空'}</span>
+          <span class="dv" style="color:${lock ? 'var(--pink)' : 'var(--cyan)'}">
+            ${lock ? '🔒 ' + leftText(cd[i]) : '可換卡'}</span>
+          ${lock ? `<button class="dbgBtn mini" onclick="dbgUnlockSlot(${i})">解鎖此格</button>` : ''}
+        </div>`;
+      }).join(''); })()}
 
     <h3>天賦</h3>
     ${dbgNumRow('額外點 bonusTokens','bonusTokens', p.bonusTokens ?? 0, 'dbg_btk', 1)}
