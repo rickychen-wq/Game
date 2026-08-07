@@ -1363,6 +1363,7 @@
     <div class="drawerItem" data-p="cards"><span class="dic">🎴</span><span class="dname">卡片</span></div>
     <div class="drawerItem" data-p="boss"><span class="dic">⚔️</span><span class="dname">Boss</span></div>
     <div class="drawerItem" data-p="craft"><span class="dic">🃏</span><span class="dname">卡片合成</span></div>
+    <div class="drawerItem" id="drawerDungeon" onclick="location.href='./dungeon.html'"><span class="dic">🏰</span><span class="dname">地下城</span><span class="navBadge" id="drawerDunBadge" style="top:6px;right:10px">0</span></div>
     <div class="drawerItem" data-p="penalty"><span class="dic">🔒</span><span class="dname">我的紀錄</span></div>
   </div>
   <div class="drawerSet">
@@ -1495,7 +1496,7 @@ const {
   getWeights, todayKey, prevKey,
   EP_START_LV, epTotal, epAvail,
   PACKS, RARITIES, PACK_TIERS, PACK_PITY_MAX, CARDS,
-  FULL_RAR, rarColorOf, everOwned,
+  FULL_RAR, rarColorOf, everOwned, DEX_XFULL_BONUS,
   CRAFT_SLOTS, CRAFT_COIN, CRAFT_MATS, CRAFT_MAT_COST, craftOpen,
   craftMatsOf, craftMatEnough, fullCardOf, isFullCard,
   craftTierOdds, rollCraftTier, craftPickReady,
@@ -2018,6 +2019,16 @@ onSnapshot(doc(db,'config','system'), snap=>{
                craftOpen: cfg.craftOpen === true });
   onEventsChanged();
   renderAll();
+});
+
+/* 地下城只在這裡監聽「有沒有開」，戰鬥在 dungeon.html。
+   badge 用 style.display 直接控制，不進 renderAll，避免多一次全頁重繪 */
+onSnapshot(doc(db,'dungeons','active'), d=>{
+  const on = d.exists() && (d.data() || {}).status === 'open';
+  const b = $('drawerDunBadge');
+  if(b){ b.textContent = on ? '!' : '0'; b.style.display = on ? '' : 'none'; }
+  const it = $('drawerDungeon');
+  if(it) it.style.opacity = on ? '' : '.55';
 });
 
 onSnapshot(collection(db,'weekly'), snap=>{
@@ -3108,8 +3119,10 @@ function renderCards(){
       <span>${esc(pk.name)}${pk.fullHave ? ' <span style="color:#ff8c42">◆</span>' : ''}</span>
       <b>${pk.have}/4${pk.done ? `　傷害 +${Math.round(DEX_PACK_BONUS*100)}%` : ''}</b>
     </div>`).join('')}
-    <div class="dexTotal">全圖鑑 ${dex.haveTotal}/${dex.grandTotal}${
+    <div class="dexTotal">基礎圖鑑 ${dex.baseHave}/${dex.baseTotal}${
       dex.full ? `　✨ 額外傷害 +${Math.round(DEX_FULL_BONUS*100)}%` : `　（集滿再 +${Math.round(DEX_FULL_BONUS*100)}%）`}</div>
+    <div class="dexTotal" style="${dex.xfull ? 'color:#ff8c42' : ''}">全圖卡 ${dex.fulls}/${dex.fullTotal}${
+      dex.xfull ? `　✨ 額外傷害 +${Math.round(DEX_XFULL_BONUS*100)}%` : `　（集滿再 +${Math.round(DEX_XFULL_BONUS*100)}%）`}</div>
   </div>`;
 
   $('cardsBody').innerHTML = dexHtml + `
