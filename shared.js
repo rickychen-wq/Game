@@ -162,7 +162,7 @@
   const RESPEC_COST = 3000;                 // 洗點費用（金幣回收池）
   const TALENT_TREES = [
     { key:'coin', icon:'💰', name:'財富', unit:'任務金幣',
-      add:[0, 0.03, 0.06, 0.09, 0.12, 0.15], cost:[5, 10, 15, 35, 65] },   // 全滿 130（永久終極目標，最貴）
+      add:[0, 0.03, 0.06, 0.09, 0.12, 0.15], cost:[5, 10, 15, 35, 115] },  // 全滿 180（永久終極目標，最貴）
     { key:'luck', icon:'🍀', name:'幸運', unit:'抽獎幸運',
       add:[0, 0.05, 0.10, 0.15, 0.20, 0.30], cost:[3,  5, 10, 15, 15] },
     { key:'xp',   icon:'📈', name:'經驗', unit:'任務 XP',
@@ -758,8 +758,9 @@
      單一動漫集滿 4 張 → 該系列傷害 +10%
      該等級全 16 張集滿 → 額外 +50%
   ============================================================== */
-  const DEX_PACK_BONUS = 0.10;      // 單一動漫集滿
-  const DEX_FULL_BONUS = 0.50;      // 全 16 張集滿
+  const DEX_PACK_BONUS = 0.10;      // 單一動漫集滿（只看 S/A/B/C 四張）
+  const DEX_FULL_BONUS = 0.50;      // 基礎 16 張集滿
+  const DEX_XFULL_BONUS = 0.25;     // 四張全圖卡再集滿（終極獎勵，與上面兩層可疊加）
   const ownedCard = (p, id) => ((p && p.cards) || {})[id] || null;
   /* 圖鑑用的「曾經擁有」：合成會把材料卡吃到 0 張並刪掉 cards 物件，
      所以收集紀錄要獨立存在 players.dex（只增不減）。
@@ -774,12 +775,18 @@
   }
   const dexFullDone = p => PACKS.every(pk => dexPackDone(p, pk.id));
   // 對某張卡的圖鑑加成（該系列集滿 + 全集滿）
+  // 四張全圖卡是否都收集過（用 everOwned，合成吃掉也不會掉）
+  const dexXFullDone = p => PACKS.every(pk=>{
+    const fc = fullCardOf(pk.id);
+    return fc && everOwned(p, fc.id);
+  });
   function dexBonusFor(p, cardId){
     const c = cardById(cardId);
     if(!c) return 0;
     let add = 0;
     if(dexPackDone(p, c.pack)) add += DEX_PACK_BONUS;
     if(dexFullDone(p))         add += DEX_FULL_BONUS;
+    if(dexXFullDone(p))        add += DEX_XFULL_BONUS;
     return add;
   }
   /* ⚠️ 全圖卡「算進 haveTotal（20 張）」但「不算進 done / dexPackDone」——
@@ -798,10 +805,14 @@
       };
     });
     const fulls = packs.filter(x => x.fullHave).length;
+    const baseHave = packs.reduce((a,b)=>a+b.have,0);
     return {
       packs, full: dexFullDone(p), fulls,
-      haveTotal: packs.reduce((a,b)=>a+b.have,0) + fulls,
-      grandTotal: PACKS.length * 4 + PACKS.length,
+      xfull: dexXFullDone(p),
+      baseHave, baseTotal: PACKS.length * 4,     // 基礎圖鑑（決定 +50%）
+      fullTotal: PACKS.length,                   // 全圖卡（決定 +25%）
+      haveTotal: baseHave + fulls,
+      grandTotal: PACKS.length * 5,
     };
   }
 
@@ -875,6 +886,174 @@
   /* 合成系統總開關：預設關閉。stats 後台按下去才會在玩家端整個長出來，
      出問題時關掉就回到「敬請期待下次更新」，不用改 code 也不用重新部署 */
   const craftOpen = () => runtime.craftOpen === true;
+
+
+  /* ==============================================================
+     地下城（雙人非同步協力副本）
+     設計核心：獎勵完全均等、不看傷害，而且「誰打了多少」根本不存進資料庫。
+     只要存了，遲早會被拿來比，那就會變成「你打太少」的爭吵來源，
+     副本反而卡死沒人敢出手。所以只記合計 totalDmg 與「有沒有出手過」joined。
+  ============================================================== */
+  const DUN_REGEN_MS   = 12 * 3600 * 1000;   // 每 12 小時回血一次
+  const DUN_REGEN_PCT  = 0.30;               // 回最大血量的 30%（死掉的不復活、滿血的不變）
+  const DUN_EP_MULT    = 0.5;                // 地下城技能 EP 消耗砍半（傷害不變）
+  const DUN_EQUIP_MAX  = 4;                  // 地下城可裝 4 張（Boss 是 2 張）
+  const DUN_EQUIP_CD_H = 2;                  // 換卡冷卻 2 小時
+
+  /* 七座地下城。floors 由淺到深，最後一層是鎮守（boss:true）。
+     mobHp × count 就是該層總血量 */
+  const DUNGEONS = [
+    { id:'E', name:'廢棄哨站', icon:'🏚️', color:'#8a8f9e', floors:[
+      { name:'守門小兵', mobHp:   600, count:5 },
+      { name:'深處小兵', mobHp:  1200, count:5 },
+      { name:'鎮守',     mobHp:  9000, count:1, boss:true },
+    ]},
+    { id:'D', name:'石壁要塞', icon:'🏯', color:'#5fd08a', floors:[
+      { name:'守門小兵', mobHp:  1200, count:5 },
+      { name:'內廷守衛', mobHp:  1800, count:5 },
+      { name:'精銳',     mobHp:  3500, count:2 },
+      { name:'鎮守',     mobHp: 23000, count:1, boss:true },
+    ]},
+    { id:'C', name:'冰封坑道', icon:'🧊', color:'#5aa9ff', floors:[
+      { name:'守門小兵', mobHp:  2400, count:5 },
+      { name:'坑道遊魂', mobHp:  3600, count:5 },
+      { name:'霜衛',     mobHp:  7500, count:2 },
+      { name:'鎮守',     mobHp: 45000, count:1, boss:true },
+    ]},
+    { id:'B', name:'蝕骨墓城', icon:'💀', color:'#c9a0ff', floors:[
+      { name:'守門小兵', mobHp:  4000, count:5 },
+      { name:'墓城行屍', mobHp:  6000, count:5 },
+      { name:'骨將',     mobHp:  9000, count:3 },
+      { name:'墓城雙衛', mobHp: 14000, count:2 },
+      { name:'鎮守',     mobHp: 75000, count:1, boss:true },
+    ]},
+    { id:'A', name:'熔岩深淵', icon:'🌋', color:'#f7e3a1', floors:[
+      { name:'守門小兵', mobHp:  8000, count:5 },
+      { name:'熔岩爬蟲', mobHp: 12000, count:5 },
+      { name:'炎魔',     mobHp: 18000, count:3 },
+      { name:'深淵雙衛', mobHp: 28000, count:2 },
+      { name:'鎮守',     mobHp:140000, count:1, boss:true },
+    ]},
+    { id:'S', name:'天穹迴廊', icon:'🌌', color:'#e8f0ff', floors:[
+      { name:'守門小兵', mobHp: 16000, count:5 },
+      { name:'迴廊哨兵', mobHp: 24000, count:5 },
+      { name:'星使',     mobHp: 34000, count:4 },
+      { name:'天穹衛',   mobHp: 44000, count:3 },
+      { name:'雙生守望', mobHp: 56000, count:2 },
+      { name:'鎮守',     mobHp:120000, count:1, boss:true },
+    ]},
+    { id:'RED', name:'紅色門', icon:'🚪', color:'#ff3c5a', red:true, floors:[
+      { name:'門扉守衛', mobHp: 30000, count:5 },
+      { name:'裂界獸',   mobHp: 42000, count:5 },
+      { name:'血衛',     mobHp: 55000, count:4 },
+      { name:'異相',     mobHp: 70000, count:3 },
+      { name:'深層異相', mobHp: 90000, count:3 },
+      { name:'雙王',     mobHp:110000, count:2 },
+      { name:'門主',     mobHp:220000, count:1, boss:true },
+    ]},
+  ];
+  const dungeonDef   = id => DUNGEONS.find(d => d.id === id) || null;
+  const dungeonHp    = d => (d ? d.floors.reduce((a,f)=> a + f.mobHp * f.count, 0) : 0);
+  const dungeonMobs  = d => (d ? d.floors.reduce((a,f)=> a + f.count, 0) : 0);
+
+  /* 建立一份新的地下城戰況（存進 Firestore 的 dungeons/active）
+     ⚠️ Firestore 的陣列不能直接包陣列，所以是 floors:[{hp:[...]}, ...]（陣列→物件→陣列，合法） */
+  function dungeonInit(tierId, opts){
+    const def = dungeonDef(tierId);
+    if(!def) return null;
+    const now = Date.now();
+    return {
+      tier: tierId,
+      status: 'open',
+      openedAt: now,
+      endsAt: (opts && opts.endsAt) || null,      // null = 不限時
+      lastRegenAt: now,
+      cur: 0,                                     // 目前在第幾層（index）
+      floors: def.floors.map(f=>({ hp: Array(f.count).fill(f.mobHp) })),
+      totalDmg: 0,                                // 只存合計，不分人
+      joined: {},                                 // { playerId: true } 只存有沒有出手過
+      claimed: {},
+      rewards: (opts && opts.rewards) || {},
+    };
+  }
+
+  /* 每 12 小時回血：死掉的（0）不復活，滿血的不變，補到滿為止
+     用「距離 lastRegenAt 過了幾個 12 小時」惰性計算，不需要排程 */
+  function dungeonRegenTicks(d, now){
+    if(!d || d.status !== 'open') return 0;
+    const base = d.lastRegenAt || d.openedAt || now;
+    return Math.max(0, Math.floor(((now || Date.now()) - base) / DUN_REGEN_MS));
+  }
+  function dungeonApplyRegen(d, now){
+    const ticks = dungeonRegenTicks(d, now);
+    if(ticks <= 0) return null;
+    const def = dungeonDef(d.tier);
+    if(!def) return null;
+    let healed = 0;
+    const floors = (d.floors || []).map((fl, i)=>{
+      const max = def.floors[i] ? def.floors[i].mobHp : 0;
+      return { hp: (fl.hp || []).map(h=>{
+        if(h <= 0 || h >= max) return h;             // 死掉的不復活、滿血的不變
+        const next = Math.min(max, h + Math.round(max * DUN_REGEN_PCT * ticks));
+        healed += next - h;
+        return next;
+      }) };
+    });
+    if(!healed) return { floors, lastRegenAt: (d.lastRegenAt || d.openedAt) + ticks * DUN_REGEN_MS, healed: 0 };
+    return { floors, lastRegenAt: (d.lastRegenAt || d.openedAt) + ticks * DUN_REGEN_MS, healed };
+  }
+
+  const dungeonEpCost   = ep => Math.max(1, Math.round((ep || 0) * DUN_EP_MULT));
+  const dungeonFloorHp  = fl => (fl && fl.hp ? fl.hp.reduce((a,b)=>a+b, 0) : 0);
+  const dungeonFloorDone= fl => dungeonFloorHp(fl) <= 0;
+  const dungeonLeftHp   = d  => (d && d.floors ? d.floors.reduce((a,f)=> a + dungeonFloorHp(f), 0) : 0);
+  function dungeonProgress(d){
+    const def = dungeonDef(d && d.tier);
+    if(!def) return { pct:0, left:0, max:0, floor:0, floors:0 };
+    const max = dungeonHp(def), left = dungeonLeftHp(d);
+    return { pct: max ? Math.round((max - left) / max * 100) : 0,
+             left, max, floor: (d.cur || 0), floors: def.floors.length };
+  }
+  const dungeonOpen     = () => !!(runtime.dungeon && runtime.dungeon.status === 'open');
+  const dungeonExpired  = d => !!(d && d.endsAt && Date.now() > d.endsAt);
+  const dungeonJoined   = (d, pid) => !!((d && d.joined) || {})[pid];
+
+  /* 地下城的增益狀態，存在玩家自己的 p.dun，與 Boss 的 p.boss 完全分離。
+     ⚠️ DOT 在地下城改成「立即打滿全部傷害」而不是分 10 小時扣：
+        地下城沒有時段限制，DOT 原本「離線也繼續掉血」的價值不存在；
+        而且小兵會被打死、會回血、血量存在共用文件裡，
+        要正確追蹤「哪一隻身上有幾層 DOT」在多人併發下極易出錯。
+        總傷害完全相同，只是結算時間點不一樣 */
+  const dunStateOf = p => ({
+    buff: !!((p && p.dun) || {}).buff,
+    zoneUntil: (((p && p.dun) || {}).zoneUntil) || 0,
+  });
+
+  /* 地下城裝備（與 Boss 的 equipped 完全獨立，且不可重複裝同一張卡） */
+  const dunEquipOf = p => (Array.isArray(p && p.dungeonEquipped) ? p.dungeonEquipped : []).slice(0, DUN_EQUIP_MAX);
+  const dunEquipLocked = (p, cardId) => ((p && p.equipped) || []).includes(cardId);   // 已裝在 Boss → 這裡不能裝
+
+  /* 獎勵：前台只看得到「種類」，數量藏起來（金幣顯示 1~99,000，其他 1~99） */
+  const DUNGEON_REWARDS = [
+    { id:'coins',        icon:'🪙', name:'金幣',     path:'coins',        max:99000 },
+    { id:'bonusTokens',  icon:'🔮', name:'結晶',     path:'bonusTokens',  max:99 },
+    { id:'epBonus',      icon:'⚡', name:'EP',       path:'epBonus',      max:99000 },
+    { id:'ticket',       icon:'🎟️', name:'抽獎券',   path:'ticket',       max:99 },
+    { id:'coupons',      icon:'🎟️', name:'折價券',   path:'coupons',      max:99 },
+    { id:'bossFreePass', icon:'🎫', name:'免時段券', path:'bossFreePass', max:99 },
+    ...CRAFT_MATS.map(m=>({ id:'craft_'+m.id, icon:m.icon, name:m.name, path:'craftMats.'+m.id, max:99 })),
+    ...PACK_TIERS.map(t=>({ id:'pack_'+t.id, icon:'🎴', name:t.name+'卡包券', path:'packTickets.'+t.id, max:99 })),
+  ];
+  const dunRewardById = id => DUNGEON_REWARDS.find(r => r.id === id) || null;
+  function dunRewardsOf(d){
+    const raw = (d && d.rewards) || {}, out = {};
+    DUNGEON_REWARDS.forEach(r=>{
+      const n = Math.floor(Number(raw[r.id]) || 0);
+      if(n > 0) out[r.id] = Math.min(r.max, n);
+    });
+    return out;
+  }
+  const dunRewardTotal = d => Object.keys(dunRewardsOf(d)).length;
 
   function bossOpenMap(){ return (runtime.bossOpen || {}); }
   function bossStageOpen(stage){
@@ -974,7 +1153,7 @@
     // 合成
     CRAFT_SLOTS, CRAFT_COIN, CRAFT_MATS, CRAFT_MAT_COST, craftOpen,
     TASK_EXTRAS, extraById, extrasOf, extrasTotal, extrasText,
-    craftMatsOf, craftMatEnough, fullCardOf, isFullCard, everOwned,
+    craftMatsOf, craftMatEnough, fullCardOf, isFullCard, everOwned, ownedCard,
     craftTierOdds, rollCraftTier, craftPickReady,
     EQUIP_MAX, EQUIP_LOCK_MS, BUFF_MULT, ZONE_MULT, ZONE_MS, DOT_HOURS, DOT_MAX_STACK,
     cardById, packById, tierById, skillOf, cardOfPack, tierBetter,
@@ -986,11 +1165,20 @@
     POTION_TYPES, potionName, potionsOf, potionTotal, activePotion, potionAdd,
     rarityOdds, rollRarityWithLuck,
     // 圖鑑完成度
-    DEX_PACK_BONUS, DEX_FULL_BONUS, dexPackDone, dexFullDone, dexBonusFor, dexProgress,
+    DEX_PACK_BONUS, DEX_FULL_BONUS, DEX_XFULL_BONUS,
+    dexPackDone, dexFullDone, dexXFullDone, dexBonusFor, dexProgress,
     COUPON_FROM_STAGE, COUPON_MAX_PRICE,
     BOSSES, MILESTONES, bossOfStage, bossImg,
     BOSS_FORCE_OPEN, bossOpenMap, bossStageOpen, bossMaxOpen,
     BOSS_MILESTONES, bossMilestoneAt, bossMilestoneWinner,
+    // 地下城
+    DUNGEONS, DUN_REGEN_MS, DUN_REGEN_PCT, DUN_EP_MULT, DUN_EQUIP_MAX, DUN_EQUIP_CD_H,
+    dungeonDef, dungeonHp, dungeonMobs, dungeonInit,
+    dungeonRegenTicks, dungeonApplyRegen, dungeonEpCost,
+    dungeonFloorHp, dungeonFloorDone, dungeonLeftHp, dungeonProgress,
+    dungeonOpen, dungeonExpired, dungeonJoined,
+    dunEquipOf, dunEquipLocked, dunStateOf,
+    DUNGEON_REWARDS, dunRewardById, dunRewardsOf, dunRewardTotal,
     // 管理員臨時活動
     SOUL_IDX, ADMIN_EVENTS, ADMIN_DURATIONS, adminEventById,
     adminEventOn, adminEventUntil, adminLuck, adminSoul,
