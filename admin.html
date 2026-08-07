@@ -171,6 +171,22 @@
     color:#0a1a14;
   }
 
+  .exWrap{ display:flex; align-items:center; gap:6px; background:#0d0f17;
+    border:1px solid var(--line); border-radius:9px; padding:4px 6px; }
+  .exWrap.on{ border-color:#ff8c42; background:rgba(255,140,66,.10); }
+  .exWrap .exNm{ font-family:var(--mono); font-size:13px; font-weight:700; color:var(--muted);
+    padding:0 4px; min-width:74px; }
+  .exWrap.on .exNm{ color:#ffb27a; }
+  .exStep{ width:34px; min-height:34px; border-radius:7px; cursor:pointer;
+    border:1px solid var(--line); background:#12141d; color:var(--text);
+    font-family:var(--mono); font-size:16px; font-weight:800; line-height:1; }
+  .exStep:disabled{ opacity:.3; cursor:not-allowed; }
+  .exNum{ font-family:var(--mono); font-size:14px; font-weight:800; min-width:20px;
+    text-align:center; color:var(--text); }
+  .exNote{ font-family:var(--mono); font-size:11px; color:var(--muted);
+    margin-top:7px; line-height:1.7; }
+  .exNote b{ color:#ffb27a; }
+
   .formRow { display:flex; gap:10px; }
   .formRow > * { flex:1; }
 
@@ -349,6 +365,11 @@
         <span class="asLbl">指派對象</span>
         <div id="tAssignBtns" class="assignBtns"></div>
       </div>
+      <div class="assignRow">
+        <span class="asLbl">附贈道具（選填・合成材料）</span>
+        <div id="tExtraBtns" class="assignBtns"></div>
+        <div id="tExtraNote" class="exNote"></div>
+      </div>
       <button class="btn ok" id="addTaskBtn" style="width:100%">發布任務</button>
     </section>
     <section>
@@ -472,6 +493,7 @@ const {
   todayKey, prevKey,
   COOP_ASSIGNEE, isCoop, coopMembers, coopDoneBy, coopProgress,
   activePotion, potionAdd, potionName,
+  TASK_EXTRAS, extrasOf, extrasText, extrasTotal,
 } = window.GAME;
 
 const app = initializeApp(firebaseConfig);
@@ -616,6 +638,7 @@ onSnapshot(collection(db,'players'), snap=>{
   snap.forEach(d=> players[d.id] = d.data());
   renderPlayers();
   renderAssignBtns();
+  renderExtraBtns();
   renderTasks();
   renderTemplates();
   renderReview();
@@ -671,14 +694,19 @@ $('addTaskBtn').onclick = async ()=>{
   if(!title) return toast('要輸入任務內容');
   if(!reward || reward<1) return toast('金幣要大於 0');
   const isCo = (assignee === COOP_ASSIGNEE);
+  const extras = extrasOf({ extras: taskExtras });
+  if(extrasTotal(extras) && !confirm(
+      `這個任務會附贈 ${extrasText(extras)}\n${isCo ? '合作任務：每人各拿一份，不平分\n' : ''}確定發布？`)) return;
   await addDoc(collection(db,'tasks'), {
     title, reward, assignee,
     status:'open', wasRejected:false,
+    ...(Object.keys(extras).length ? { extras } : {}),
     ...(isCo ? { coopMembers: Object.keys(players), coopDone: {} } : {}),
     createdAt: serverTimestamp()
   });
   $('tTitle').value=''; $('tReward').value='';
   taskAssignee = null; renderAssignBtns();           // 清空選擇，避免誤發下一筆
+  taskExtras = {}; extraAuthed = false; renderExtraBtns(true);
   toast('任務已發布 ✅');
 };
 
@@ -686,11 +714,56 @@ $('addTaskBtn').onclick = async ()=>{
    使用者的操作會輸給程式重繪，iOS Safari 的 picker value 寫回時機也不可靠。
    正確做法：狀態存 JS 變數，UI 用按鈕，重繪前比對 signature 避免打斷點擊。 */
 let taskAssignee = null;          // ← 唯一真實來源
+let taskExtras   = {};            // { key:1, shard:2 } ← 同樣存 JS 變數，不放 DOM
 
 window.pickAssignee = (v)=>{
   taskAssignee = v;
   renderAssignBtns();
+  renderExtraBtns(true);      // 合作 / 個人的說明文字不同
 };
+
+/* 附贈道具：合成材料稀有，所以每次調整都要 0414，避免手滑或被弟弟摸到後台亂加。
+   驗證過一次就記住，直到發布完成或清空為止 */
+let extraAuthed = false;
+window.bumpExtra = (id, d)=>{
+  const def = TASK_EXTRAS.find(x=>x.id === id);
+  if(!def) return;
+  if(d > 0 && !extraAuthed){
+    const pw = prompt('附贈合成材料需要管理員密碼：');
+    if(pw === null) return;
+    if(pw !== ADMIN_PASSWORD){ toast('密碼錯誤'); return; }
+    extraAuthed = true;
+  }
+  const cur = taskExtras[id] || 0;
+  const next = Math.max(0, Math.min(EXTRA_MAX, cur + d));
+  if(next === 0) delete taskExtras[id]; else taskExtras[id] = next;
+  if(!extrasTotal(taskExtras)) extraAuthed = false;   // 歸零就要重新驗證
+  renderExtraBtns(true);
+};
+const EXTRA_MAX = 9;
+
+function renderExtraBtns(force){
+  const box = $('tExtraBtns');
+  const sig = TASK_EXTRAS.map(d=>d.id + ':' + (taskExtras[d.id] || 0)).join(',');
+  if(!force && box.dataset.sig === sig) return;       // 沒變就不重繪，不打斷點擊
+  box.dataset.sig = sig;
+  box.innerHTML = TASK_EXTRAS.map(d=>{
+    const n = taskExtras[d.id] || 0;
+    return `<span class="exWrap ${n>0?'on':''}">
+      <button type="button" class="exStep" ${n<=0?'disabled':''}
+              onclick="bumpExtra('${d.id}',-1)">−</button>
+      <span class="exNum">${n}</span>
+      <button type="button" class="exStep" ${n>=EXTRA_MAX?'disabled':''}
+              onclick="bumpExtra('${d.id}',1)">+</button>
+      <span class="exNm">${d.icon} ${esc(d.name)}</span>
+    </span>`;
+  }).join('');
+  const total = extrasTotal(taskExtras);
+  $('tExtraNote').innerHTML = total
+    ? `這個任務通過審核時會額外發放 <b>${extrasText(taskExtras)}</b>${
+        taskAssignee === COOP_ASSIGNEE ? '（合作任務：每人各拿一份，不平分）' : ''}`
+    : '不附贈就留空。🔑 金鑰與 🧩 碎片是全圖卡合成的材料，只能從這裡發出去，弟弟沒有別的管道拿得到。';
+}
 
 function renderAssignBtns(){
   const box = $('tAssignBtns');
@@ -721,7 +794,8 @@ window.approveTask = async (id)=>{
       const cm = coinMultOf(players[pid]);
       return `${pName(pid)} ⭐×${cm} → 🪙 ${Math.round(t.reward * cm).toLocaleString()}`;
     }).join('\n');
-    if(!confirm(`確定通過合作任務「${t.title}」？\n所有人各拿全額：\n${lines}`)) return;
+    const exTxt = extrasTotal(t.extras) ? `\n附贈：${extrasText(t.extras)}（每人各一份）` : '';
+    if(!confirm(`確定通過合作任務「${t.title}」？\n所有人各拿全額：\n${lines}${exTxt}`)) return;
   } else if(t){
     const payee = t.assignee;
     const who = pName(payee);
@@ -733,7 +807,8 @@ window.approveTask = async (id)=>{
     const evtNote = eventAdd('coin') > 0 ? `　⚡活動 +${Math.round(eventAdd('coin')*100)}%` : '';
     const extra = cmP > 1 ? `（${t.reward} × ${cmP}${potNote}${evtNote}）` : '';
     const xpLine = xm !== cm ? `\nXP +${xpGain}（× ${xm}）` : '';
-    if(!confirm(`確定通過「${t.title}」？\n將發給 ${who} 🪙 ${payout}${extra}${xpLine}`)) return;
+    const exTxt = extrasTotal(t.extras) ? `\n附贈：${extrasText(t.extras)}` : '';
+    if(!confirm(`確定通過「${t.title}」？\n將發給 ${who} 🪙 ${payout}${extra}${xpLine}${exTxt}`)) return;
   }
   try {
     await runTransaction(db, async tx=>{
@@ -778,6 +853,10 @@ window.approveTask = async (id)=>{
       tx.update(ref, { status:'done' });
       const boost = eventOn('tokenBoost');     // 活動：每完成一個任務多 1 顆結晶
       const coop = isCoop(t);
+      // 附贈道具：跟金幣一樣「每人各拿全額，不平分」
+      const extras = extrasOf(t);
+      const extraPatch = {};
+      TASK_EXTRAS.forEach(d=>{ if(extras[d.id]) extraPatch[d.path] = increment(extras[d.id]); });
       // 每人各拿全額，倍率各自計算
       pSnaps.forEach((snap, i)=>{
         const d = snap.data() || {};
@@ -793,12 +872,14 @@ window.approveTask = async (id)=>{
           tasksDone:   increment(1),
           ...(coop ? { tasksGrabbed: increment(1) } : {}),   // 合作完成數（成就 coop_10）
           ...(boost ? { bonusTokens: increment(1) } : {}),
+          ...extraPatch,
           ...(i === 0 ? streakUpdate : {}),
         });
         tx.set(ledgerRef(), ledgerData(payees[i],
           coop ? 'coop' : (t.isDaily ? 'daily' : 'task'), pay, t.title,
           { mult: cm, xpMult: xm, xpGain: xg, base: t.reward,
-            ...(coop ? { coop:true } : {}), ...(boost ? { tokenBoost:true } : {}) }));
+            ...(coop ? { coop:true } : {}), ...(boost ? { tokenBoost:true } : {}),
+            ...(Object.keys(extras).length ? { extras } : {}) }));
       });
     });
     toast('已通過，金幣入帳 🪙');
@@ -850,7 +931,8 @@ function renderReview(){
     }
     return `<div class="card">
       <div class="title">${esc(t.title)}${t.isDaily?' <span class="pill a">📅每日</span>':''}${gone?' <span class="pill lock">⚠️ 帳號已刪除</span>':''}</div>
-      <div class="sub">${esc(gone ? payee : pName(payee))} 回報完成・獎勵 <span class="coin">🪙 ${t.reward}</span>${(!gone && m>1)?`<span class="multPill">⭐×${m} → 🪙 ${Math.round(t.reward*m)}${
+      <div class="sub">${esc(gone ? payee : pName(payee))} 回報完成・獎勵 <span class="coin">🪙 ${t.reward}</span>${
+        extrasTotal(t.extras) ? `<span class="multPill" style="border-color:#ff8c42;color:#ffb27a">${extrasText(t.extras)}</span>` : ''}${(!gone && m>1)?`<span class="multPill">⭐×${m} → 🪙 ${Math.round(t.reward*m)}${
         eventAdd('coin')>0?`（含活動 +${Math.round(eventAdd('coin')*100)}%）`:''}</span>`:''}</div>
       <div class="row">
         ${gone
@@ -1045,7 +1127,8 @@ function renderTasks(){
       : '';
     return `<div class="card">
       <div class="title">${dailyPill}${esc(t.title)} ${pill}</div>
-      <div class="sub"><span class="coin">🪙 ${t.reward}</span></div>
+      <div class="sub"><span class="coin">🪙 ${t.reward}</span>${
+        extrasTotal(t.extras) ? `<span class="multPill" style="border-color:#ff8c42;color:#ffb27a">${extrasText(t.extras)}</span>` : ''}</div>
       <div class="row"><button class="btn gray" onclick="delTask('${t.id}')">刪除</button></div>
     </div>`;
   }).join('') : '<div class="empty">沒有進行中的任務</div>';
