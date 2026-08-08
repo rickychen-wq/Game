@@ -94,6 +94,49 @@
     border-radius:10px; padding:11px 14px; margin-bottom:18px;
   }
 
+  /* ===== 分頁外殼 =====
+     原本 10 個區塊串成一長頁，找東西要一直滑。改成五個分頁，
+     每頁只放相關區塊。功能一項都沒有動，只是換了擺放位置 */
+  .tabwrap{ display:flex; flex-direction:column; min-height:0; }
+  .tabbar{
+    position:sticky; top:0; z-index:20; display:grid; grid-template-columns:repeat(5,1fr);
+    gap:6px; padding:10px 0 12px; margin:-16px 0 14px;
+    background:linear-gradient(180deg, var(--bg) 72%, rgba(7,8,13,0));
+    backdrop-filter:blur(6px);
+  }
+  .tb{
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    padding:9px 4px; border-radius:11px; cursor:pointer; font-size:17px; line-height:1;
+    background:#12141d; border:1px solid var(--line); color:var(--muted);
+    transition:background .15s ease, border-color .15s ease, color .15s ease;
+  }
+  .tb span{ font-family:var(--mono); font-size:10.5px; font-weight:800; letter-spacing:.5px; }
+  .tb:hover{ border-color:var(--gold-dim); }
+  .tb.on{ background:rgba(233,196,106,.13); border-color:var(--gold); color:var(--gold-hi);
+    box-shadow:0 0 18px rgba(233,196,106,.12); }
+  .tabpane{ display:none; animation:paneIn .22s ease; }
+  .tabpane.on{ display:block; }
+  @keyframes paneIn{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:none; } }
+  @media (max-width:420px){ .tb{ font-size:15px; padding:8px 2px; } .tb span{ font-size:9.5px; } }
+
+  /* ===== 持有總覽 ===== */
+  .invGrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(126px,1fr)); gap:8px; margin-bottom:6px; }
+  .invCell{ padding:10px 11px; border-radius:11px; border:1px solid var(--line-soft); background:#0f111a; }
+  .invCell .ik{ font-family:var(--mono); font-size:10px; color:var(--muted); margin-bottom:4px; }
+  .invCell .iv{ font-family:var(--mono); font-size:16px; font-weight:900; color:var(--text);
+    font-variant-numeric:tabular-nums; }
+  .invCell.hot .iv{ color:var(--gold-hi); }
+  .invCell.zero{ opacity:.42; }
+  .invChips{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; }
+  .invChip{ font-family:var(--mono); font-size:11px; font-weight:800; padding:5px 9px;
+    border-radius:8px; background:#12141d; border:1px solid var(--line); color:var(--text); }
+  .invChip.dim{ color:var(--dim); border-color:var(--line-soft); }
+  .invEmpty{ font-family:var(--mono); font-size:11px; color:var(--dim); padding:4px 0 8px; }
+  .invCards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:7px; }
+  .invCard{ padding:8px 9px; border-radius:10px; background:#0f111a; border:1px solid var(--line-soft); }
+  .invCard .cn{ font-size:12px; font-weight:800; margin-bottom:3px; }
+  .invCard .cd{ font-family:var(--mono); font-size:10px; color:var(--muted); line-height:1.6; }
+
   section{
     position:relative; background:linear-gradient(160deg,var(--panel-1),var(--panel-2));
     border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:18px;
@@ -397,11 +440,15 @@
 </header>
 
 <main>
-  <button class="dbgBtn" id="jumpDbg" style="width:100%;margin-bottom:14px;min-height:44px"
-          onclick="jumpDebug()">☢️ 跳到數據編輯</button>
-  <div class="notice" id="notice">載入中⋯</div>
-
-  <!-- 🎛️ 系統控制台 -->
+  <div class="tabwrap">
+  <nav class="tabbar" id="tabbar">
+    <button class="tb on" data-t="ctl">🎛️<span>活動</span></button>
+    <button class="tb"    data-t="sys">⚙️<span>系統</span></button>
+    <button class="tb"    data-t="bag">🎒<span>持有</span></button>
+    <button class="tb"    data-t="data">📊<span>數據</span></button>
+    <button class="tb"    data-t="edit">🛠️<span>編輯</span></button>
+  </nav>
+  <div class="tabpane on" id="pane-ctl">
   <section>
     <h2>🎛️ 系統控制台<span style="margin-left:auto;font-size:10px;color:var(--dim)">只有這裡能改活動</span></h2>
     <h3>目前生效中的加成</h3>
@@ -425,6 +472,11 @@
     <div class="ctlRow"><span class="ctlLbl">時長</span><div id="aeDurBtns" class="ctlBtns"></div></div>
     <button class="evBtn go" id="aeStart" style="width:100%;margin-top:6px">開啟活動</button>
 
+  </section>
+  </div>
+  <div class="tabpane" id="pane-sys">
+  <section>
+    <h2>⚙️ 系統開關<span style="margin-left:auto;font-size:10px;color:var(--dim)">Boss／合成／地下城／發獎</span></h2>
     <h3>⚔️ Boss 關卡開放</h3>
     <div id="bossOpenInfo" class="ctlHist" style="margin-bottom:8px"></div>
     <div id="bossOpenList"></div>
@@ -455,6 +507,19 @@
     <button class="evBtn stop" id="giftSend" style="width:100%;margin-top:6px">🎁 發送給全體</button>
     <div id="giftHistory" class="ctlHist"></div>
   </section>
+  </div>
+  <!-- 🎒 玩家持有總覽（唯讀） -->
+  <div class="tabpane" id="pane-bag">
+    <section>
+      <h2>🎒 持有總覽<span style="margin-left:auto;font-size:10px;color:var(--dim)">唯讀・要改請到「🛠️ 編輯」</span></h2>
+      <div class="dbgRow">
+        <span class="dk">選擇玩家</span>
+        <div id="invPickBtns" class="dbgPickBtns"></div>
+      </div>
+      <div id="invBody"></div>
+    </section>
+  </div>
+  <div class="tabpane" id="pane-data">
 
   <!-- ① 系統總覽 -->
   <section>
@@ -509,6 +574,10 @@
     <h2>⑧ 玩家對照總表</h2>
     <div class="tblWrap" id="compare"></div>
   </section>
+  </div>
+  <div class="tabpane" id="pane-edit">
+  <button class="dbgBtn" id="jumpDbg" style="width:100%;margin-bottom:14px;min-height:44px"
+          onclick="jumpDebug()">☢️ 跳到數據編輯</button>
   <!-- ☢️ DEBUG ZONE（唯一允許寫入的區域，上方統計區一律唯讀） -->
   <section id="debugZone">
     <h2>玩家數據編輯 <span style="font-size:9px;opacity:.5;letter-spacing:2px">DEBUG ZONE</span></h2>
@@ -522,17 +591,22 @@
     </div>
     <div id="dbgBody"></div>
   </section>
+  </div>
+  </div>
+  <div class="notice" id="notice">載入中⋯</div>
+
+  <!-- 🎛️ 系統控制台 -->
 </main>
 
 <div id="dbgToast"></div>
 
-<script src="./shared.js?v=7"></script>
+<script src="./shared.js?v=8"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 7;
+  var NEED = 8;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -577,27 +651,26 @@ const LEDGER_LIMIT = 300;      // ⚠️ Firestore 免費方案每天 5 萬次�
 
 /* ===== 共用常數與純函式（唯一真實來源：shared.js） ===== */
 const {
-  PRIZES, MATERIALS, CRAFT_TITLES, SHOP_TITLES, TIERS, ACHIEVEMENTS, PITY_MAX,
-  TALENT_ICON, TALENT_NAME, TALENT_MAX_LV, TALENT_TREES,
-  talentLv, talentSpent, talentEarned, talentAvail, talentAdd,
-  equippedTitle, xpThreshold, levelFromXp,
-  EVENTS, setRuntime, eventOn, eventExpired, eventAdd, eventUntil, activeEvents,
-  r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
-  todayKey, getWeights, TICKET_PRICE, SALE_TICKET_PRICE, LUCK_MAX,
-  epTotal, epAvail, PACK_TIERS, CARDS, cardById, tierById, packTicketsOf, packTicketTotal,
-  PACKS, packById, rollTier, cardCounts, migrateCounts,
-  POTION_TYPES, potionsOf, potionTotal, activePotion, dexProgress,
-  ADMIN_EVENTS, ADMIN_DURATIONS, adminEventById, adminEventOn, adminEventUntil,
-  BOSS_FORCE_OPEN, bossOpenMap, bossStageOpen, bossMaxOpen,
-  BOSS_MILESTONES, bossMilestoneAt, bossMilestoneWinner, BOSSES,
-  getWeightsAdmin,
-  craftOpen, CRAFT_MATS, CRAFT_COIN, CRAFT_SLOTS, craftMatsOf, fullCardOf,
-  FULL_RAR, TASK_EXTRAS,
-  DUNGEONS, DUN_REGEN_PCT, DUN_EP_MULT, DUN_EQUIP_MAX, DUN_EQUIP_CD_H,
-  dunSlotsOf, dunSlotCds,
+  PRIZES, MATERIALS, CRAFT_TITLES, SHOP_TITLES, TIERS,
+  ACHIEVEMENTS, PITY_MAX, TALENT_ICON, TALENT_NAME, TALENT_MAX_LV,
+  TALENT_TREES, talentLv, talentSpent, talentEarned, talentAvail,
+  talentAdd, equippedTitle, xpThreshold, levelFromXp, EVENTS,
+  setRuntime, eventOn, eventExpired, eventAdd, eventUntil,
+  activeEvents, r3, achAdd, titleCoinAdd, titleLuckAdd,
+  coinMultOf, xpMultOf, luckOf, todayKey, getWeights,
+  TICKET_PRICE, SALE_TICKET_PRICE, LUCK_MAX, epTotal, epAvail,
+  PACK_TIERS, CARDS, cardById, tierById, packTicketsOf,
+  packTicketTotal, PACKS, packById, rollTier, cardCounts,
+  migrateCounts, POTION_TYPES, potionsOf, potionTotal, activePotion,
+  dexProgress, ADMIN_EVENTS, ADMIN_DURATIONS, adminEventById, adminEventOn,
+  adminEventUntil, BOSS_FORCE_OPEN, bossOpenMap, bossStageOpen, bossMaxOpen,
+  BOSS_MILESTONES, bossMilestoneAt, bossMilestoneWinner, BOSSES, getWeightsAdmin,
+  craftOpen, CRAFT_MATS, CRAFT_COIN, CRAFT_SLOTS, craftMatsOf,
+  fullCardOf, FULL_RAR, TASK_EXTRAS, DUNGEONS, DUN_REGEN_PCT,
+  DUN_EP_MULT, DUN_EQUIP_MAX, DUN_EQUIP_CD_H, dunSlotsOf, dunSlotCds,
   dungeonDef, dungeonHp, dungeonMobs, dungeonInit, dungeonApplyRegen,
-  dungeonLeftHp, dungeonProgress, dungeonExpired,
-  DUNGEON_REWARDS, dunRewardsOf, dunRewardTotal,
+  dungeonLeftHp, dungeonProgress, dungeonExpired, DUNGEON_REWARDS, dunRewardsOf,
+  dunRewardTotal, potionName, ownedCard, rarColorOf,
 } = window.GAME;
 
 const app = initializeApp(firebaseConfig);
@@ -1350,6 +1423,203 @@ window.dbgPickPlayer = (id)=>{
   const z = $('debugZone');
   if(z) z.scrollIntoView({ behavior:'smooth', block:'start' });
 };
+/* ==================================================================
+   分頁切換
+   狀態存 JS 變數 + localStorage，重新整理會回到原本那一頁
+================================================================== */
+let curTab = 'ctl';
+// localStorage 在無痕模式或被封鎖時會丟例外，失敗就用預設分頁，不影響其他功能
+try { curTab = localStorage.getItem('stats_tab') || 'ctl'; } catch(e){ curTab = 'ctl'; }
+const STATS_TABS = ['ctl','sys','bag','data','edit'];
+function goStatsTab(t){
+  // ⚠️ 先確認目標合法，再動任何 class。反過來寫的話只要 t 是 undefined，
+  //    五個分頁會一起被隱藏、畫面全空，而且不會有任何錯誤訊息。
+  //    這裡用白名單而不是「$('pane-'+t) 存不存在」——後者依賴 DOM 查詢的行為，太脆弱
+  if(!STATS_TABS.includes(t) || !$('pane-' + t)) return;
+  curTab = t;
+  try { localStorage.setItem('stats_tab', t); } catch(e){ /* 記不住分頁而已，不影響切換 */ }
+  document.querySelectorAll('.tabpane').forEach(x=> x.classList.toggle('on', x.id === 'pane-' + t));
+  document.querySelectorAll('.tb').forEach(x=> x.classList.toggle('on', x.dataset.t === t));
+  if(t === 'bag')  renderInv(true);
+  if(t === 'edit') renderDebug(true);
+  const m = document.querySelector('main'); if(m) m.scrollTop = 0;
+}
+window.goStatsTab = goStatsTab;   // inline onclick 也要用得到
+
+/* ==================================================================
+   🎒 持有總覽（唯讀）
+   把玩家身上「所有」東西攤開：金幣、EP、藥水、卡片、稱號、材料、
+   各種券、商店物品、天賦、成就、Boss 與地下城進度。
+   ⚠️ 一樣要 signature 比對（§7.1）：這區掛在 players 的 onSnapshot 上，
+      弟弟隨便動一下就重繪，捲動位置會被彈掉
+================================================================== */
+let invId = null, invSig = '';
+window.invPick = (id)=>{ invId = id; renderInv(true); };
+const invP = () => (invId && players[invId]) ? players[invId] : null;
+
+function invCell(k, v, hot){
+  const zero = (v === 0 || v === '0' || v === '—');
+  return `<div class="invCell ${hot && !zero ? 'hot' : ''} ${zero ? 'zero' : ''}">
+    <div class="ik">${esc(k)}</div><div class="iv">${esc(String(v))}</div></div>`;
+}
+function invChipList(list, emptyTxt){
+  const on = list.filter(x=>x.n > 0);
+  if(!on.length) return `<div class="invEmpty">${esc(emptyTxt)}</div>`;
+  return `<div class="invChips">${on.map(x=>
+    `<span class="invChip">${x.icon || ''} ${esc(x.name)} ×${x.n}</span>`).join('')}</div>`;
+}
+
+function renderInvPicker(){
+  const box = $('invPickBtns');
+  if(!box) return;
+  const ids = Object.keys(players);
+  if(invId && !players[invId]) invId = null;
+  if(!invId && ids.length) invId = ids[0];
+  const sig = ids.join(',') + '|' + invId;
+  if(box.dataset.sig === sig) return;
+  box.dataset.sig = sig;
+  box.innerHTML = ids.map(id=>
+    `<button class="dbgPick ${id === invId ? 'on' : ''}" onclick="invPick('${id}')">
+      ${esc(players[id].name || id)}</button>`).join('') || '<span class="dk">沒有玩家</span>';
+}
+
+function renderInv(force){
+  if(!$('invBody')) return;
+  renderInvPicker();
+  const p = invP();
+  if(!p){ invSig = ''; $('invBody').innerHTML = '<div class="empty">選一個玩家</div>'; return; }
+  let sig;
+  try { sig = invId + '|' + JSON.stringify(p) + '|' + purchases.length; }
+  catch(e){ sig = invId + '|' + Date.now(); }
+  if(!force && sig === invSig) return;
+  invSig = sig;
+
+  const now = Date.now();
+  // 舊資料 packTickets 可能是數字，不能直接當 map 用
+  const packT = (typeof p.packTickets === 'number')
+    ? { normal: p.packTickets, gold:0, diamond:0, rainbow:0 } : (p.packTickets || {});
+  const mats = craftMatsOf(p);
+  // 抽獎券與商店物品都在 purchases 集合，不是玩家欄位
+  const myBuys = purchases.filter(x=>x.playerId === invId);
+  const tickets = myBuys.filter(x=>x.isTicket === true && x.status === 'owned').length;
+  const ownedItems = myBuys.filter(x=>!x.isTicket && x.status === 'owned');
+  const pendItems  = myBuys.filter(x=>x.status === 'pending');
+
+  // 藥水結構是 { 種類: { 倍率: 數量 } }
+  // potions 結構是 { 種類: { 百分比: 數量 } }，值本來就是百分比（20 不是 0.2）
+  const potList = [];
+  POTION_TYPES.forEach(t=>{
+    const byV = potionsOf(p, t.type);
+    Object.keys(byV).forEach(v=>{
+      const n = byV[v] | 0;
+      if(n > 0) potList.push({ icon:t.icon, name:`${t.name} +${v}%`, n });
+    });
+  });
+  const act = p.activePotion || {};
+  const actList = Object.keys(act).filter(k=>act[k]).map(k=>{
+    const d = POTION_TYPES.find(x=>x.type === k);
+    return `<span class="invChip" style="border-color:var(--cyan);color:var(--cyan)">
+      ${d ? d.icon : '🧪'} ${esc(d ? d.name : k)} +${act[k]}% 生效中</span>`;
+  }).join('');
+
+  const myCards = CARDS.filter(c=>ownedCard(p, c.id)).map(c=>{
+    const o = ownedCard(p, c.id);
+    const t = tierById(o.tier || 'normal');
+    const cc = cardCounts(o);
+    const detail = PACK_TIERS.filter(x=>cc[x.id] > 0).map(x=>`${x.name}${cc[x.id]}`).join(' ');
+    return `<div class="invCard" style="border-color:${rarColorOf(c.rar)}44">
+      <div class="cn" style="color:${rarColorOf(c.rar)}">${esc(c.name)}</div>
+      <div class="cd">最高 <b style="color:${t.color}">${t.name}</b>　共 ${o.count || 0} 張<br>${esc(detail || '—')}</div>
+    </div>`;
+  }).join('');
+  const dex = dexProgress(p);
+
+  const crafted = p.craftedTitles || {};
+  const titles = [
+    ...SHOP_TITLES.filter(t=>(p.shopTitles || []).includes(t.id))
+        .map(t=>({ id:t.id, name:`${t.tier}・${t.name}`, n:1 })),
+    ...CRAFT_TITLES.filter(t=>(crafted[t.id] || 0) > 0)
+        .map(t=>({ id:t.id, name:`${t.icon} ${t.name}`, n:crafted[t.id] })),
+  ];
+  const titleHtml = titles.length
+    ? `<div class="invChips">${titles.map(t=>
+        `<span class="invChip"${p.equippedTitle === t.id ? ' style="border-color:var(--gold);color:var(--gold-hi)"' : ''}>${
+          esc(t.name)}${t.n > 1 ? ' ×' + t.n : ''}${p.equippedTitle === t.id ? ' ⭐' : ''}</span>`).join('')}</div>`
+    : '<div class="invEmpty">還沒有稱號</div>';
+
+  const tal = TALENT_TREES.map(t=>({ icon:'🌿', name:t.name, n:(p.talents || {})[t.key] || 0 }));
+  const dSlots = dunSlotsOf(p), dCds = dunSlotCds(p);
+  const dunHtml = dSlots.map((cid,i)=>{
+    const c = cid ? cardById(cid) : null;
+    return `<span class="invChip ${c ? '' : 'dim'}">${i+1}. ${c ? esc(c.name) : '空'}${dCds[i] > now ? ' 🔒' : ''}</span>`;
+  }).join('');
+  const b = p.boss || {};
+
+  $('invBody').innerHTML = `
+    <h3>基本</h3>
+    <div class="invGrid">
+      ${invCell('等級', 'Lv.' + levelFromXp(p.xp ?? 0))}
+      ${invCell('金幣', (p.coins ?? 0).toLocaleString(), true)}
+      ${invCell('累計賺取', (p.totalEarned ?? 0).toLocaleString())}
+      ${invCell('經驗值', (p.xp ?? 0).toLocaleString())}
+      ${invCell('可用 EP', epAvail(p).toLocaleString(), true)}
+      ${invCell('EP 加成', (p.epBonus ?? 0).toLocaleString())}
+      ${invCell('🔮 可用結晶', talentAvail(p), true)}
+      ${invCell('完成任務', p.tasksDone ?? 0)}
+      ${invCell('成就', (p.achievements || []).length + ' / ' + ACHIEVEMENTS.length)}
+    </div>
+
+    <h3>券與材料</h3>
+    ${invChipList([
+      { icon:'🎟️', name:'抽獎券',   n: tickets },
+      { icon:'🎫', name:'免時段券', n: p.bossFreePass ?? 0 },
+      { icon:'🏷️', name:'折價券',   n: p.coupons ?? 0 },
+      ...CRAFT_MATS.map(m=>({ icon:m.icon, name:m.name, n: mats[m.id] })),
+      ...PACK_TIERS.map(t=>({ icon:'🎴', name:t.name+'卡包券', n: packT[t.id] || 0 })),
+      ...MATERIALS.map(m=>({ icon:m.icon, name:m.name, n:(p.materials || {})[m.key] || 0 })),
+    ], '沒有任何券或材料')}
+
+    <h3>🧪 藥水</h3>
+    ${actList ? `<div class="invChips">${actList}</div>` : ''}
+    ${invChipList(potList, '背包裡沒有藥水')}
+
+    <h3>🛒 商店物品</h3>
+    ${ownedItems.length || pendItems.length
+      ? `<div class="invChips">
+          ${ownedItems.map(x=>`<span class="invChip">${esc(x.itemName)}</span>`).join('')}
+          ${pendItems.map(x=>`<span class="invChip" style="border-color:var(--pink);color:var(--pink)">${esc(x.itemName)}・待核銷</span>`).join('')}
+        </div>`
+      : '<div class="invEmpty">背包裡沒有商店物品</div>'}
+
+    <h3>🎴 卡片　<span style="font-size:10px;color:var(--muted)">基礎 ${dex.baseHave}/${dex.baseTotal}　全圖 ${dex.fulls}/${dex.fullTotal}${
+      dex.full ? '　✨+50%' : ''}${dex.xfull ? '　✨+25%' : ''}</span></h3>
+    ${myCards ? `<div class="invCards">${myCards}</div>` : '<div class="invEmpty">還沒有卡片</div>'}
+    <div class="invChips" style="margin-top:8px">
+      ${(p.equipped || []).length
+        ? (p.equipped || []).map(id=>{ const c = cardById(id);
+            return `<span class="invChip" style="border-color:var(--gold);color:var(--gold-hi)">Boss：${esc(c ? c.name : id)}</span>`; }).join('')
+        : '<span class="invChip dim">Boss 沒有裝備卡片</span>'}
+    </div>
+
+    <h3>🏰 地下城裝備</h3>
+    <div class="invChips">${dunHtml}</div>
+
+    <h3>🏅 稱號</h3>
+    ${titleHtml}
+
+    <h3>🌿 天賦</h3>
+    ${invChipList(tal, '還沒點天賦')}
+
+    <h3>⚔️ Boss</h3>
+    <div class="invGrid">
+      ${invCell('關卡', '第 ' + (b.stage ?? 1) + ' 關')}
+      ${invCell('剩餘血量', (b.hp ?? 0).toLocaleString())}
+      ${invCell('DOT 層數', (b.dots || []).length)}
+      ${invCell('ZONE', (b.zoneUntil || 0) > now ? '生效中' : '—')}
+      ${invCell('下次 +35%', b.buff ? '有' : '—')}
+    </div>`;
+}
+
 window.jumpDebug = ()=> $('debugZone').scrollIntoView({ behavior:'smooth', block:'start' });
 let dbgOvOpen = false;        // 展開狀態存 JS 變數，重繪後不會自己折回去
 window.toggleDbgOverview = ()=>{
@@ -2565,6 +2835,7 @@ function renderCtl(force){
   ctlSafe('Boss 關卡開放', 'bossOpenList', renderBossOpen);
   ctlSafe('功能開放', 'featList', renderFeatures);
   ctlSafe('地下城', 'dunStatus', renderDungeon);
+  ctlSafe('持有總覽', 'invBody', renderInv);
 
   ctlSafe('全體刷商店', 'shopAllBtns', ()=>{
     const sig = 'sa|' + shopAllTierPick;
@@ -2632,6 +2903,11 @@ window.dbgFilterTitles = dbgFilterTitles;
 
 /* ===== 總繪製 ===== */
 let raf = null;
+/* 分頁按鈕綁定與初始化。放在這裡是因為 goStatsTab 會呼叫 renderInv / renderDebug，
+   要等它們宣告完才安全 */
+document.querySelectorAll('.tb').forEach(b=>{ b.onclick = ()=> goStatsTab(b.dataset.t); });
+goStatsTab(curTab);
+
 function renderAll(){
   if(!ready.players) return;
   cancelAnimationFrame(raf);
