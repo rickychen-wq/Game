@@ -1463,13 +1463,13 @@
   </div>
 </div>
 
-<script src="./shared.js?v=7"></script>
+<script src="./shared.js?v=8"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 7;
+  var NEED = 8;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -3609,6 +3609,7 @@ function renderBoss(){
     <div class="winBar ${winOpen ? (winLeft <= 180000 ? 'urgent' : 'open') : (freePass > 0 ? 'open' : 'closed')}">
       ${winOpen
         ? `⚔️ 攻擊時段進行中　剩 ${tickSpan(winEdge, { rerender:true, done:'已結束' })}`
+          + (freePass > 0 ? `　🎫 ×${freePass}` : '')   // 時段內也要看得到券，不然會以為沒發到
         : freePass > 0
           ? `🎫 免時段券 ×${freePass}　現在也能打（放一招消耗一張）`
           : `⏰ 攻擊時段已結束　下次開放 ${nextHourTxt}（還有 ${tickSpan(winEdge, { rerender:true, done:'開放中！' })}）`}
@@ -4448,15 +4449,27 @@ function renderBag(){
   const pend  = purchases.filter(p=>p.playerId===me && p.status==='pending');
   const used  = purchases.filter(p=>p.playerId===me && p.status==='redeemed').slice(0,15);
 
-  // 合成材料：只有拿到才顯示。合成系統還沒開放時也要看得見，
-  // 不然媽媽發了 🔑🧩 玩家會以為獎勵不見了
-  const mats = craftMatsOf(players[me] || {});
-  const matHtml = CRAFT_MATS.some(m=>mats[m.id] > 0)
+  /* 數量型道具一覽。
+     以前只列合成材料，結果免時段券、折價券、卡包券發下去玩家在背包完全看不到，
+     只能在 Boss 頁 / 商店的特定情境下才會露出來，看起來就像獎勵沒發到 */
+  const pm = players[me] || {};
+  const mats = craftMatsOf(pm);
+  const packT = (typeof pm.packTickets === 'number')
+    ? { normal: pm.packTickets, gold:0, diamond:0, rainbow:0 }
+    : (pm.packTickets || {});
+  const chips = [
+    ...CRAFT_MATS.map(m=>({ icon:m.icon, name:m.name, n:mats[m.id],
+        note: craftOpen() ? '「🃏 卡片合成」可用' : '合成系統開放後可用' })),
+    { icon:'🎫', name:'免時段券', n: pm.bossFreePass ?? 0, note:'攻擊時段外也能打 Boss，放一招消耗一張' },
+    { icon:'🏷️', name:'折價券',   n: pm.coupons ?? 0,      note:'商店結帳時可折抵' },
+    ...PACK_TIERS.map(t=>({ icon:'🎴', name:t.name+'卡包券', n: packT[t.id] || 0,
+        note:'在「🎴 卡包」直接開，不用花金幣' })),
+  ].filter(x=>x.n > 0);
+  const matHtml = chips.length
     ? `<div class="cfBar" style="margin-bottom:12px">
-        ${CRAFT_MATS.filter(m=>mats[m.id] > 0).map(m=>
-          `<span class="cfMat">${m.icon} ${esc(m.name)} ×${mats[m.id]}</span>`).join('')}
+        ${chips.map(x=>`<span class="cfMat">${x.icon} ${esc(x.name)} ×${x.n}</span>`).join('')}
         <span class="skRow" style="margin:0;flex-basis:100%">
-          ${craftOpen() ? '可以在「🃏 卡片合成」使用' : '合成系統開放後就能使用'}</span>
+          ${esc(chips[0].note)}</span>
       </div>`
     : '';
 
