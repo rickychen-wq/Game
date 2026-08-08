@@ -258,13 +258,13 @@
 <div id="dmgPop"></div>
 <div id="clearBox"><div class="clearIn" id="clearIn"></div></div>
 
-<script src="./shared.js?v=7"></script>
+<script src="./shared.js?v=8"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 7;
+  var NEED = 8;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -573,9 +573,15 @@ window.dunClaim = async ()=>{
 
       const rw = dunRewardsOf(d);
       const upd = {};
+      const tickets = [];
       DUNGEON_REWARDS.forEach(r=>{
         const n = rw[r.id]; if(!n) return;
-        if(r.path.startsWith('packTickets.') && typeof cur.packTickets === 'number'){
+        if(r.special === 'ticket'){
+          // 抽獎券不是玩家欄位，要一張一張建立 purchases 文件
+          for(let k = 0; k < n; k++) tickets.push(1);
+        } else if(!r.path){
+          // 沒有 path 又沒有 special → 定義有問題，寧可不發也不要寫出髒欄位
+        } else if(r.path.startsWith('packTickets.') && typeof cur.packTickets === 'number'){
           // 舊資料 packTickets 是數字 → 先轉成 map 再加，不然會覆蓋掉
           const tier = r.path.split('.')[1];
           const base = { normal: cur.packTickets || 0, gold:0, diamond:0, rainbow:0 };
@@ -584,7 +590,11 @@ window.dunClaim = async ()=>{
           upd[r.path] = increment(n);
         }
       });
-      tx.update(pRef, upd);
+      if(Object.keys(upd).length) tx.update(pRef, upd);
+      tickets.forEach(()=> tx.set(doc(collection(db,'purchases')), {
+        playerId: me, itemName: '抽獎券', price: 0,
+        status: 'owned', isTicket: true, createdAt: serverTimestamp(),
+      }));
       tx.update(dRef, { [`claimed.${me}`]: true });
       tx.set(doc(collection(db,'ledger')), {
         playerId: me, kind:'dungeon', delta: rw.coins || 0,
