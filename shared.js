@@ -11,7 +11,7 @@
 (function (global) {
   /* ⚠️ 改動 shared.js 之後，這個數字和四個 HTML 的 ?v= 都要一起 +1。
      不然瀏覽器會沿用舊的 shared.js，新函式全部 undefined，畫面直接變白。 */
-  const SHARED_VERSION = 7;
+  const SHARED_VERSION = 8;
   'use strict';
 
   /* ==============================================================
@@ -1057,8 +1057,11 @@
     { id:'coins',        icon:'🪙', name:'金幣',     path:'coins',        max:99000 },
     { id:'bonusTokens',  icon:'🔮', name:'結晶',     path:'bonusTokens',  max:99 },
     { id:'epBonus',      icon:'⚡', name:'EP',       path:'epBonus',      max:99000 },
-    { id:'ticket',       icon:'🎟️', name:'抽獎券',   path:'ticket',       max:99 },
-    { id:'coupons',      icon:'🎟️', name:'折價券',   path:'coupons',      max:99 },
+    /* ⚠️ 抽獎券不是玩家欄位！它是 purchases 集合裡 isTicket:true 的文件。
+       所以 path 標成 null，發放時必須走 special:'ticket' 的分支去建立 purchase，
+       不能像其他獎勵那樣 increment 一個欄位（那樣只會寫出一個沒人讀的欄位） */
+    { id:'ticket',       icon:'🎟️', name:'抽獎券',   path:null, special:'ticket', max:99 },
+    { id:'coupons',      icon:'🏷️', name:'折價券',   path:'coupons',      max:99 },
     { id:'bossFreePass', icon:'🎫', name:'免時段券', path:'bossFreePass', max:99 },
     ...CRAFT_MATS.map(m=>({ id:'craft_'+m.id, icon:m.icon, name:m.name, path:'craftMats.'+m.id, max:99 })),
     ...PACK_TIERS.map(t=>({ id:'pack_'+t.id, icon:'🎴', name:t.name+'卡包券', path:'packTickets.'+t.id, max:99 })),
