@@ -508,16 +508,13 @@ window.dunCast = async (cardId, skillId, ev)=>{
         if(dmgMult() > 1) marks.push('×2');
       }
 
-      // ── 扣血：溢出的傷害會自動打到同層下一隻，不浪費 ──
-      let rest = dealt;
-      while(rest > 0){
-        if((flr.hp[ti] ?? 0) <= 0){
-          ti = flr.hp.findIndex(h => h > 0);
-          if(ti < 0) break;
-        }
-        const cut = Math.min(flr.hp[ti], rest);
-        flr.hp[ti] -= cut; rest -= cut;
-      }
+      /* ── 扣血：單體傷害，只打選中的那一隻 ──
+         ⚠️ 不可以把溢出的傷害接著打下一隻。那樣等於每個技能都變成群傷，
+            2000 傷害會一口氣清掉三隻 600 血的小兵，關卡難度整個崩掉。
+            打死一隻就停，超出的部分直接消失 */
+      const cut = Math.min(flr.hp[ti], dealt);
+      flr.hp[ti] -= cut;
+      const overkill = dealt - cut;      // 只拿來顯示，不再造成任何傷害
 
       // ── 推進樓層 ──
       while(ci < floors.length && dungeonFloorDone(floors[ci])) ci++;
@@ -533,7 +530,7 @@ window.dunCast = async (cardId, skillId, ev)=>{
 
       tx.update(pRef, upd);
       tx.update(dRef, dPatch);
-      fx = { dealt, sp, marks: marks.join(' '), name: k.name, ti };
+      fx = { dealt, sp, marks: marks.join(' '), name: k.name, ti, overkill };
       cleared = allDone;
     });
   } catch(e){ toast(e.message); busy = false; render(); return; }
@@ -544,6 +541,8 @@ window.dunCast = async (cardId, skillId, ev)=>{
     else if(fx.sp === 'ZONE') toast('🔵 ZONE 啟動・8 小時內 +35%');
     else {
       dmgPop(fx.dealt, fx.marks);
+      // 超出目標血量的部分不會轉移到別隻，提醒一下免得以為系統吃掉傷害
+      if(fx.overkill > 0) setTimeout(()=> toast(`溢出 ${fx.overkill.toLocaleString()} 傷害・單體技能不會打到其他小兵`), 620);
       if(fx.sp === 'DOT')     setTimeout(()=> toast('☠️ 持續傷害在地下城會一次打滿'), 500);
       if(fx.sp === 'DMGZONE') setTimeout(()=> toast('🔵 ZONE 啟動・8 小時內 +35%'), 500);
     }
