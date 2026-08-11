@@ -11,7 +11,7 @@
 (function (global) {
   /* ⚠️ 改動 shared.js 之後，這個數字和四個 HTML 的 ?v= 都要一起 +1。
      不然瀏覽器會沿用舊的 shared.js，新函式全部 undefined，畫面直接變白。 */
-  const SHARED_VERSION = 8;
+  const SHARED_VERSION = 10;
   'use strict';
 
   /* ==============================================================
@@ -374,6 +374,8 @@
   /* ==============================================================
      活動：內容寫死，開關與期限存在 config/system.events
   ============================================================== */
+  /* 這幾種活動的加成量可以在後台自訂；token / sale 是開關型，沒有數值可調 */
+  const EVENT_TUNABLE = ['coin', 'xp', 'luck', 'dmg'];
   const EVENTS = [
     { key:'doubleCoin', icon:'🪙', name:'雙倍金幣日', ef:'任務金幣加成 +100%',       type:'coin',  add:1.0 },
     { key:'xpFest',     icon:'📈', name:'經驗祭',     ef:'任務 XP 加成 +100%',        type:'xp',    add:1.0 },
@@ -405,9 +407,19 @@
     return !isNaN(t) && Date.now() >= t;
   }
   function activeEvents(){ return EVENTS.filter(e => eventOn(e.key)); }
+  /* 活動的加成量。優先用後台自訂的 add（開活動時填的百分比），
+     沒填或填壞就退回 EVENTS 裡的預設值 —— 舊資料沒有 add 欄位也能正常運作 */
+  function eventAddOf(e){
+    // ⚠️ 只有加成型活動吃自訂值。結晶加碼／抽獎特賣是開關型（add 恆為 0），
+    //    若 config 裡不小心混進 add，讀了會憑空生出一個不存在的加成
+    if(!EVENT_TUNABLE.includes(e.type)) return e.add;
+    const c = (runtime.events || {})[e.key] || {};
+    const custom = Number(c.add);
+    return (isFinite(custom) && custom >= 0) ? custom : e.add;
+  }
   function eventAdd(type){
     return EVENTS.filter(e => e.type === type && eventOn(e.key))
-                 .reduce((a,b) => a + b.add, 0);
+                 .reduce((a, e) => a + eventAddOf(e), 0);
   }
   function eventUntil(key){ return ((runtime.events || {})[key] || {}).until || null; }
   /* 券價：特賣期間 350，購買 transaction 內必須重新呼叫取當下價 */
@@ -889,6 +901,9 @@
   /* 合成系統總開關：預設關閉。stats 後台按下去才會在玩家端整個長出來，
      出問題時關掉就回到「敬請期待下次更新」，不用改 code 也不用重新部署 */
   const craftOpen = () => runtime.craftOpen === true;
+  /* 推播總開關。關著的時候玩家端與 admin 都看不到通知入口，
+     而且 pushSend 直接不送 —— 半成品可以安心留在程式碼裡睡覺 */
+  const pushOpen = () => runtime.pushOpen === true;
 
 
   /* ==============================================================
@@ -1065,7 +1080,17 @@
     { id:'bossFreePass', icon:'🎫', name:'免時段券', path:'bossFreePass', max:99 },
     ...CRAFT_MATS.map(m=>({ id:'craft_'+m.id, icon:m.icon, name:m.name, path:'craftMats.'+m.id, max:99 })),
     ...PACK_TIERS.map(t=>({ id:'pack_'+t.id, icon:'🎴', name:t.name+'卡包券', path:'packTickets.'+t.id, max:99 })),
+    /* 藥水要指定「種類 + 幾 %」，不是單純的數量欄位，
+       所以標成 special:'potion'，發放時走自己的分支 */
+    ...POTION_TYPES.map(t=>({ id:'potion_'+t.type, icon:t.icon, name:t.name,
+        path:null, special:'potion', potionType:t.type, max:99 })),
   ];
+  /* 藥水獎勵的倍率（%）。後台可改，存進 dungeons/active.potionPct */
+  const DUN_POTION_DEFAULT = 20;
+  const dunPotionPct = d => {
+    const n = Math.round(Number((d && d.potionPct)) || 0);
+    return (n >= 1 && n <= 500) ? n : DUN_POTION_DEFAULT;
+  };
   const dunRewardById = id => DUNGEON_REWARDS.find(r => r.id === id) || null;
   function dunRewardsOf(d){
     const raw = (d && d.rewards) || {}, out = {};
@@ -1154,6 +1179,164 @@
   }
 
   /* ============================================================== */
+  /* ==============================================================
+     推播
+     ⚠️ iOS 兩個硬限制，缺一就完全收不到而且不會有錯誤訊息：
+        ① 必須「加到主畫面」開啟，用 Safari 開網頁無效
+        ② 授權必須由使用者「點擊」觸發，自動跳會被靜默擋掉
+  ============================================================== */
+  const VAPID_PUBLIC_KEY = 'BPtAVR9rV_B_X96obcSgp0HjKvLJYa6MeXNhLXLPtXxTdzpxdmIPGy-qOAI6OY-kw7O3h3syCRiEWfyhvTyBg2M';
+  const PUSH_ENDPOINT    = 'https://game-push.chenfdhs453.workers.dev';
+
+  /* 推播種類。要加新的就在這裡加一行，三個頁面的開關面板會自動長出來 */
+  const PUSH_KINDS = [
+    { id:'newTask',  icon:'🆕', name:'新任務',   who:'player', desc:'媽媽發布新任務時' },
+    { id:'approved', icon:'✅', name:'任務通過', who:'player', desc:'回報通過、拿到獎勵時' },
+    { id:'dungeon',  icon:'🏰', name:'地下城',   who:'player', desc:'新的地下城開啟時' },
+    { id:'notice',   icon:'📢', name:'公告',     who:'player', desc:'哥哥發布更新公告時' },
+    { id:'review',   icon:'📋', name:'待審核',   who:'admin',  desc:'有人回報完成、需要審核時' },
+    { id:'redeem',   icon:'🛒', name:'待核銷',   who:'admin',  desc:'有人購買商品、需要核銷時' },
+  ];
+  const pushKindsFor = who => PUSH_KINDS.filter(k => k.who === who);
+  const pushKindById = id => PUSH_KINDS.find(k => k.id === id) || null;
+
+  /* 玩家的推播偏好。沒設定過就是全開 ——
+     預設全開是刻意的：先讓人感受到價值，覺得吵再自己關 */
+  function pushPrefs(p){
+    const raw = (p && p.pushPrefs) || {};
+    const out = {};
+    PUSH_KINDS.forEach(k => out[k.id] = raw[k.id] !== false);
+    return out;
+  }
+  const pushOn     = (p, kind) => pushPrefs(p)[kind] === true;
+  const pushSubOf  = p => (p && p.push && p.push.endpoint) ? p.push : null;
+  const pushReady  = p => !!pushSubOf(p);
+
+  /* 這台裝置能不能收推播。回傳原因而不只是 true/false，
+     才能給使用者「為什麼不行、要怎麼做」而不是一句「不支援」 */
+  function pushSupport(){
+    const nav = (typeof navigator !== 'undefined') ? navigator : null;
+    const hasApi = !!nav && ('serviceWorker' in nav)
+                && (typeof PushManager !== 'undefined')
+                && (typeof Notification !== 'undefined');
+    const standalone = (!!nav && nav.standalone === true)
+                || (typeof matchMedia === 'function' && matchMedia('(display-mode: standalone)').matches);
+    const ua  = nav ? nav.userAgent : '';
+    const ios = /iPad|iPhone|iPod/.test(ua);
+    if(!hasApi)              return { ok:false, why:'unsupported', ios, standalone };
+    if(ios && !standalone)   return { ok:false, why:'needHomeScreen', ios, standalone };
+    return { ok:true, why:'', ios, standalone };
+  }
+
+  /* 目前的授權狀態：granted / denied / default / unsupported */
+  function pushPermission(){
+    if(typeof Notification === 'undefined') return 'unsupported';
+    return Notification.permission;
+  }
+
+  const b64uToU8 = (s)=>{
+    const pad = '='.repeat((4 - s.length % 4) % 4);
+    const b64 = (s + pad).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(b64);
+    return Uint8Array.from(raw, c => c.charCodeAt(0));
+  };
+
+  /* 訂閱：註冊 sw.js → 要授權 → 產生訂閱資料。
+     ⚠️ 一定要從使用者的 click 事件裡呼叫，否則 iOS 會靜默失敗 */
+  async function pushSubscribe(){
+    const sup = pushSupport();
+    if(!sup.ok) throw new Error(
+      sup.why === 'needHomeScreen'
+        ? '請先用 Safari 的「分享 → 加入主畫面」，再從主畫面打開'
+        : '這個瀏覽器不支援通知');
+
+    const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+    await navigator.serviceWorker.ready;
+
+    const perm = await Notification.requestPermission();
+    if(perm !== 'granted') throw new Error(
+      perm === 'denied'
+        ? '通知被拒絕了。要重新開啟請到「設定 → 通知」找這個 App'
+        : '沒有取得通知權限');
+
+    let sub = await reg.pushManager.getSubscription();
+    if(!sub){
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: b64uToU8(VAPID_PUBLIC_KEY),
+      });
+    }
+    const j = sub.toJSON();
+    return { endpoint: j.endpoint, keys: j.keys, at: Date.now() };
+  }
+
+  /* 取消訂閱 */
+  async function pushUnsubscribe(){
+    if(typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    if(!reg) return;
+    const sub = await reg.pushManager.getSubscription();
+    if(sub) await sub.unsubscribe();
+  }
+
+  /* 送出推播。收件人清單由呼叫端先篩好（要有訂閱、而且沒關掉這個種類）
+     ⚠️ 絕不 throw：推播失敗不可以害到主要流程（發任務、審核）失敗 */
+  async function pushSend(subs, title, body, url){
+    try {
+      if(!pushOpen()) return { ok:false, skipped:true, reason:'off' };
+      const list = (subs || []).filter(s => s && s.endpoint && s.keys);
+      if(!list.length) return { ok:false, skipped:true };
+      const res = await fetch(PUSH_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subscriptions: list.map(s => ({ endpoint:s.endpoint, keys:s.keys })),
+          title, body, url: url || '/Game/index.html',
+        }),
+      });
+      return await res.json();
+    } catch(e){
+      return { ok:false, error: String(e) };
+    }
+  }
+
+  /* 媽媽（admin）不是玩家、沒有 players 文件，所以訂閱另外存在 config/adminPush。
+     用既有的 config collection，就不必再改 Firestore 規則。
+     用 deviceId 當 key，同一個人換手機或多台裝置都能各自管理 */
+  function adminPushDevices(cfg){
+    const d = (cfg && cfg.devices) || {};
+    return Object.keys(d).map(id => ({ id, ...d[id] })).filter(x => x.push && x.push.endpoint);
+  }
+  function adminPushTargets(cfg, kind){
+    return adminPushDevices(cfg)
+      .filter(d => ((d.prefs || {})[kind] !== false))
+      .map(d => d.push);
+  }
+  const adminPushPrefs = (dev)=>{
+    const raw = (dev && dev.prefs) || {};
+    const out = {};
+    PUSH_KINDS.forEach(k => out[k.id] = raw[k.id] !== false);
+    return out;
+  };
+
+  /* 從 players 撈出「該收這個種類推播」的訂閱資料。
+     ids 給 null 代表全部人；exclude 用來排除操作者自己 */
+  function pushTargets(players, kind, opts){
+    const o = opts || {};
+    const ids = o.ids || Object.keys(players || {});
+    const out = [];
+    ids.forEach(id=>{
+      if(o.exclude && id === o.exclude) return;
+      const p = (players || {})[id];
+      if(!p) return;
+      const sub = pushSubOf(p);
+      if(!sub) return;
+      if(!pushOn(p, kind)) return;
+      out.push(sub);
+    });
+    return out;
+  }
+
   global.GAME = {
     // 抽獎
     TICKET_PRICE, SALE_TICKET_PRICE, PRIZES, MAT_IDX, COIN_IDX, MAT_BASE, LUCK_MAX,
@@ -1171,10 +1354,15 @@
     EP_START_LV, epTotal, epAvail,
     // 卡牌
     SHARED_VERSION,
+    // 推播
+    VAPID_PUBLIC_KEY, PUSH_ENDPOINT, PUSH_KINDS, pushKindsFor, pushKindById,
+    pushPrefs, pushOn, pushSubOf, pushReady, pushSupport, pushPermission,
+    pushSubscribe, pushUnsubscribe, pushSend, pushTargets,
+    adminPushDevices, adminPushTargets, adminPushPrefs,
     PACKS, RARITIES, PACK_TIERS, TIER_ORDER, PACK_PITY_MAX, CARDS,
     FULL_RAR, RARITY_X, rarColorOf,
     // 合成
-    CRAFT_SLOTS, CRAFT_COIN, CRAFT_MATS, CRAFT_MAT_COST, craftOpen,
+    CRAFT_SLOTS, CRAFT_COIN, CRAFT_MATS, CRAFT_MAT_COST, craftOpen, pushOpen,
     TASK_EXTRAS, extraById, extrasOf, extrasTotal, extrasText,
     craftMatsOf, craftMatEnough, fullCardOf, isFullCard, everOwned, ownedCard,
     craftTierOdds, rollCraftTier, craftPickReady,
@@ -1201,7 +1389,7 @@
     dungeonFloorHp, dungeonFloorDone, dungeonLeftHp, dungeonProgress,
     dungeonOpen, dungeonExpired, dungeonJoined,
     dunEquipOf, dunEquipLocked, dunStateOf, dunSlotsOf, dunSlotCds, dunSlotReady,
-    DUNGEON_REWARDS, dunRewardById, dunRewardsOf, dunRewardTotal,
+    DUNGEON_REWARDS, dunRewardById, dunRewardsOf, dunRewardTotal, DUN_POTION_DEFAULT, dunPotionPct,
     // 管理員臨時活動
     SOUL_IDX, ADMIN_EVENTS, ADMIN_DURATIONS, adminEventById,
     adminEventOn, adminEventUntil, adminLuck, adminSoul,
@@ -1213,7 +1401,7 @@
     weekKey, prevWeekKey, weekEndAt, weekRangeTxt, WEEKLY_BOARDS, tpeDay,
     ATTACK_WINDOW_MIN, windowId, inAttackWindow, windowEdge, skillKey, castUsed,
     // 活動
-    EVENTS, setRuntime, getRuntime, eventOn, eventExpired, eventAdd, eventUntil,
+    EVENTS, EVENT_TUNABLE, setRuntime, getRuntime, eventOn, eventExpired, eventAdd, eventAddOf, eventUntil,
     activeEvents, ticketPrice,
     // 加法池
     r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
