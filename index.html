@@ -105,7 +105,9 @@
 
   /* ===== header：HUD 狀態列 ===== */
   header {
-    padding:13px 14px 11px;
+    /* ⚠️ status-bar-style 設成 black-translucent 之後，畫面會延伸到瀏海底下，
+       所以頂部要自己補上 safe-area 的高度，不然會被時間／訊號蓋住 */
+    padding:calc(13px + env(safe-area-inset-top)) 14px 11px;
     display:flex; align-items:center; gap:12px;
     position:relative; flex-shrink:0;
     background:linear-gradient(180deg, #0a0b12 40%, rgba(7,8,13,.82));
@@ -1226,7 +1228,7 @@
 
   /* 窄螢幕（≤400px）整體縮一階，避免 header 溢出 */
   @media (max-width: 400px){
-    header{ padding:11px 10px 9px; gap:8px; }
+    header{ padding:calc(11px + env(safe-area-inset-top)) 10px 9px; gap:8px; }
     #coinBox{ padding:6px 9px; }
     #coinBox .amt{ font-size:16px; }
     .avatar{ width:34px; height:34px; font-size:17px; }
