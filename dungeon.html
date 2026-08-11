@@ -258,13 +258,13 @@
 <div id="dmgPop"></div>
 <div id="clearBox"><div class="clearIn" id="clearIn"></div></div>
 
-<script src="./shared.js?v=8"></script>
+<script src="./shared.js?v=10"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 8;
+  var NEED = 10;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -312,7 +312,7 @@ const {
   dungeonFloorHp, dungeonFloorDone, dungeonLeftHp, dungeonProgress,
   dungeonExpired, dunEquipOf, dunEquipLocked, dunStateOf,
   dunSlotsOf, dunSlotCds, dunSlotReady,
-  DUNGEON_REWARDS, dunRewardsOf, setRuntime, dmgMult,
+  DUNGEON_REWARDS, dunRewardsOf, dunPotionPct, setRuntime, dmgMult,
 } = window.GAME;
 
 const cardOwned = ownedCard;
@@ -579,6 +579,10 @@ window.dunClaim = async ()=>{
         if(r.special === 'ticket'){
           // 抽獎券不是玩家欄位，要一張一張建立 purchases 文件
           for(let k = 0; k < n; k++) tickets.push(1);
+        } else if(r.special === 'potion'){
+          // 藥水結構是 { 種類: { 百分比: 數量 } }，倍率由後台的 potionPct 決定
+          const pct = dunPotionPct(d);
+          upd[`potions.${r.potionType}.${pct}`] = increment(n);
         } else if(!r.path){
           // 沒有 path 又沒有 special → 定義有問題，寧可不發也不要寫出髒欄位
         } else if(r.path.startsWith('packTickets.') && typeof cur.packTickets === 'number'){
@@ -861,7 +865,7 @@ function rewardHtml(){
     <div class="rwList">${list.map(r=>`
       <div class="rw">
         <div class="rwIc">${r.icon}</div>
-        <div class="rwNm">${esc(r.name)}</div>
+        <div class="rwNm">${esc(r.name)}${r.special === 'potion' ? ` +${dunPotionPct(DUN)}%` : ''}</div>
         <div class="rwQ" data-roll="${r.max}">?</div>
       </div>`).join('')}</div>`;
 }
@@ -894,7 +898,7 @@ function clearedHtml(def){
     <h2>獎勵</h2>
     <div class="rwList">${list.map(r=>`
       <div class="rw"><div class="rwIc">${r.icon}</div>
-        <div class="rwNm">${esc(r.name)}</div>
+        <div class="rwNm">${esc(r.name)}${r.special === 'potion' ? ` +${dunPotionPct(DUN)}%` : ''}</div>
         <div class="rwQ">${rw[r.id].toLocaleString()}</div></div>`).join('')}</div>
     <button class="btn gold" style="width:100%;margin-top:14px"
       onclick="dunClaim()" ${(claimed || !joined || busy) ? 'disabled' : ''}>
