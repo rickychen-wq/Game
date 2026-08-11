@@ -11,7 +11,7 @@
 (function (global) {
   /* ⚠️ 改動 shared.js 之後，這個數字和四個 HTML 的 ?v= 都要一起 +1。
      不然瀏覽器會沿用舊的 shared.js，新函式全部 undefined，畫面直接變白。 */
-  const SHARED_VERSION = 10;
+  const SHARED_VERSION = 12;
   'use strict';
 
   /* ==============================================================
@@ -377,12 +377,15 @@
   /* 這幾種活動的加成量可以在後台自訂；token / sale 是開關型，沒有數值可調 */
   const EVENT_TUNABLE = ['coin', 'xp', 'luck', 'dmg'];
   const EVENTS = [
-    { key:'doubleCoin', icon:'🪙', name:'雙倍金幣日', ef:'任務金幣加成 +100%',       type:'coin',  add:1.0 },
-    { key:'xpFest',     icon:'📈', name:'經驗祭',     ef:'任務 XP 加成 +100%',        type:'xp',    add:1.0 },
-    { key:'luckyDay',   icon:'🍀', name:'幸運日',     ef:'抽獎幸運 +30%',             type:'luck',  add:0.3 },
+    /* ⚠️ 加成型活動的 name / ef 不可以寫死「雙倍」或「+100%」——
+       百分比可以在後台自訂，開成 +50% 卻叫「雙倍金幣日」就是在騙人。
+       這裡只寫「加成什麼」，實際數字由 eventLabel / eventEffect 動態產生 */
+    { key:'doubleCoin', icon:'🪙', name:'金幣加成日', ef:'任務金幣加成',             type:'coin',  add:1.0 },
+    { key:'xpFest',     icon:'📈', name:'經驗祭',     ef:'任務 XP 加成',              type:'xp',    add:1.0 },
+    { key:'luckyDay',   icon:'🍀', name:'幸運日',     ef:'抽獎幸運加成',             type:'luck',  add:0.3 },
     { key:'tokenBoost', icon:'🔮', name:'結晶加碼',   ef:'每完成一個任務多 1 顆結晶', type:'token', add:0 },
     { key:'saleTicket', icon:'🎰', name:'抽獎特賣',   ef:'抽獎券 500 → 350',          type:'sale',  add:0 },
-    { key:'doubleDmg',  icon:'⚔️', name:'雙倍傷害日', ef:'打 Boss 傷害 ×2',           type:'dmg',   add:1.0 },
+    { key:'doubleDmg',  icon:'⚔️', name:'傷害加成日', ef:'打 Boss 傷害加成',          type:'dmg',   add:1.0 },
   ];
   const SALE_TICKET_PRICE = 350;
 
@@ -417,6 +420,26 @@
     const custom = Number(c.add);
     return (isFinite(custom) && custom >= 0) ? custom : e.add;
   }
+  /* 活動文案。加成型會把「實際生效的百分比」算進去，
+     所以玩家看到的永遠是真數字。pctOverride 給值 = 開活動前的預覽 */
+  function eventEffect(e, pctOverride){
+    if(!EVENT_TUNABLE.includes(e.type)) return e.ef;
+    const add = (pctOverride !== undefined && pctOverride !== null)
+      ? Number(pctOverride) / 100 : eventAddOf(e);
+    // 傷害是乘算，寫 ×N 比 +N% 直覺；其餘用 +N%
+    return e.type === 'dmg'
+      ? `${e.ef} ×${Math.round((1 + add) * 100) / 100}`
+      : `${e.ef} +${Math.round(add * 100)}%`;
+  }
+  function eventLabel(e, pctOverride){
+    if(!EVENT_TUNABLE.includes(e.type)) return e.name;
+    const add = (pctOverride !== undefined && pctOverride !== null)
+      ? Number(pctOverride) / 100 : eventAddOf(e);
+    return e.type === 'dmg'
+      ? `${e.name}（×${Math.round((1 + add) * 100) / 100}）`
+      : `${e.name}（+${Math.round(add * 100)}%）`;
+  }
+
   function eventAdd(type){
     return EVENTS.filter(e => e.type === type && eventOn(e.key))
                  .reduce((a, e) => a + eventAddOf(e), 0);
@@ -1337,6 +1360,84 @@
     return out;
   }
 
+  /* ==============================================================
+     🎲 隨機罰單
+     媽媽只填事由、不填金額，由轉盤決定罰什麼。
+     目的是把懲罰的情緒重量從「媽媽在生氣」轉成「你今天運氣不好」——
+     她會更敢罰，弟弟也比較不會覺得是針對他。
+     主轉盤留了 10% 幸運格，那是「有機會逃掉」的希望，
+     沒有它就純粹是挨打，只會累積怨氣
+  ============================================================== */
+  const ROULETTES = {
+    main: {
+      id:'main', icon:'🎲', name:'命運轉盤', color:'#e9c46a',
+      slots:[
+        { id:'c300',  icon:'💸', label:'-300 金幣',      prob:20, kind:'coin',  value:300 },
+        { id:'c500',  icon:'💸', label:'-500 金幣',      prob:30, kind:'coin',  value:500 },
+        { id:'half',  icon:'🔻', label:'接下來 3 個任務金幣砍半', prob:30, kind:'half', value:3 },
+        { id:'lucky', icon:'🍀', label:'幸運轉盤',       prob:10, kind:'goto',  value:'lucky' },
+        { id:'devil', icon:'😈', label:'惡魔轉盤',       prob:10, kind:'goto',  value:'devil' },
+      ],
+    },
+    lucky: {
+      id:'lucky', icon:'🍀', name:'幸運轉盤', color:'#5fd08a',
+      slots:[
+        { id:'l50a', icon:'💸', label:'-50 金幣', prob:25, kind:'coin', value:50 },
+        { id:'l50b', icon:'💸', label:'-50 金幣', prob:25, kind:'coin', value:50 },
+        { id:'l50c', icon:'💸', label:'-50 金幣', prob:25, kind:'coin', value:50 },
+        { id:'safe', icon:'✨', label:'這次倖免', prob:25, kind:'none', value:0 },
+      ],
+    },
+    devil: {
+      id:'devil', icon:'😈', name:'惡魔轉盤', color:'#ff3c5a',
+      slots:[
+        { id:'d500a', icon:'💸', label:'-500 金幣',  prob:25, kind:'coin', value:500 },
+        { id:'d500b', icon:'💸', label:'-500 金幣',  prob:25, kind:'coin', value:500 },
+        { id:'d1000', icon:'💀', label:'-1000 金幣', prob:25, kind:'coin', value:1000 },
+        { id:'mercy', icon:'✨', label:'奇蹟倖免',   prob:25, kind:'none', value:0 },
+      ],
+    },
+  };
+  const rouletteById = id => ROULETTES[id] || null;
+
+  /* 轉一次。回傳整條路徑（主轉盤 → 可能再進子轉盤），
+     讓玩家端可以一格一格演出來，而不是直接跳結果 */
+  function spinRoulette(startId){
+    const path = [];
+    let cur = startId || 'main';
+    for(let guard = 0; guard < 5; guard++){        // 防無限迴圈
+      const r = rouletteById(cur);
+      if(!r) break;
+      const hit = pickWeighted(r.slots, 'prob');
+      path.push({ roulette: cur, slot: hit.id });
+      if(hit.kind !== 'goto') break;
+      cur = hit.value;
+    }
+    return path;
+  }
+  /* 把路徑換算成實際要扣什麼 */
+  function rouletteOutcome(path){
+    const last = (path || [])[(path || []).length - 1];
+    if(!last) return { coin:0, half:0, slot:null, roulette:null };
+    const r = rouletteById(last.roulette);
+    const s = r && r.slots.find(x => x.id === last.slot);
+    if(!s) return { coin:0, half:0, slot:null, roulette:null };
+    return {
+      coin: s.kind === 'coin' ? s.value : 0,
+      half: s.kind === 'half' ? s.value : 0,
+      slot: s, roulette: r,
+    };
+  }
+
+  /* 玩家身上待執行的隨機罰單。有這個就要強制擋畫面 */
+  const pendingRoulette = p => {
+    const r = (p && p.pendingRoulette) || null;
+    return (r && Array.isArray(r.path) && r.path.length) ? r : null;
+  };
+  /* 「接下來 N 個任務金幣砍半」的剩餘次數 */
+  const halfCoinLeft = p => Math.max(0, Math.floor(Number((p && p.debuff && p.debuff.halfCoin)) || 0));
+  const inDebt = p => ((p && p.coins) ?? 0) < 0;
+
   global.GAME = {
     // 抽獎
     TICKET_PRICE, SALE_TICKET_PRICE, PRIZES, MAT_IDX, COIN_IDX, MAT_BASE, LUCK_MAX,
@@ -1354,6 +1455,9 @@
     EP_START_LV, epTotal, epAvail,
     // 卡牌
     SHARED_VERSION,
+    // 隨機罰單
+    ROULETTES, rouletteById, spinRoulette, rouletteOutcome,
+    pendingRoulette, halfCoinLeft, inDebt,
     // 推播
     VAPID_PUBLIC_KEY, PUSH_ENDPOINT, PUSH_KINDS, pushKindsFor, pushKindById,
     pushPrefs, pushOn, pushSubOf, pushReady, pushSupport, pushPermission,
@@ -1401,7 +1505,8 @@
     weekKey, prevWeekKey, weekEndAt, weekRangeTxt, WEEKLY_BOARDS, tpeDay,
     ATTACK_WINDOW_MIN, windowId, inAttackWindow, windowEdge, skillKey, castUsed,
     // 活動
-    EVENTS, EVENT_TUNABLE, setRuntime, getRuntime, eventOn, eventExpired, eventAdd, eventAddOf, eventUntil,
+    EVENTS, EVENT_TUNABLE, setRuntime, getRuntime, eventOn, eventExpired, eventAdd, eventAddOf,
+    eventEffect, eventLabel, eventUntil,
     activeEvents, ticketPrice,
     // 加法池
     r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
