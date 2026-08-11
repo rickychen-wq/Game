@@ -613,13 +613,13 @@
 
 <div id="dbgToast"></div>
 
-<script src="./shared.js?v=10"></script>
+<script src="./shared.js?v=12"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 10;
+  var NEED = 12;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -684,7 +684,8 @@ const {
   dungeonDef, dungeonHp, dungeonMobs, dungeonInit, dungeonApplyRegen,
   dungeonLeftHp, dungeonProgress, dungeonExpired, DUNGEON_REWARDS, dunRewardsOf,
   PUSH_KINDS, pushPrefs, pushOn, pushSubOf, pushReady, pushSend, pushTargets, pushOpen,
-  EVENT_TUNABLE, eventAddOf, dunPotionPct, DUN_POTION_DEFAULT,
+  EVENT_TUNABLE, eventAddOf, eventLabel, eventEffect, dunPotionPct, DUN_POTION_DEFAULT,
+  halfCoinLeft, inDebt, rouletteById,
   adminPushDevices, adminPushTargets,
   dunRewardTotal, potionName, ownedCard, rarColorOf,
 } = window.GAME;
@@ -1306,7 +1307,7 @@ window.toggleEvent = async (key)=>{
   const e = EVENTS.find(x=>x.key===key);
   const live = eventOn(key);
   if(live){
-    if(!confirm(`要關閉「${e.name}」嗎？\n關閉後加成立即失效。`)) return;
+    if(!confirm(`要關閉「${eventLabel(e)}」嗎？\n關閉後加成立即失效。`)) return;
     try { await saveSystemConfig({ events: { [key]: { on:false, until:null } } }); }
     catch(err){ alert('關閉失敗：' + err.message); }
     return;
@@ -1325,8 +1326,7 @@ window.toggleEvent = async (key)=>{
   // 加成型活動可以自訂數值；沒填就用預設
   const tunable = EVENT_TUNABLE.includes(e.type);
   const pct = tunable ? ((evPct[key] !== undefined) ? evPct[key] : Math.round(e.add * 100)) : null;
-  const efTxt = tunable ? `${e.ef.replace(/[+×][\d.]+%?/, '')}　→ 實際 +${pct}%` : e.ef;
-  if(!confirm(`要開啟「${e.name}」嗎？\n效果：${efTxt}\n結束時間：${d.toLocaleString('zh-TW',{ timeZone:'Asia/Taipei' })}`)) return;
+  if(!confirm(`要開啟「${eventLabel(e, pct)}」嗎？\n效果：${eventEffect(e, pct)}\n結束時間：${d.toLocaleString('zh-TW',{ timeZone:'Asia/Taipei' })}`)) return;
   try {
     await saveSystemConfig({ events: { [key]: {
       on:true, until, ...(tunable ? { add: pct / 100 } : {}),
@@ -1340,7 +1340,7 @@ async function killAllEvents(){
   if(!live.length) return;
   const lines = live.map(e=>{
     const l = leftText(eventUntil(e.key));
-    return `・${e.icon} ${e.name}${l ? `（${l}）` : ''}`;
+    return `・${e.icon} ${eventLabel(e)}${l ? `　剩 ${l}` : ''}`;
   }).join('\n');
   if(!confirm(`要關閉全部進行中的活動嗎？\n\n${lines}\n\n關閉後立即生效，玩家的加成會馬上消失。`)) return;
   const patch = {};
@@ -1398,8 +1398,8 @@ function renderConsole(){
     return `<div class="evRow ${live?'live':''} ${exp?'expired':''}">
       <div class="evTop">
         <span class="ei">${e.icon}</span>
-        <span class="en">${esc(e.name)}</span>
-        <span class="ef">${esc(e.ef)}${liveAdd}</span>
+        <span class="en">${esc(live ? eventLabel(e) : e.name)}</span>
+        <span class="ef">${esc(live ? eventEffect(e) : e.ef)}${liveAdd}</span>
         ${st}
       </div>
       <div class="evCtl">
@@ -1917,6 +1917,8 @@ const QUICK = {
   cd:       { t:'⏱️ 清除所有技能 CD', run:p=>({ patch:{ skillReady:{} }, label:'清除所有技能 CD' }) },
   freepass: { t:'🎫 給 1 張免時段券', run:p=>({ patch:{ bossFreePass:(p.bossFreePass ?? 0) + 1 }, label:'給免時段券 ×1' }) },
   eqlock:   { t:'🔓 解除換卡鎖（Boss）', run:p=>({ patch:{ equipSlotReadyAt:0 }, label:'解除換卡鎖（Boss）' }) },
+  rndclear: { t:'🎲 取消待轉的隨機罰單', run:p=>({ patch:{ pendingRoulette:null }, label:'取消隨機罰單' }) },
+  halfclear:{ t:'🔻 解除金幣砍半',       run:p=>({ patch:{ 'debuff.halfCoin':0 }, label:'解除金幣砍半' }) },
   // 地下城的冷卻是每一格獨立的，所以要整個陣列歸零；
   // 順手清掉 dungeonEquipReadyAt，那是舊版的全域冷卻欄位
   dunlock:  { t:'🔓 解除換卡鎖（地下城）',
@@ -2109,6 +2111,19 @@ function renderDebug(force){
     ${CRAFT_MATS.map(m=>dbgNumRow(
         `${m.icon} ${m.name} craftMats.${m.id}`, 'craftMats.'+m.id,
         craftMatsOf(p)[m.id], 'dbg_cm_'+m.id, 1)).join('')}
+
+    <h3>🎲 罰單狀態</h3>
+    <div class="dbgRow">
+      <span class="dk">待轉的隨機罰單</span>
+      <span class="dv" style="color:${p.pendingRoulette ? 'var(--pink)' : 'var(--cyan)'}">${
+        p.pendingRoulette ? '有（' + esc(p.pendingRoulette.reason || '—') + '）' : '無'}</span>
+    </div>
+    ${dbgNumRow('🔻 金幣砍半剩餘次數','debuff.halfCoin', halfCoinLeft(p), 'dbg_half', 1)}
+    <div class="dbgRow">
+      <span class="dk">負債狀態</span>
+      <span class="dv" style="color:${inDebt(p) ? 'var(--pink)' : 'var(--cyan)'}">${
+        inDebt(p) ? '負債 ' + Math.abs(p.coins).toLocaleString() : '正常'}</span>
+    </div>
 
     <h3>🏰 地下城裝備（4 格獨立冷卻）</h3>
     ${(()=>{ const sl = dunSlotsOf(p), cd = dunSlotCds(p), now = Date.now();
