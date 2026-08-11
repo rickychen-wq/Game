@@ -171,6 +171,32 @@
     color:#0a1a14;
   }
 
+  /* ===== 通知 ===== */
+  .pushHero{ padding:22px 18px; border-radius:16px; margin-bottom:16px; text-align:center;
+    border:1px solid rgba(95,240,220,.45); background:linear-gradient(160deg,#12222a,#0b0d14); }
+  .pushHero.on{ border-color:rgba(233,196,106,.45); background:linear-gradient(160deg,#1c1a12,#0b0d14); }
+  .pushHero.warn{ border-color:rgba(255,107,129,.45); background:linear-gradient(160deg,#241016,#0b0d14); }
+  .pushHero .pIc{ font-size:42px; margin-bottom:10px; }
+  .pushHero .pT{ font-size:18px; font-weight:900; margin-bottom:8px; }
+  .pushHero .pS{ font-family:var(--mono); font-size:12px; color:var(--muted); line-height:1.9; }
+  .pushRow{ display:flex; align-items:center; gap:11px; padding:12px 13px; margin-bottom:8px;
+    border-radius:12px; border:1px solid var(--line-soft); background:#0d0f17; }
+  .pushRow .kIc{ font-size:20px; flex-shrink:0; }
+  .pushRow .kB{ flex:1; min-width:0; }
+  .pushRow .kN{ font-size:14px; font-weight:800; margin-bottom:3px; }
+  .pushRow .kD{ font-family:var(--mono); font-size:10.5px; color:var(--muted); }
+  .pushRow.off{ opacity:.5; }
+  .sw{ width:46px; height:27px; flex-shrink:0; border-radius:99px; cursor:pointer; position:relative;
+    background:#1a1d28; border:1px solid var(--line-soft); transition:.2s ease; }
+  .sw::after{ content:''; position:absolute; top:2px; left:2px; width:21px; height:21px;
+    border-radius:50%; background:var(--dim); transition:.2s cubic-bezier(.2,.9,.2,1); }
+  .sw.on{ background:rgba(95,240,220,.2); border-color:var(--cyan); }
+  .sw.on::after{ left:22px; background:var(--cyan); }
+  .sw.busy{ opacity:.45; cursor:wait; }
+  .devRow{ font-family:var(--mono); font-size:11px; color:var(--muted);
+    padding:7px 10px; border-radius:8px; background:#0d0f17;
+    border:1px solid var(--line-soft); margin-bottom:6px; }
+
   .exWrap{ display:flex; align-items:center; gap:6px; background:#0d0f17;
     border:1px solid var(--line); border-radius:9px; padding:4px 6px; }
   .exWrap.on{ border-color:#ff8c42; background:rgba(255,140,66,.10); }
@@ -433,6 +459,11 @@
       <div id="penLog"></div>
     </section>
   </div>
+
+  <!-- 🔔 通知設定 -->
+  <div class="page" id="page-push">
+    <div id="pushBody"></div>
+  </div>
 </main>
 
 <nav>
@@ -447,6 +478,7 @@
 <div id="drawer">
   <div class="grip"></div>
   <div class="drawerGrid">
+    <div class="drawerItem" data-p="push"><span class="dic">🔔</span><span class="dname">通知</span><span class="navBadge" id="drawerPushBadge" style="top:6px;right:10px">0</span></div>
     <div class="drawerItem" data-p="penalty"><span class="dic">🔒</span><span class="dname">罰單</span><span class="navBadge" id="drawerPenBadge" style="top:6px;right:10px">0</span></div>
     <div class="drawerItem" data-p="players"><span class="dic">👦</span><span class="dname">玩家</span></div>
   </div>
@@ -454,13 +486,13 @@
 
 <div id="toast"></div>
 
-<script src="./shared.js?v=8"></script>
+<script src="./shared.js?v=10"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 8;
+  var NEED = 10;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -520,6 +552,9 @@ const {
   COOP_ASSIGNEE, isCoop, coopMembers, coopDoneBy, coopProgress,
   activePotion, potionAdd, potionName,
   TASK_EXTRAS, extrasOf, extrasText, extrasTotal,
+  PUSH_KINDS, pushKindsFor, pushPrefs, pushOn, pushSubOf, pushReady,
+  pushSupport, pushPermission, pushSubscribe, pushUnsubscribe, pushSend, pushTargets, pushOpen,
+  adminPushDevices, adminPushTargets, adminPushPrefs,
 } = window.GAME;
 
 const app = initializeApp(firebaseConfig);
@@ -570,17 +605,21 @@ function updateNavBadge(){
 
 /* ===== 分頁切換（nav + 抽屜共用） ===== */
 function goTab(name){
+  /* ⚠️ 先確認目標存在，再移除舊的 .on。
+     反過來寫的話，只要 name 是 undefined，所有分頁會一起被隱藏、
+     畫面只剩頂欄和導覽列，而且不會有任何錯誤訊息 */
+  const page = name ? $('page-' + name) : null;
+  if(!page) return;
   document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
   document.querySelectorAll('.drawerItem').forEach(x=>x.classList.remove('on'));
   document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));
-  const page = $('page-'+name);
-  if(!page) return;
   page.classList.add('on');
   const navBtn = document.querySelector(`nav button[data-p="${name}"]`);
   if(navBtn) navBtn.classList.add('on');
   const dItem = document.querySelector(`.drawerItem[data-p="${name}"]`);
   if(dItem){ dItem.classList.add('on'); $('moreBtn').classList.add('on'); }
   if(name === 'penalty') renderPenalties();
+  if(name === 'push')    renderPush();
 }
 document.querySelectorAll('nav button[data-p]').forEach(b=>{
   b.onclick = ()=> goTab(b.dataset.p);
@@ -734,11 +773,193 @@ $('addTaskBtn').onclick = async ()=>{
   taskAssignee = null; renderAssignBtns();           // 清空選擇，避免誤發下一筆
   taskExtras = {}; extraAuthed = false; renderExtraBtns(true);
   toast('任務已發布 ✅');
+
+  // 推播給被指派的人。⚠️ 不 await、不讓它擋住流程 ——
+  // 推播失敗絕對不可以害任務發布看起來像失敗
+  const who = isCo ? Object.keys(players) : [assignee];
+  pushSend(pushTargets(players, 'newTask', { ids: who }),
+    '🆕 新任務', `${title}　🪙 ${reward}`, '/Game/index.html');
 };
 
 /* ⚠️ 不要用原生 <select> 在高頻重繪的頁面上承載狀態：
    使用者的操作會輸給程式重繪，iOS Safari 的 picker value 寫回時機也不可靠。
    正確做法：狀態存 JS 變數，UI 用按鈕，重繪前比對 signature 避免打斷點擊。 */
+/* ==================================================================
+   🔔 通知（管理端）
+   媽媽不是玩家、沒有 players 文件，所以訂閱存在 config/adminPush，
+   用 deviceId 當 key —— 她可能手機平板都要收，換裝置也不會蓋掉舊的
+================================================================== */
+let adminPushCfg = null;
+let pushBusy = false;
+
+/* 這台裝置的識別碼，存 localStorage。清快取會產生新的，
+   舊的那筆會變成收不到的殭屍訂閱，所以面板上可以手動刪 */
+function deviceId(){
+  let id = null;
+  try { id = localStorage.getItem('tb_device_id'); } catch(e){}
+  if(!id){
+    id = 'd' + Math.random().toString(36).slice(2, 10);
+    try { localStorage.setItem('tb_device_id', id); } catch(e){}
+  }
+  return id;
+}
+const myDevice = () => ((adminPushCfg && adminPushCfg.devices) || {})[deviceId()] || null;
+
+onSnapshot(doc(db,'config','adminPush'), d=>{
+  adminPushCfg = d.exists() ? (d.data() || {}) : null;
+  if($('page-push') && $('page-push').classList.contains('on')) renderPush();
+  updatePushBadge();
+});
+
+window.doPushSubscribe = async ()=>{
+  if(pushBusy) return;
+  pushBusy = true; renderPush();
+  try {
+    const sub = await pushSubscribe();
+    const name = prompt('這台裝置叫什麼名字？（方便之後分辨）', '媽媽的手機') || '未命名裝置';
+    await setDoc(doc(db,'config','adminPush'), {
+      devices: { [deviceId()]: { push: sub, name, at: Date.now() } },
+    }, { merge: true });
+    toast('🔔 通知已開啟');
+  } catch(e){ toast(e.message); }
+  pushBusy = false; renderPush();
+};
+
+window.doPushUnsubscribe = async ()=>{
+  if(pushBusy) return;
+  if(!confirm('要關閉這台裝置的通知嗎？\n之後有人回報完成、要核銷都不會提醒你。')) return;
+  pushBusy = true; renderPush();
+  try {
+    await pushUnsubscribe();
+    await setDoc(doc(db,'config','adminPush'), {
+      devices: { [deviceId()]: { push: null, off: true, at: Date.now() } },
+    }, { merge: true });
+    toast('通知已關閉');
+  } catch(e){ toast(e.message); }
+  pushBusy = false; renderPush();
+};
+
+window.togglePushKind = async (kind)=>{
+  if(pushBusy) return;
+  const cur = adminPushPrefs(myDevice())[kind];
+  pushBusy = true; renderPush();
+  try {
+    await setDoc(doc(db,'config','adminPush'), {
+      devices: { [deviceId()]: { prefs: { [kind]: !cur } } },
+    }, { merge: true });
+  } catch(e){ toast(e.message); }
+  pushBusy = false; renderPush();
+};
+
+window.doPushTest = async ()=>{
+  if(pushBusy) return;
+  const dev = myDevice();
+  if(!dev || !dev.push) return;
+  pushBusy = true; renderPush();
+  const r = await pushSend([dev.push], '🔔 測試通知', '看到這則就代表設定成功了！', '/Game/admin.html');
+  pushBusy = false; renderPush();
+  toast(r && r.ok ? '已送出，等一下就會跳出來' : '送出失敗，可能要重新開啟通知');
+};
+
+/* 刪掉其他裝置（例如換手機後留下的殭屍訂閱） */
+window.removePushDevice = async (id)=>{
+  if(pushBusy) return;
+  if(!confirm('要移除這台裝置嗎？它之後就收不到通知了。')) return;
+  pushBusy = true; renderPush();
+  try {
+    await setDoc(doc(db,'config','adminPush'), {
+      devices: { [id]: { push: null, removed: true } },
+    }, { merge: true });
+  } catch(e){ toast(e.message); }
+  pushBusy = false; renderPush();
+};
+
+function updatePushBadge(){
+  const it = document.querySelector('.drawerItem[data-p="push"]');
+  if(it) it.style.display = pushOpen() ? '' : 'none';
+  const b = $('drawerPushBadge');
+  if(!b) return;
+  const need = pushOpen() && !myDevice() && pushSupport().ok;
+  b.textContent = need ? '!' : '0';
+  b.style.display = need ? '' : 'none';
+}
+
+function renderPush(){
+  if(!$('pushBody')) return;
+  if(!pushOpen()){
+    $('pushBody').innerHTML = '<section><h2>🔔 通知</h2><div class="sub">尚未開放（在 stats 的「功能開放」打開）</div></section>';
+    return;
+  }
+  const sup  = pushSupport();
+  const perm = pushPermission();
+  const dev  = myDevice();
+  const on   = !!(dev && dev.push && dev.push.endpoint);
+  const prefs = adminPushPrefs(dev);
+
+  let hero;
+  if(!sup.ok && sup.why === 'needHomeScreen'){
+    hero = `<div class="pushHero warn">
+      <div class="pIc">📲</div>
+      <div class="pT">要先加到主畫面</div>
+      <div class="pS">
+        iPhone 規定：只有從主畫面的圖示打開，才收得到通知。<br><br>
+        <b style="color:var(--gold)">底下的分享鍵 → 加入主畫面 → 加入</b><br><br>
+        加好之後從桌面圖示打開，再回到這一頁。
+      </div>
+    </div>`;
+  } else if(!sup.ok){
+    hero = `<div class="pushHero warn">
+      <div class="pIc">🚫</div><div class="pT">這個瀏覽器不支援</div>
+      <div class="pS">換 Safari（iPhone）或 Chrome（Android／電腦）試試看</div></div>`;
+  } else if(perm === 'denied'){
+    hero = `<div class="pushHero warn">
+      <div class="pIc">🔕</div><div class="pT">通知被拒絕了</div>
+      <div class="pS">要重新開啟，得到手機的<br>
+        <b style="color:var(--gold)">設定 → 通知 → 任務板</b><br>把「允許通知」打開，再回來這一頁。</div></div>`;
+  } else if(!on){
+    hero = `<div class="pushHero">
+      <div class="pIc">🔔</div><div class="pT">開啟通知</div>
+      <div class="pS">有人回報完成、要核銷商品時<br>直接跳到手機上，不用一直開著看</div>
+      <button class="btn ok" style="width:100%;margin-top:16px"
+        onclick="doPushSubscribe()" ${pushBusy ? 'disabled' : ''}>
+        ${pushBusy ? '處理中⋯' : '開啟通知'}</button></div>`;
+  } else {
+    hero = `<div class="pushHero on">
+      <div class="pIc">🔔</div><div class="pT">通知已開啟</div>
+      <div class="pS">這台是「${esc(dev.name || '未命名裝置')}」</div>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn" style="flex:1" onclick="doPushTest()" ${pushBusy ? 'disabled' : ''}>發個測試</button>
+        <button class="btn no" onclick="doPushUnsubscribe()" ${pushBusy ? 'disabled' : ''}>關閉</button>
+      </div></div>`;
+  }
+
+  const rows = on ? pushKindsFor('admin').map(k=>`
+    <div class="pushRow ${prefs[k.id] ? '' : 'off'}">
+      <span class="kIc">${k.icon}</span>
+      <div class="kB"><div class="kN">${esc(k.name)}</div><div class="kD">${esc(k.desc)}</div></div>
+      <span class="sw ${prefs[k.id] ? 'on' : ''} ${pushBusy ? 'busy' : ''}"
+        onclick="togglePushKind('${k.id}')"></span>
+    </div>`).join('') : '';
+
+  // 其他裝置：換手機之後舊的會留下來，列出來讓人手動清
+  const others = adminPushDevices(adminPushCfg).filter(d => d.id !== deviceId());
+  const otherHtml = others.length
+    ? `<h2>其他裝置</h2>` + others.map(d=>`
+        <div class="devRow">${esc(d.name || d.id)}
+          <button class="btn no" style="float:right;padding:3px 9px;font-size:11px"
+            onclick="removePushDevice('${d.id}')">移除</button></div>`).join('')
+    : '';
+
+  $('pushBody').innerHTML = hero
+    + (on ? `<h2>要收哪些</h2>${rows}` : '')
+    + otherHtml
+    + `<div class="sub" style="font-family:var(--mono);font-size:11px;color:var(--muted);
+         margin-top:14px;line-height:1.85">
+        每台裝置各自設定。手機、平板都想收就各自開一次。<br>
+        換過手機的話，舊裝置會留在上面，可以手動移除。
+      </div>`;
+}
+
 let taskAssignee = null;          // ← 唯一真實來源
 let taskExtras   = {};            // { key:1, shard:2 } ← 同樣存 JS 變數，不放 DOM
 
@@ -836,6 +1057,7 @@ window.approveTask = async (id)=>{
     const exTxt = extrasTotal(t.extras) ? `\n附贈：${extrasText(t.extras)}` : '';
     if(!confirm(`確定通過「${t.title}」？\n將發給 ${who} 🪙 ${payout}${extra}${xpLine}${exTxt}`)) return;
   }
+  let pushTo = [], pushTitle = '';      // 交易成功後才拿來發推播
   try {
     await runTransaction(db, async tx=>{
       const ref = doc(db,'tasks',id);
@@ -845,6 +1067,7 @@ window.approveTask = async (id)=>{
       if(t.status!=='pending') throw new Error('狀態已變更');
       // 合作任務 → 全員；一般任務 → 單人
       const payees = isCoop(t) ? coopMembers(t, Object.keys(players)) : [t.assignee];
+      pushTo = payees; pushTitle = t.title;
       if(!payees.length || payees.some(x=>!x || x==='all')) throw new Error('找不到領獎的人');
       // ⚠️ Firestore 要求所有 read 在任何 write 之前 → 先一次讀完所有人
       const pRefs = payees.map(pid => doc(db,'players',pid));
@@ -915,6 +1138,11 @@ window.approveTask = async (id)=>{
       });
     });
     toast('已通過，金幣入帳 🪙');
+
+    // 通知拿到獎勵的人（合作任務就通知全部參與者）。
+    // ⚠️ payees 宣告在交易的 callback 裡，外面抓不到，所以先存進 pushTo
+    pushSend(pushTargets(players, 'approved', { ids: pushTo }),
+      '✅ 任務通過', `${pushTitle}　獎勵已入帳`, '/Game/index.html');
   } catch(e){ toast(e.message); }
 };
 
@@ -1404,7 +1632,9 @@ function renderPenalties(){
 /* ===== 系統設定（config/system）：媽媽端唯讀，活動只能在 stats.html 修改 ===== */
 onSnapshot(doc(db,'config','system'), snap=>{
   const cfg = snap.exists() ? (snap.data() || {}) : {};
-  setRuntime({ events: cfg.events || {} });
+  setRuntime({ events: cfg.events || {}, pushOpen: cfg.pushOpen === true });
+  updatePushBadge();
+  if($('page-push') && $('page-push').classList.contains('on')) renderPush();
   renderEventBar();
   renderPlayers();
   renderReview();
