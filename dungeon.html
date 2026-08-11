@@ -30,7 +30,9 @@
   body.red::after{ opacity:.8; }
   body.red{ background:#0d0509; }
 
-  .wrap{ max-width:760px; margin:0 auto; padding:14px 14px 90px;
+  .wrap{ max-width:760px; margin:0 auto;
+    /* black-translucent → 內容會延伸到瀏海底下，頂部要自己補 safe-area */
+    padding:calc(14px + env(safe-area-inset-top)) 14px 90px;
     min-height:100dvh; display:flex; flex-direction:column; }
 
   /* ===== 頂欄 ===== */
@@ -239,7 +241,7 @@
 
   @media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important; } }
   @media (max-width:420px){
-    .wrap{ padding:11px 11px 84px; }
+    .wrap{ padding:calc(11px + env(safe-area-inset-top)) 11px 84px; }
     .eqSlots{ gap:5px; }
   }
 </style>
