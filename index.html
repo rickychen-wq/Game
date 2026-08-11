@@ -3795,7 +3795,7 @@ function renderBoss(){
    ⚠️ 結果在媽媽送出時就抽好存在 pendingRoulette.path 了，
       這裡只負責「演出來」—— 不然玩家重整就能一直重抽到滿意為止
 ================================================================== */
-let rlBusy = false, rlStep = 0, rlSpinning = false;
+let rlBusy = false, rlStep = 0, rlSpinning = false, rlTimer = null;
 
 function rlSlotOf(step){
   const r = pendingRoulette(players[me] || {});
@@ -3818,19 +3818,25 @@ window.rlSpin = ()=>{
   const total = slots.length * 3 + target;
   let i = 0;
   const tick = ()=>{
-    const idx = i % slots.length;
-    document.querySelectorAll('.rlSlot').forEach((el, n)=>
-      el.classList.toggle('hit', n === idx));
-    sfxTick && sfxTick();
+    try {
+      const idx = i % slots.length;
+      document.querySelectorAll('.rlSlot').forEach((el, n)=>
+        el.classList.toggle('hit', n === idx));
+      // ⚠️ sfxTick 一定要帶 0~1 的參數。不帶的話 Math.min(1, undefined) 是 NaN，
+      //    setValueAtTime(NaN) 在 Safari 會丟例外，整條 tick 鏈當場斷掉 → 永遠卡在「轉動中」
+      sfxTick(total ? i / total : 0);
+    } catch(e){
+      // 音效或 DOM 出問題都不可以害轉盤停住 —— 動畫可以醜，但不能卡死
+      console.warn('roulette tick', e);
+    }
     i++;
     if(i <= total){
-      // 越接近終點越慢
-      const left = total - i;
+      const left = total - i;      // 越接近終點越慢
       const delay = left > 8 ? 60 : (left > 4 ? 130 : (left > 1 ? 240 : 420));
-      setTimeout(tick, delay);
+      rlTimer = setTimeout(tick, delay);
     } else {
       rlSpinning = false;
-      setTimeout(()=> rlReveal(), 380);
+      rlTimer = setTimeout(()=> rlReveal(), 380);
     }
   };
   tick();
@@ -3840,9 +3846,10 @@ function rlReveal(){
   const cur = rlSlotOf(rlStep);
   if(!cur) return;
   const r = pendingRoulette(players[me] || {});
+  if(!r) return;
   const isLast = rlStep >= r.path.length - 1;
-  if(cur.sl.kind === 'none') sfxLevelUp && sfxLevelUp();
-  else sfxError && sfxError();
+  try { if(cur.sl.kind === 'none') sfxLevelUp(); else sfxError(); }
+  catch(e){ /* 音效壞掉不影響結果顯示 */ }
   if(isLast) renderRoulette('done');
   else { rlStep++; renderRoulette('next'); }
 }
@@ -3891,7 +3898,12 @@ function renderRoulette(phase){
   const box = $('rlBox');
   if(!box) return;
   const r = me && players[me] ? pendingRoulette(players[me]) : null;
-  if(!r){ box.classList.remove('show'); rlStep = 0; return; }
+  if(!r){
+    box.classList.remove('show');
+    rlStep = 0; rlSpinning = false;
+    if(rlTimer){ clearTimeout(rlTimer); rlTimer = null; }
+    return;
+  }
   box.classList.add('show');
 
   const cur = rlSlotOf(rlStep);
