@@ -723,6 +723,33 @@
   .cfCost .bad{ color:var(--pink); font-weight:800; }
   .cfCost .ok{ color:var(--cyan); font-weight:800; }
 
+  /* ===== 通知 ===== */
+  .pushHero{ padding:22px 18px; border-radius:16px; margin-bottom:16px; text-align:center;
+    border:1px solid rgba(95,240,220,.45);
+    background:linear-gradient(160deg,#12222a,#0b0d14); }
+  .pushHero.on{ border-color:rgba(233,196,106,.45);
+    background:linear-gradient(160deg,#1c1a12,#0b0d14); }
+  .pushHero.warn{ border-color:rgba(255,107,129,.45);
+    background:linear-gradient(160deg,#241016,#0b0d14); }
+  .pushHero .pIc{ font-size:42px; margin-bottom:10px; }
+  .pushHero .pT{ font-size:18px; font-weight:900; margin-bottom:8px; }
+  .pushHero .pS{ font-family:var(--mono); font-size:12px; color:var(--muted); line-height:1.9; }
+  .pushRow{ display:flex; align-items:center; gap:11px; padding:12px 13px; margin-bottom:8px;
+    border-radius:12px; border:1px solid var(--line-soft); background:var(--panel-2); }
+  .pushRow .kIc{ font-size:20px; flex-shrink:0; }
+  .pushRow .kB{ flex:1; min-width:0; }
+  .pushRow .kN{ font-size:14px; font-weight:800; margin-bottom:3px; }
+  .pushRow .kD{ font-family:var(--mono); font-size:10.5px; color:var(--muted); }
+  .pushRow.off{ opacity:.5; }
+  /* 開關 */
+  .sw{ width:46px; height:27px; flex-shrink:0; border-radius:99px; cursor:pointer; position:relative;
+    background:#1a1d28; border:1px solid var(--line-soft); transition:.2s ease; }
+  .sw::after{ content:''; position:absolute; top:2px; left:2px; width:21px; height:21px;
+    border-radius:50%; background:var(--dim); transition:.2s cubic-bezier(.2,.9,.2,1); }
+  .sw.on{ background:rgba(95,240,220,.2); border-color:var(--cyan); }
+  .sw.on::after{ left:22px; background:var(--cyan); }
+  .sw.busy{ opacity:.45; cursor:wait; }
+
   .bossWrap{ text-align:center; }
   .bossImg{ width:100%; max-width:520px; aspect-ratio:16/9; object-fit:cover; border-radius:12px;
     border:1px solid var(--line); }
@@ -1305,6 +1332,11 @@
     <div id="craftBody"></div>
   </div>
 
+  <!-- 🔔 通知設定 -->
+  <div class="page" id="page-push">
+    <div id="pushBody"></div>
+  </div>
+
   <!-- 罰單頁 -->
   <div class="page" id="page-penalty">
     <h2>我的罰單</h2>
@@ -1368,6 +1400,7 @@
     <div class="drawerItem" data-p="cards"><span class="dic">🎴</span><span class="dname">卡片</span></div>
     <div class="drawerItem" data-p="boss"><span class="dic">⚔️</span><span class="dname">Boss</span></div>
     <div class="drawerItem" data-p="craft"><span class="dic">🃏</span><span class="dname">卡片合成</span></div>
+    <div class="drawerItem" data-p="push"><span class="dic">🔔</span><span class="dname">通知</span><span class="navBadge" id="drawerPushBadge" style="top:6px;right:10px">0</span></div>
     <div class="drawerItem" id="drawerDungeon" data-href="./dungeon.html"><span class="dic">🏰</span><span class="dname">地下城</span><span class="navBadge" id="drawerDunBadge" style="top:6px;right:10px">0</span></div>
     <div class="drawerItem" data-p="penalty"><span class="dic">🔒</span><span class="dname">我的紀錄</span></div>
   </div>
@@ -1468,13 +1501,13 @@
   </div>
 </div>
 
-<script src="./shared.js?v=8"></script>
+<script src="./shared.js?v=10"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 8;
+  var NEED = 10;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -1528,6 +1561,9 @@ const {
   EP_START_LV, epTotal, epAvail,
   PACKS, RARITIES, PACK_TIERS, PACK_PITY_MAX, CARDS,
   FULL_RAR, rarColorOf, everOwned, DEX_XFULL_BONUS,
+  PUSH_KINDS, pushKindsFor, pushPrefs, pushOn, pushSubOf, pushReady,
+  pushSupport, pushPermission, pushSubscribe, pushUnsubscribe, pushSend, pushTargets, pushOpen,
+  adminPushTargets,
   CRAFT_SLOTS, CRAFT_COIN, CRAFT_MATS, CRAFT_MAT_COST, craftOpen,
   craftMatsOf, craftMatEnough, fullCardOf, isFullCard,
   craftTierOdds, rollCraftTier, craftPickReady,
@@ -1904,6 +1940,7 @@ function goTab(name){
   if(name === 'lottery') renderLottery();
   if(name === 'penalty') renderPenalty();
   if(name === 'craft') renderCraftPage();
+  if(name === 'push')  renderPush();
   if(name === 'titles') renderTitles();
   if(name === 'titleshop') renderTitleShop();
   if(name === 'talent'){ renderTalent(); maybeAutoTut('talent'); }
@@ -2056,13 +2093,32 @@ onSnapshot(doc(db,'config','system'), snap=>{
   const cfg = snap.exists() ? (snap.data() || {}) : {};
   setRuntime({ events: cfg.events || {}, adminEvent: cfg.adminEvent || null,
                bossOpen: cfg.bossOpen || {}, bossClearWinners: cfg.bossClearWinners || {},
-               craftOpen: cfg.craftOpen === true });
+               craftOpen: cfg.craftOpen === true,
+               pushOpen:  cfg.pushOpen  === true });
   onEventsChanged();
   renderAll();
 });
 
 /* 地下城只在這裡監聽「有沒有開」，戰鬥在 dungeon.html。
    badge 用 style.display 直接控制，不進 renderAll，避免多一次全頁重繪 */
+/* 還沒開通知 → 抽屜上亮個紅點提醒。開了就消失，不會一直煩 */
+function updatePushBadge(){
+  // 總開關關閉 → 抽屜項目整個藏起來，玩家看不到這個半成品
+  const it = document.querySelector('.drawerItem[data-p="push"]');
+  if(it) it.style.display = pushOpen() ? '' : 'none';
+  const b = $('drawerPushBadge');
+  if(!b) return;
+  const need = pushOpen() && me && players[me] && !pushReady(players[me]) && pushSupport().ok;
+  b.textContent = need ? '!' : '0';
+  b.style.display = need ? '' : 'none';
+}
+
+/* 媽媽的推播訂閱。玩家回報完成／使用商品時要通知她 */
+let adminPushCfg = null;
+onSnapshot(doc(db,'config','adminPush'), d=>{
+  adminPushCfg = d.exists() ? (d.data() || {}) : null;
+});
+
 onSnapshot(doc(db,'dungeons','active'), d=>{
   const on = d.exists() && (d.data() || {}).status === 'open';
   const b = $('drawerDunBadge');
@@ -2153,6 +2209,10 @@ window.reportDone = async (id)=>{
   try {
     await updateDoc(doc(db,'tasks',id), { status:'pending', wasRejected:false, completedAt: serverTimestamp() });
     toast('已回報，等媽媽審核 ⏳');
+    const t = tasks.find(x=>x.id===id);
+    // 不 await：推播失敗不可以讓回報看起來像失敗
+    pushSend(adminPushTargets(adminPushCfg, 'review'),
+      '📋 有人回報完成', `${myName()}：${t ? t.title : '任務'}`, '/Game/admin.html');
   } catch(e){ sfxError(); toast('回報失敗：'+e.message); }
 };
 
@@ -2202,6 +2262,8 @@ window.useItem = async (id)=>{
     await updateDoc(doc(db,'purchases',id), { status:'pending', usedAt: serverTimestamp() });
     sfxBuy();
     toast('已送出，找媽媽核銷 🎁');
+    pushSend(adminPushTargets(adminPushCfg, 'redeem'),
+      '🛒 有人要核銷', `${myName()}：${p.itemName}`, '/Game/admin.html');
   } catch(e){ sfxError(); toast(e.message); }
 };
 
@@ -3667,6 +3729,150 @@ function renderBoss(){
    卡片合成（開發中）
 ================================================================== */
 /* ==================================================================
+   🔔 通知
+   iOS 有兩個硬限制，做不到就完全收不到而且沒有錯誤訊息：
+     ① 必須從「加到主畫面」的圖示開啟，Safari 開網頁無效
+     ② 授權必須由使用者「點擊」觸發，自動跳會被靜默擋掉
+   所以這裡是一張要人主動按的卡片，不是自動彈窗
+================================================================== */
+let pushBusy = false;
+const myName = () => (players[me] && players[me].name) || me || '有人';
+
+window.doPushSubscribe = async ()=>{
+  if(pushBusy || !me) return;
+  pushBusy = true; renderPush();
+  try {
+    const sub = await pushSubscribe();
+    await updateDoc(doc(db,'players',me), { push: sub });
+    sfxLevelUp(); toast('🔔 通知已開啟');
+  } catch(e){
+    sfxError(); toast(e.message);
+  }
+  pushBusy = false; renderPush();
+};
+
+window.doPushUnsubscribe = async ()=>{
+  if(pushBusy || !me) return;
+  if(!confirm('要關閉所有通知嗎？\n之後媽媽發任務、任務通過都不會提醒你。')) return;
+  pushBusy = true; renderPush();
+  try {
+    await pushUnsubscribe();
+    await updateDoc(doc(db,'players',me), { push: null });
+    toast('通知已關閉');
+  } catch(e){ toast(e.message); }
+  pushBusy = false; renderPush();
+};
+
+window.togglePushKind = async (kind)=>{
+  if(pushBusy || !me) return;
+  const cur = pushOn(players[me] || {}, kind);
+  pushBusy = true; renderPush();
+  try { await updateDoc(doc(db,'players',me), { ['pushPrefs.' + kind]: !cur }); }
+  catch(e){ toast(e.message); }
+  pushBusy = false; renderPush();
+};
+
+/* 測試推播：讓使用者確認真的收得到，而不是設定完一片茫然 */
+window.doPushTest = async ()=>{
+  if(pushBusy || !me) return;
+  const sub = pushSubOf(players[me] || {});
+  if(!sub) return;
+  pushBusy = true; renderPush();
+  const r = await pushSend([sub], '🔔 測試通知', '看到這則就代表設定成功了！', '/Game/index.html');
+  pushBusy = false; renderPush();
+  toast(r && r.ok ? '已送出，等一下就會跳出來' : '送出失敗，可能要重新開啟通知');
+};
+
+function renderPush(){
+  if(!me || !players[me]) return;
+  if(!pushOpen()){
+    $('pushBody').innerHTML = `<div class="clearBox" style="background:linear-gradient(160deg,#1a2230,#0b0f18);
+        border-color:rgba(95,240,220,.5)">
+      <div class="cIc">🔔</div><div class="cT">通知</div>
+      <div class="cS">敬請期待下次更新</div></div>`;
+    return;
+  }
+  const p    = players[me];
+  const sup  = pushSupport();
+  const perm = pushPermission();
+  const sub  = pushSubOf(p);
+  const prefs = pushPrefs(p);
+
+  let hero;
+  if(!sup.ok && sup.why === 'needHomeScreen'){
+    // iPhone 用 Safari 直接開網頁 —— 最常見的狀況，講清楚怎麼做
+    hero = `<div class="pushHero warn">
+      <div class="pIc">📲</div>
+      <div class="pT">要先加到主畫面</div>
+      <div class="pS">
+        iPhone 規定：只有從主畫面的圖示打開，才收得到通知。<br><br>
+        <b style="color:var(--gold)">底下的分享鍵 <span style="font-size:15px">􀈂</span>
+        → 加入主畫面 → 加入</b><br><br>
+        加好之後，從桌面的「任務板」圖示打開，再回到這一頁。
+      </div>
+    </div>`;
+  } else if(!sup.ok){
+    hero = `<div class="pushHero warn">
+      <div class="pIc">🚫</div>
+      <div class="pT">這個瀏覽器不支援</div>
+      <div class="pS">換 Safari（iPhone）或 Chrome（Android／電腦）試試看</div>
+    </div>`;
+  } else if(perm === 'denied'){
+    hero = `<div class="pushHero warn">
+      <div class="pIc">🔕</div>
+      <div class="pT">通知被拒絕了</div>
+      <div class="pS">
+        要重新開啟，得到手機的<br>
+        <b style="color:var(--gold)">設定 → 通知 → 任務板</b><br>把「允許通知」打開，再回來這一頁。
+      </div>
+    </div>`;
+  } else if(!sub){
+    hero = `<div class="pushHero">
+      <div class="pIc">🔔</div>
+      <div class="pT">開啟通知</div>
+      <div class="pS">
+        媽媽發新任務、你的回報通過、地下城開了<br>
+        都會直接跳到手機上，不用一直開著看
+      </div>
+      <button class="btn gold" style="width:100%;margin-top:16px"
+        onclick="doPushSubscribe()" ${pushBusy ? 'disabled' : ''}>
+        ${pushBusy ? '處理中⋯' : '開啟通知'}</button>
+    </div>`;
+  } else {
+    hero = `<div class="pushHero on">
+      <div class="pIc">🔔</div>
+      <div class="pT">通知已開啟</div>
+      <div class="pS">底下可以個別選擇要收哪些</div>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn" style="flex:1" onclick="doPushTest()" ${pushBusy ? 'disabled' : ''}>發個測試</button>
+        <button class="btn no" onclick="doPushUnsubscribe()" ${pushBusy ? 'disabled' : ''}>全部關閉</button>
+      </div>
+    </div>`;
+  }
+
+  const rows = sub ? pushKindsFor('player').map(k=>{
+    const on = prefs[k.id];
+    return `<div class="pushRow ${on ? '' : 'off'}">
+      <span class="kIc">${k.icon}</span>
+      <div class="kB">
+        <div class="kN">${esc(k.name)}</div>
+        <div class="kD">${esc(k.desc)}</div>
+      </div>
+      <span class="sw ${on ? 'on' : ''} ${pushBusy ? 'busy' : ''}"
+        onclick="togglePushKind('${k.id}')"></span>
+    </div>`;
+  }).join('') : '';
+
+  $('pushBody').innerHTML = hero
+    + (sub ? `<h2>要收哪些</h2>${rows}` : '')
+    + `<div class="sub" style="font-family:var(--mono);font-size:11px;color:var(--muted);
+         margin-top:14px;line-height:1.85">
+        通知只會在手機上跳出來，不會有聲音以外的干擾。<br>
+        覺得太吵可以只留想要的那幾種，或整個關掉。
+      </div>`;
+}
+
+/* ==================================================================
    卡片合成（全圖卡）
    總開關在 config/system.craftOpen，由 stats 後台切換。
    關閉時完全回到「敬請期待」，玩家端不會看到任何合成入口
@@ -4258,6 +4464,8 @@ function renderAll(){
   safe('log', renderLog);
   if($('page-rank').classList.contains('on')) safe('rank', renderRank);
   if($('page-craft').classList.contains('on')) safe('craft', renderCraftPage);
+  if($('page-push').classList.contains('on'))  safe('push', renderPush);
+  safe('pushBadge', updatePushBadge);
 }
 
 /* ===== 每日任務區塊（只顯示自己當天的） ===== */
