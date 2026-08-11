@@ -723,6 +723,45 @@
   .cfCost .bad{ color:var(--pink); font-weight:800; }
   .cfCost .ok{ color:var(--cyan); font-weight:800; }
 
+  /* ===== 🎲 隨機罰單轉盤 ===== */
+  #rlBox{ position:fixed; inset:0; z-index:120; display:none;
+    align-items:center; justify-content:center; padding:20px;
+    background:rgba(4,5,9,.96); backdrop-filter:blur(6px); }
+  #rlBox.show{ display:flex; }
+  .rlIn{ max-width:420px; width:100%; padding:22px 18px; border-radius:18px;
+    border:1px solid var(--gold); background:linear-gradient(160deg,#16141c,#0b0d14);
+    box-shadow:0 0 60px rgba(0,0,0,.7); max-height:92dvh; overflow-y:auto; }
+  .rlHd{ font-family:var(--mono); font-size:17px; font-weight:900; text-align:center;
+    letter-spacing:2px; margin-bottom:5px; }
+  .rlReason{ font-family:var(--mono); font-size:11.5px; color:var(--muted);
+    text-align:center; margin-bottom:16px; }
+  .rlSlots{ display:flex; flex-direction:column; gap:6px; margin-bottom:16px; }
+  .rlSlot{ display:flex; align-items:center; gap:9px; padding:10px 12px; border-radius:10px;
+    border:1px solid var(--line-soft); background:#0f111a; transition:.08s ease; }
+  .rlSlot.hit{ border-color:var(--gold); background:rgba(233,196,106,.14);
+    transform:scale(1.03); box-shadow:0 0 18px rgba(233,196,106,.25); }
+  .rlSlot.final{ animation:rlPulse 1.1s ease-in-out infinite; }
+  @keyframes rlPulse{ 0%,100%{ box-shadow:0 0 18px rgba(233,196,106,.25); }
+    50%{ box-shadow:0 0 30px rgba(233,196,106,.6); } }
+  .rlSlot .rsIc{ font-size:19px; flex-shrink:0; }
+  .rlSlot .rsL{ flex:1; font-size:13.5px; font-weight:800; }
+  .rlSlot .rsP{ font-family:var(--mono); font-size:11px; color:var(--muted); flex-shrink:0; }
+  .rlResult{ text-align:center; padding:16px 12px; margin-bottom:14px; border-radius:13px;
+    border:1px solid rgba(255,107,129,.4); background:linear-gradient(160deg,#241016,#0b0d14); }
+  .rlResult.safe{ border-color:rgba(95,240,220,.45);
+    background:linear-gradient(160deg,#12222a,#0b0d14); }
+  .rlResult .rrIc{ font-size:40px; margin-bottom:6px; }
+  .rlResult .rrT{ font-size:17px; font-weight:900; margin-bottom:6px; }
+  .rlResult .rrS{ font-family:var(--mono); font-size:12px; color:var(--muted); line-height:1.9; }
+  .rlResult .rrS b{ color:var(--pink); }
+  .rlNote{ font-family:var(--mono); font-size:10.5px; color:var(--dim);
+    text-align:center; margin-top:11px; }
+  /* 負債橫幅 */
+  .debtBar{ padding:11px 14px; border-radius:12px; margin-bottom:14px;
+    border:1px solid rgba(255,60,90,.5); background:linear-gradient(160deg,#2a0d14,#0b0d14);
+    font-family:var(--mono); font-size:12px; color:var(--pink); line-height:1.8; }
+  .debtBar b{ color:#ff8fa3; font-size:15px; }
+
   /* ===== 通知 ===== */
   .pushHero{ padding:22px 18px; border-radius:16px; margin-bottom:16px; text-align:center;
     border:1px solid rgba(95,240,220,.45);
@@ -1469,6 +1508,7 @@
   </div>
 </div>
 
+<div id="rlBox"></div>
 <div id="toast"></div>
 
 <!-- LEVEL UP -->
@@ -1501,13 +1541,13 @@
   </div>
 </div>
 
-<script src="./shared.js?v=10"></script>
+<script src="./shared.js?v=12"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 10;
+  var NEED = 12;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -1561,6 +1601,8 @@ const {
   EP_START_LV, epTotal, epAvail,
   PACKS, RARITIES, PACK_TIERS, PACK_PITY_MAX, CARDS,
   FULL_RAR, rarColorOf, everOwned, DEX_XFULL_BONUS,
+  eventLabel, eventEffect,
+  ROULETTES, rouletteById, rouletteOutcome, pendingRoulette, halfCoinLeft, inDebt,
   PUSH_KINDS, pushKindsFor, pushPrefs, pushOn, pushSubOf, pushReady,
   pushSupport, pushPermission, pushSubscribe, pushUnsubscribe, pushSend, pushTargets, pushOpen,
   adminPushTargets,
@@ -1791,14 +1833,16 @@ function animateNumber(el, from, to, dur=600){
   requestAnimationFrame(step);
 }
 
-// 雙倍金幣日入帳：數字先到一半，閃出 ×2 後再暴衝到最終值
+// 金幣加成日入帳：數字先跑到一半，閃出實際倍率後再暴衝到最終值
+// ⚠️ 倍率不可以寫死 ×2 —— 後台可以把加成改成 +50%，那時候閃 ×2 就是騙人
 function doubleGainShow(from, to){
   const half = Math.round(from + (to - from) / 2);
   animateNumber($('myCoins'), from, half, 420);
   setTimeout(()=>{
     const box = $('coinBox');
     const tag = document.createElement('div');
-    tag.textContent = '×2';
+    const mult = Math.round((1 + eventAdd('coin')) * 100) / 100;
+    tag.textContent = '×' + mult;
     tag.style.cssText = 'position:absolute;right:-6px;top:-16px;font-family:var(--mono);'
       + 'font-size:17px;font-weight:800;color:#ff9d5c;text-shadow:0 0 12px rgba(255,157,92,.8);'
       + 'pointer-events:none;z-index:60';
@@ -2155,6 +2199,16 @@ function lockGuard(){
   if(isLocked()){ sfxError(); toast('🔒 禁閉中，先完成贖罪任務'); return true; }
   return false;
 }
+/* 負債中不能花錢。欠錢就先做任務還完 ——
+   沒有這道限制的話，負債只是一個難看的數字，不會有任何行為上的後果 */
+function debtGuard(){
+  if(inDebt(players[me] || {})){
+    sfxError();
+    toast(`🔻 負債 ${Math.abs(players[me].coins).toLocaleString()}，先做任務還完才能花錢`);
+    return true;
+  }
+  return false;
+}
 
 /* ===== 任務動作 ===== */
 /* ===== 合作任務：各自回報，全員完成才進審核 ===== */
@@ -2218,6 +2272,7 @@ window.reportDone = async (id)=>{
 
 /* ===== 購買（→ 進背包 owned） ===== */
 window.buyItem = async (itemId, useCoupon)=>{
+  if(debtGuard()) return;
   if(lockGuard()) return;
   const item = shopItems.find(i=>i.id===itemId);
   if(!item) return;
@@ -2276,6 +2331,7 @@ function myTickets(){
 
 /* 買券（券寫死 500，不存在 shop collection） */
 window.buyTicket = async ()=>{
+  if(debtGuard()) return;
   if(lockGuard()) return;
   const shown = ticketPrice();
   if(!confirm(`要用 ${shown} 金幣買「抽獎券」嗎？${shown < TICKET_PRICE ? '\n🎰 抽獎特賣中！' : ''}`)) return;
@@ -2589,6 +2645,7 @@ function renderTitleShop(){
 }
 
 window.buyTitle = async (id)=>{
+  if(debtGuard()) return;
   if(lockGuard()) return;
   const t = SHOP_TITLES.find(x=>x.id===id);
   if(!t) return;
@@ -2767,7 +2824,7 @@ function renderEventBanner(){
     <div class="evtHd"><span class="evtDot"></span><span class="t">活動進行中</span></div>
     <div class="evtList">${list.map(e=>{
       const u = eventUntil(e.key);
-      return `<span class="evtPill"><span>${e.icon}</span><span class="en">${esc(e.name)}</span>${
+      return `<span class="evtPill"><span>${e.icon}</span><span class="en">${esc(eventLabel(e))}</span>${
         u ? `<span class="ec">剩 ${tickSpan(new Date(u).getTime(), { done:'已結束' })}</span>` : ''}</span>`;
     }).join('')}</div>
   </div>`;
@@ -2790,8 +2847,9 @@ function nextIntro(){
   introShowing = true;
   const e = introQueue.shift();
   $('eiIcon').textContent = e.icon;
-  $('eiName').textContent = e.name;
-  $('eiEf').textContent = e.ef;
+  // 用動態文案：百分比可以在後台改，寫死「雙倍」會騙到玩家
+  $('eiName').textContent = eventLabel(e);
+  $('eiEf').textContent   = eventEffect(e);
   const el = $('evtIntro');
   el.classList.add('show');
   sfxLevelUp();
@@ -2899,6 +2957,7 @@ function applyCardGain(cur, upd, cardId, tierId){
 }
 
 window.buyPack = async (idx)=>{
+  if(debtGuard()) return;
   if(lockGuard()) return;
   const dp = players[me]?.dailyPacks;
   if(!dp || dp.date !== todayKey()) { toast('卡包還在補貨，稍後再試'); return; }
@@ -3441,7 +3500,8 @@ window.useSkill = async (cardId, skillId, ev)=>{
       if(k.sp !== 'BUFF' && k.sp !== 'ZONE'){
         if(zoneOn) marks.push('×1.35');
         if(b.buff) marks.push('×1.35');
-        if(dmgMult() > 1) marks.push('×2');
+        // 活動倍率可以在後台自訂，不可以寫死 ×2
+        if(dmgMult() > 1) marks.push('×' + (Math.round(dmgMult() * 100) / 100));
       }
       fx = { sp:k.sp, dealt, marks: marks.join(' '), perHour: Math.round(dealt / DOT_HOURS), name:k.name };
 
@@ -3659,7 +3719,8 @@ function renderBoss(){
           <div class="sTop2"><span class="sN">${esc(k.name)}</span>${tag}</div>
           <div class="sInfo">
             ⚡ ${k.ep}　${k.dmg > 0
-              ? `傷害 <span class="dm ${dmgX > 1 ? 'evt' : ''}">${real}${dmgX > 1 ? ' ⚔️×2' : ''}</span>`
+              ? `傷害 <span class="dm ${dmgX > 1 ? 'evt' : ''}">${real}${
+                  dmgX > 1 ? ` ⚔️×${Math.round(dmgX * 100) / 100}` : ''}</span>`
               : '無傷害'}
             ${used ? '　<span style="color:var(--pink)">本時段已使用</span>' : ''}
             ${!canAttack && !used ? '　<span style="color:var(--muted)">等下個時段</span>' : ''}
@@ -3728,6 +3789,155 @@ function renderBoss(){
 /* ==================================================================
    卡片合成（開發中）
 ================================================================== */
+/* ==================================================================
+   🎲 隨機罰單轉盤
+   有待執行的罰單時蓋住整個畫面，轉完才能進去。
+   ⚠️ 結果在媽媽送出時就抽好存在 pendingRoulette.path 了，
+      這裡只負責「演出來」—— 不然玩家重整就能一直重抽到滿意為止
+================================================================== */
+let rlBusy = false, rlStep = 0, rlSpinning = false;
+
+function rlSlotOf(step){
+  const r = pendingRoulette(players[me] || {});
+  if(!r || !r.path[step]) return null;
+  const rt = rouletteById(r.path[step].roulette);
+  const sl = rt && rt.slots.find(x => x.id === r.path[step].slot);
+  return sl ? { rt, sl } : null;
+}
+
+/* 轉盤動畫：指針在格子間快速跳，逐漸變慢，最後停在命中的格子 */
+window.rlSpin = ()=>{
+  if(rlSpinning) return;
+  const cur = rlSlotOf(rlStep);
+  if(!cur) return;
+  rlSpinning = true; renderRoulette();
+
+  const slots = cur.rt.slots;
+  const target = slots.findIndex(x => x.id === cur.sl.id);
+  // 至少繞兩圈再停在目標，才有「真的在轉」的感覺
+  const total = slots.length * 3 + target;
+  let i = 0;
+  const tick = ()=>{
+    const idx = i % slots.length;
+    document.querySelectorAll('.rlSlot').forEach((el, n)=>
+      el.classList.toggle('hit', n === idx));
+    sfxTick && sfxTick();
+    i++;
+    if(i <= total){
+      // 越接近終點越慢
+      const left = total - i;
+      const delay = left > 8 ? 60 : (left > 4 ? 130 : (left > 1 ? 240 : 420));
+      setTimeout(tick, delay);
+    } else {
+      rlSpinning = false;
+      setTimeout(()=> rlReveal(), 380);
+    }
+  };
+  tick();
+};
+
+function rlReveal(){
+  const cur = rlSlotOf(rlStep);
+  if(!cur) return;
+  const r = pendingRoulette(players[me] || {});
+  const isLast = rlStep >= r.path.length - 1;
+  if(cur.sl.kind === 'none') sfxLevelUp && sfxLevelUp();
+  else sfxError && sfxError();
+  if(isLast) renderRoulette('done');
+  else { rlStep++; renderRoulette('next'); }
+}
+
+window.rlNext = ()=>{ renderRoulette(); };
+
+/* 領罰：把結果真的寫進資料庫 */
+window.rlAccept = async ()=>{
+  if(rlBusy || !me) return;
+  const r = pendingRoulette(players[me] || {});
+  if(!r) return;
+  rlBusy = true; renderRoulette('done');
+  try {
+    await runTransaction(db, async tx=>{
+      const pRef = doc(db,'players',me);
+      const s = await tx.get(pRef);              // read 先做完
+      const cur = s.data() || {};
+      const pend = cur.pendingRoulette;
+      if(!pend || !Array.isArray(pend.path)) throw new Error('已經處理過了');
+      const o = rouletteOutcome(pend.path);
+
+      const upd = { pendingRoulette: null };
+      // 金幣可以扣成負數 —— 負債狀態是刻意的，欠錢就先還完才能買東西
+      if(o.coin > 0) upd.coins = increment(-o.coin);
+      if(o.half > 0) upd['debuff.halfCoin'] = increment(o.half);
+      tx.update(pRef, upd);
+
+      if(pend.penaltyId){
+        tx.update(doc(db,'penalties', pend.penaltyId), {
+          status:'cleared', clearedAt: serverTimestamp(),
+          result: o.slot ? o.slot.label : '倖免',
+          coin: o.coin, half: o.half,
+        });
+      }
+      tx.set(ledgerRef(), ledgerData('penalty', -o.coin,
+        `🎲 ${pend.reason || '隨機罰單'}・${o.slot ? o.slot.label : '倖免'}`,
+        { roulette:true, path: pend.path, half: o.half }));
+    });
+    rlStep = 0;
+  } catch(e){ toast(e.message); }
+  rlBusy = false;
+  renderRoulette();
+};
+
+function renderRoulette(phase){
+  const box = $('rlBox');
+  if(!box) return;
+  const r = me && players[me] ? pendingRoulette(players[me]) : null;
+  if(!r){ box.classList.remove('show'); rlStep = 0; return; }
+  box.classList.add('show');
+
+  const cur = rlSlotOf(rlStep);
+  if(!cur){ box.classList.remove('show'); return; }
+  const isLast = rlStep >= r.path.length - 1;
+  const o = rouletteOutcome(r.path);
+
+  const slots = cur.rt.slots.map((s, i)=>`
+    <div class="rlSlot ${phase === 'done' && s.id === cur.sl.id ? 'hit final' : ''}">
+      <span class="rsIc">${s.icon}</span>
+      <span class="rsL">${esc(s.label)}</span>
+      <span class="rsP">${s.prob}%</span>
+    </div>`).join('');
+
+  let foot;
+  if(phase === 'done'){
+    const safe = o.coin === 0 && o.half === 0;
+    foot = `<div class="rlResult ${safe ? 'safe' : ''}">
+        <div class="rrIc">${cur.sl.icon}</div>
+        <div class="rrT">${esc(cur.sl.label)}</div>
+        ${o.coin ? `<div class="rrS">🪙 ${(players[me].coins ?? 0).toLocaleString()} → <b>${((players[me].coins ?? 0) - o.coin).toLocaleString()}</b></div>` : ''}
+        ${o.half ? `<div class="rrS">接下來 <b>${o.half}</b> 個任務的金幣減半</div>` : ''}
+        ${safe ? '<div class="rrS">這次什麼都沒扣，運氣不錯 ✨</div>' : ''}
+      </div>
+      <button class="btn gold" style="width:100%" onclick="rlAccept()" ${rlBusy ? 'disabled' : ''}>
+        ${rlBusy ? '處理中⋯' : '接受'}</button>`;
+  } else if(phase === 'next'){
+    foot = `<div class="rlResult">
+        <div class="rrIc">${cur.rt.icon}</div>
+        <div class="rrT">進入${esc(cur.rt.name)}</div>
+      </div>
+      <button class="btn gold" style="width:100%" onclick="rlNext()">繼續</button>`;
+  } else {
+    foot = `<button class="btn gold" style="width:100%" onclick="rlSpin()" ${rlSpinning ? 'disabled' : ''}>
+      ${rlSpinning ? '轉動中⋯' : '轉！'}</button>`;
+  }
+
+  box.innerHTML = `<div class="rlIn" style="border-color:${cur.rt.color}">
+    <div class="rlHd" style="color:${cur.rt.color}">${cur.rt.icon} ${esc(cur.rt.name)}</div>
+    <div class="rlReason">${esc(r.reason || '隨機罰單')}</div>
+    <div class="rlSlots">${slots}</div>
+    ${foot}
+    <div class="rlNote">轉完才能進去，沒得跳過</div>
+  </div>`;
+}
+
 /* ==================================================================
    🔔 通知
    iOS 有兩個硬限制，做不到就完全收不到而且沒有錯誤訊息：
@@ -4365,7 +4575,7 @@ function renderHeader(){
   } else if(coins !== lastCoins){
     const gain = coins - lastCoins;
     if(gain > 0 && eventOn('doubleCoin')){
-      doubleGainShow(lastCoins, coins);       // 雙倍金幣日：先跑一半 → 閃 ×2 → 暴衝
+      doubleGainShow(lastCoins, coins);       // 金幣加成日：先跑一半 → 閃實際倍率 → 暴衝
       flyCoins(8);                            // 粒子加倍
       if(!muted) sfxCoin();
     } else {
@@ -4466,6 +4676,7 @@ function renderAll(){
   if($('page-craft').classList.contains('on')) safe('craft', renderCraftPage);
   if($('page-push').classList.contains('on'))  safe('push', renderPush);
   safe('pushBadge', updatePushBadge);
+  safe('roulette', ()=> renderRoulette());
 }
 
 /* ===== 每日任務區塊（只顯示自己當天的） ===== */
@@ -4725,10 +4936,22 @@ function renderBag(){
 
 /* ===== 禁閉贖罪卡（任務頁最上方） ===== */
 function renderLock(){
+  const p = players[me] || {};
+  // 負債／金幣砍半的狀態橫幅。放在任務頁最上方，讓他每次打開都看到
+  const half = halfCoinLeft(p);
+  const debt = inDebt(p) ? `<div class="debtBar">
+      🔻 <b>負債 ${Math.abs(p.coins).toLocaleString()}</b> 金幣<br>
+      還完之前不能買東西、抽獎、開卡包。做任務賺的錢會自動抵債。
+    </div>` : '';
+  const halfBar = half > 0 ? `<div class="debtBar" style="border-color:rgba(233,196,106,.5);
+      background:linear-gradient(160deg,#241f0d,#0b0d14);color:var(--gold)">
+      🔻 接下來 <b style="color:var(--gold-hi)">${half}</b> 個任務的金幣減半
+    </div>` : '';
+
   const lk = myLock();
-  if(!lk){ $('lockZone').innerHTML = ''; return; }
+  if(!lk){ $('lockZone').innerHTML = debt + halfBar; return; }
   const reported = lk.status === 'reported';
-  $('lockZone').innerHTML = `
+  $('lockZone').innerHTML = debt + halfBar + `
     <div class="lockCard">
       <div class="lkTag">🔒 禁閉中</div>
       <div class="lkTitle">你被關禁閉了</div>
@@ -4786,13 +5009,17 @@ function renderPenalty(){
     const ds = d ? `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '—';
     return `<div class="penRow ${p.type}">
       <div class="pTop">
-        <span class="pType">${p.type==='fine'?'💸 罰款':'🔒 禁閉'}</span>
+        <span class="pType">${p.type==='fine'?'💸 罰款':p.type==='random'?'🎲 隨機':'🔒 禁閉'}</span>
         <span class="pDate">${ds}</span>
       </div>
       <div class="pReason">${esc(p.reason || '—')}</div>
       <div class="pMeta">${p.type==='fine'
         ? `扣款 🪙 ${p.amount ?? 0}`
-        : `贖罪任務：${esc(p.taskTitle || '—')}・${st[p.status] || p.status}`}</div>
+        : p.type==='random'
+          ? (p.status === 'cleared'
+              ? `轉盤結果：${esc(p.result || '—')}${p.coin ? `・扣款 🪙 ${p.coin}` : ''}${p.half ? `・${p.half} 個任務減半` : ''}`
+              : '等你打開任務板轉盤')
+          : `贖罪任務：${esc(p.taskTitle || '—')}・${st[p.status] || p.status}`}</div>
     </div>`;
   }).join('') : '<div class="empty">沒有任何罰單，乖 👍</div>';
 }
