@@ -279,6 +279,9 @@
   .rwRow.on .rwNm{ color:var(--gold); }
   .rwRow input{ width:72px; background:#12141d; border:1px solid var(--line); border-radius:6px;
     color:var(--text); font-family:var(--mono); font-size:12px; padding:4px 6px; text-align:right; }
+  .pctIn{ width:74px; background:#12141d; border:1px solid var(--line); border-radius:7px;
+    color:var(--gold-hi); font-family:var(--mono); font-size:13px; font-weight:800;
+    padding:5px 8px; text-align:right; }
   .durBtns{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
   .durBtn{ font-family:var(--mono); font-size:11.5px; font-weight:800; padding:7px 11px;
     border-radius:8px; background:#12141d; border:1px solid var(--line); color:var(--muted); cursor:pointer; }
@@ -486,6 +489,16 @@
     <div id="featList"></div>
     <div id="featHint" class="ctlHist"></div>
 
+    <h3>🔔 推播公告</h3>
+    <div class="ctlRow">
+      <input id="pnText" placeholder="例：8/12 6:00 會更新，記得重新整理" maxlength="120">
+    </div>
+    <div class="ctlRow">
+      <input id="pnTitle" placeholder="標題（留空 = 📢 任務板公告）" maxlength="30">
+    </div>
+    <button class="evBtn stop" id="pnSend" style="width:100%;margin-top:6px">📢 推播給所有人</button>
+    <div id="pnInfo" class="ctlHist"></div>
+
     <h3>🏰 地下城</h3>
     <div id="dunStatus" class="ctlHist" style="margin-bottom:10px"></div>
     <div id="dunPick"></div>
@@ -600,13 +613,13 @@
 
 <div id="dbgToast"></div>
 
-<script src="./shared.js?v=8"></script>
+<script src="./shared.js?v=10"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 8;
+  var NEED = 10;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -670,6 +683,9 @@ const {
   DUN_EP_MULT, DUN_EQUIP_MAX, DUN_EQUIP_CD_H, dunSlotsOf, dunSlotCds,
   dungeonDef, dungeonHp, dungeonMobs, dungeonInit, dungeonApplyRegen,
   dungeonLeftHp, dungeonProgress, dungeonExpired, DUNGEON_REWARDS, dunRewardsOf,
+  PUSH_KINDS, pushPrefs, pushOn, pushSubOf, pushReady, pushSend, pushTargets, pushOpen,
+  EVENT_TUNABLE, eventAddOf, dunPotionPct, DUN_POTION_DEFAULT,
+  adminPushDevices, adminPushTargets,
   dunRewardTotal, potionName, ownedCard, rarColorOf,
 } = window.GAME;
 
@@ -736,7 +752,8 @@ onSnapshot(doc(db,'config','system'), d=>{
   sysCfg = d.exists() ? (d.data() || {}) : {};
   setRuntime({ events: sysCfg.events || {}, adminEvent: sysCfg.adminEvent || null,
                bossOpen: sysCfg.bossOpen || {}, bossClearWinners: sysCfg.bossClearWinners || {},
-               craftOpen: sysCfg.craftOpen === true });
+               craftOpen: sysCfg.craftOpen === true,
+               pushOpen:  sysCfg.pushOpen  === true });
   renderConsole();
   renderAll();
 });
@@ -1247,6 +1264,12 @@ function renderCompare(){
    統計圖表區域一律不得有任何寫入；且全檔不提供任何刪除／批次刪除功能。
 ================================================================== */
 let durChoice = {};          // { key: '1'|'3'|'7'|'custom' }
+let evPct = {};              // { key: 百分比 } 開活動時自訂的加成量（草稿，存 JS 變數）
+window.setEvPct = (key, v)=>{
+  const n = Math.round(Number(v));
+  if(isFinite(n) && n >= 1 && n <= 1000) evPct[key] = n; else delete evPct[key];
+  renderConsole();
+};
 let durCustom = {};          // { key: datetime-local 字串 }
 
 async function saveSystemConfig(patch){
@@ -1299,8 +1322,16 @@ window.toggleEvent = async (key)=>{
   const d = new Date(until);
   if(isNaN(d)){ alert('時間格式不正確'); return; }
   if(d.getTime() <= Date.now()){ alert('結束時間必須在未來'); return; }
-  if(!confirm(`要開啟「${e.name}」嗎？\n效果：${e.ef}\n結束時間：${d.toLocaleString('zh-TW',{ timeZone:'Asia/Taipei' })}`)) return;
-  try { await saveSystemConfig({ events: { [key]: { on:true, until } } }); }
+  // 加成型活動可以自訂數值；沒填就用預設
+  const tunable = EVENT_TUNABLE.includes(e.type);
+  const pct = tunable ? ((evPct[key] !== undefined) ? evPct[key] : Math.round(e.add * 100)) : null;
+  const efTxt = tunable ? `${e.ef.replace(/[+×][\d.]+%?/, '')}　→ 實際 +${pct}%` : e.ef;
+  if(!confirm(`要開啟「${e.name}」嗎？\n效果：${efTxt}\n結束時間：${d.toLocaleString('zh-TW',{ timeZone:'Asia/Taipei' })}`)) return;
+  try {
+    await saveSystemConfig({ events: { [key]: {
+      on:true, until, ...(tunable ? { add: pct / 100 } : {}),
+    } } });
+  }
   catch(err){ alert('開啟失敗：' + err.message); }
 };
 
@@ -1344,6 +1375,16 @@ function renderConsole(){
              : exp  ? `<span class="evSt exp">已結束（記得關閉）</span>`
              :        `<span class="evSt off">未啟用</span>`;
     const cur = durChoice[e.key] || '1';
+  // 加成型活動可以自訂數值；開關型（結晶加碼／抽獎特賣）沒有數值可調
+  const tunable = EVENT_TUNABLE.includes(e.type);
+  const pctNow  = (evPct[e.key] !== undefined) ? evPct[e.key] : Math.round(e.add * 100);
+  const pctBox  = (tunable && !live && !exp) ? `
+    <div class="dur">
+      <span class="dk" style="min-width:auto">加成</span>
+      <input type="number" class="pctIn" min="1" max="1000" value="${pctNow}"
+             onchange="setEvPct('${e.key}', this.value)">
+      <span class="dk" style="min-width:auto">%　預設 ${Math.round(e.add*100)}%</span>
+    </div>` : '';
     // 進行中或已結束 → 隱藏期間選擇（要改期限得先關閉）
     const picker = (live || exp) ? '' : `
       <div class="dur">
@@ -1351,12 +1392,14 @@ function renderConsole(){
         <button class="${cur==='custom'?'on':''}" onclick="setDur('${e.key}','custom')">自訂</button>
         ${cur==='custom' ? `<input type="datetime-local" value="${esc(durCustom[e.key]||'')}"
            onchange="setCustom('${e.key}', this.value)">` : ''}
-      </div>`;
+      </div>` + pctBox;
+    // 進行中就顯示實際生效的數值，而不是 EVENTS 裡寫死的說明
+    const liveAdd = tunable && live ? `　<b style="color:var(--gold-hi)">實際 +${Math.round(eventAddOf(e)*100)}%</b>` : '';
     return `<div class="evRow ${live?'live':''} ${exp?'expired':''}">
       <div class="evTop">
         <span class="ei">${e.icon}</span>
         <span class="en">${esc(e.name)}</span>
-        <span class="ef">${esc(e.ef)}</span>
+        <span class="ef">${esc(e.ef)}${liveAdd}</span>
         ${st}
       </div>
       <div class="evCtl">
@@ -2455,6 +2498,9 @@ const FEATURES = [
   { id:'craftOpen', icon:'🃏', name:'卡片合成', page:'玩家端「🃏 卡片合成」分頁',
     on:'玩家可以用 2C+2B+1A+1S 合成全圖卡',
     off:'玩家端顯示「敬請期待下次更新」，材料仍可正常累積' },
+  { id:'pushOpen',  icon:'🔔', name:'推播通知', page:'玩家端與管理端的「🔔 通知」',
+    on:'可以訂閱通知，發任務／審核／公告會推播到手機',
+    off:'通知入口完全隱藏，也不會送出任何推播（程式碼留著不影響其他功能）' },
 ];
 window.toggleFeature = async (id)=>{
   const f = FEATURES.find(x=>x.id === id);
@@ -2502,7 +2548,12 @@ function renderFeatures(){
       弟弟隨便動一下就會觸發 snapshot，存 DOM 一定被洗掉
 ================================================================== */
 let dunState  = null;                 // dungeons/active 的即時內容
-let dunDraft  = { tier:'E', dur:'7', rewards:{} };   // 開新副本用的草稿
+let dunDraft  = { tier:'E', dur:'7', rewards:{}, potionPct: DUN_POTION_DEFAULT };   // 開新副本用的草稿
+window.dunSetPotPct = (v)=>{
+  const n = Math.round(Number(v));
+  dunDraft.potionPct = (isFinite(n) && n >= 1 && n <= 500) ? n : DUN_POTION_DEFAULT;
+  renderDungeon(true);
+};
 
 const DUN_DURS = [
   { id:'1',  h:24,  t:'1 天' },
@@ -2533,13 +2584,17 @@ window.dunOpen = async ()=>{
   if(!Object.keys(rw).length){ dbgToast('至少要設一項獎勵', true); return; }
   const dur = DUN_DURS.find(x=>x.id === dunDraft.dur) || DUN_DURS[2];
   const endsAt = dur.h ? Date.now() + dur.h * 3600 * 1000 : null;
-  const rwTxt = DUNGEON_REWARDS.filter(r=>rw[r.id]).map(r=>`${r.icon}${r.name} ×${rw[r.id]}`).join('\n');
+  const rwTxt = DUNGEON_REWARDS.filter(r=>rw[r.id]).map(r=>
+    `${r.icon}${r.name} ×${rw[r.id]}${r.special === 'potion' ? `（+${dunDraft.potionPct}%）` : ''}`).join('\n');
   if(!confirm(`開啟「${def.icon} ${def.name}（${def.id} 級）」？\n\n`
     + `${def.floors.length} 關・${dungeonMobs(def)} 隻・總血 ${dungeonHp(def).toLocaleString()}\n`
     + `期限：${dur.t}\n\n獎勵（每個有出手過的人都拿全額）：\n${rwTxt}\n\n`
     + `⚠️ 玩家端只看得到獎勵種類，看不到數量。`)) return;
   try {
-    await setDoc(doc(db,'dungeons','active'), dungeonInit(dunDraft.tier, { endsAt, rewards: rw }));
+    await setDoc(doc(db,'dungeons','active'), {
+      ...dungeonInit(dunDraft.tier, { endsAt, rewards: rw }),
+      potionPct: dunDraft.potionPct,
+    });
     dbgToast(`${def.name} 已開啟`);
   } catch(e){ dbgToast('開啟失敗：'+e.message, true); }
 };
@@ -2559,7 +2614,7 @@ window.dunSaveRewards = async ()=>{
   const rw = dunRewardsOf({ rewards: dunDraft.rewards });
   if(!Object.keys(rw).length){ dbgToast('至少要設一項獎勵', true); return; }
   if(!confirm('把獎勵改成草稿的設定？（進度不受影響）')) return;
-  try { await updateDoc(doc(db,'dungeons','active'), { rewards: rw }); dbgToast('獎勵已更新'); }
+  try { await updateDoc(doc(db,'dungeons','active'), { rewards: rw, potionPct: dunDraft.potionPct }); dbgToast('獎勵已更新'); }
   catch(e){ dbgToast('更新失敗：'+e.message, true); }
 };
 
@@ -2593,7 +2648,9 @@ function renderDungeon(force){
           ? `<div class="hRow" style="color:var(--pink)">⚠️ 有 ${reg.healed.toLocaleString()} 點血量待回復（每 12 小時 +${Math.round(DUN_REGEN_PCT*100)}%），玩家下次出手時才會結算</div>`
           : '')
       + `<div class="hRow">獎勵：${DUNGEON_REWARDS.filter(r=>(dunState.rewards||{})[r.id])
-          .map(r=>`${r.icon}${esc(r.name)} ×${dunState.rewards[r.id]}`).join('　') || '<span style="color:var(--pink)">未設定</span>'}</div>`;
+          .map(r=>`${r.icon}${esc(r.name)} ×${dunState.rewards[r.id]}${
+            r.special === 'potion' ? `（+${dunPotionPct(dunState)}%）` : ''}`).join('　')
+          || '<span style="color:var(--pink)">未設定</span>'}</div>`;
   } else if(dunState && dunState.status === 'cleared'){
     const def = dungeonDef(dunState.tier);
     $('dunStatus').innerHTML =
@@ -2629,12 +2686,19 @@ function renderDungeon(force){
       <span style="color:var(--dim)">（每個有出手過的人都拿全額，不看傷害多少）</span></div>
     <div class="rwGrid">${DUNGEON_REWARDS.map(r=>{
       const v = dunDraft.rewards[r.id] || 0;
+      const isPot = r.special === 'potion';
       return `<span class="rwRow ${v>0?'on':''}">
-        <span class="rwNm">${r.icon} ${esc(r.name)}</span>
+        <span class="rwNm">${r.icon} ${esc(r.name)}${isPot ? ' <span style="color:var(--dim)">瓶</span>' : ''}</span>
         <input type="number" min="0" max="${r.max}" value="${v || ''}" placeholder="0"
                onchange="dunSetRw('${r.id}', this.value)">
       </span>`;
-    }).join('')}</div>`;
+    }).join('')}</div>
+    ${DUNGEON_REWARDS.some(r=>r.special==='potion' && dunDraft.rewards[r.id])
+      ? `<div class="hRow" style="margin-bottom:10px">藥水倍率
+          <input type="number" class="pctIn" min="1" max="500"
+                 value="${dunDraft.potionPct}" onchange="dunSetPotPct(this.value)"> %
+          <span style="color:var(--dim)">　三種藥水共用同一個倍率</span></div>`
+      : ''}`;
 
   // ── 動作 ──
   const open = !!(dunState && dunState.status === 'open');
@@ -2653,6 +2717,47 @@ function renderDungeon(force){
         （死掉的不復活、滿血的不變、補到滿為止）。</div>
     </div>`;
 }
+
+/* ==================================================================
+   🔔 推播公告
+   打字 → 推給所有「有訂閱且沒關掉公告」的玩家
+================================================================== */
+function renderPushNotice(){
+  if(!$('pnInfo')) return;
+  if(!pushOpen()){
+    $('pnInfo').innerHTML = '<div class="hRow" style="color:var(--muted)">推播功能尚未開放（在上面的「🃏 功能開放」打開）</div>';
+    return;
+  }
+  const ids  = Object.keys(players);
+  const subs = pushTargets(players, 'notice');
+  const noSub = ids.filter(id => !pushReady(players[id]));
+  const offN  = ids.filter(id => pushReady(players[id]) && !pushOn(players[id], 'notice'));
+  $('pnInfo').innerHTML =
+    `<div class="hRow">會收到的人：<b style="color:var(--cyan)">${subs.length}</b> / ${ids.length}</div>`
+    + (noSub.length ? `<div class="hRow" style="color:var(--muted)">還沒開通知：${noSub.map(id=>esc(players[id].name||id)).join('、')}</div>` : '')
+    + (offN.length ? `<div class="hRow" style="color:var(--muted)">關掉公告：${offN.map(id=>esc(players[id].name||id)).join('、')}</div>` : '')
+    + `<div class="hRow" style="color:var(--dim)">公告不會存起來，只是即時推播一次。</div>`;
+}
+
+window.sendPushNotice = async ()=>{
+  const text  = ($('pnText').value || '').trim();
+  const title = ($('pnTitle').value || '').trim() || '📢 任務板公告';
+  if(!text) return dbgToast('要先寫內容', true);
+  const subs = pushTargets(players, 'notice');
+  if(!subs.length) return dbgToast('目前沒有人開著公告通知', true);
+  if(!confirm(`推播給 ${subs.length} 個人？\n\n${title}\n${text}`)) return;
+  const btn = $('pnSend');
+  btn.disabled = true; btn.textContent = '送出中⋯';
+  const r = await pushSend(subs, title, text, '/Game/index.html');
+  btn.disabled = false; btn.textContent = '📢 推播給所有人';
+  if(r && r.ok){
+    const bad = (r.results || []).filter(x => x.status >= 400).length;
+    dbgToast(bad ? `送出了，但有 ${bad} 台失敗（可能已取消訂閱）` : `已推播給 ${subs.length} 個人`);
+    $('pnText').value = ''; $('pnTitle').value = '';
+  } else {
+    dbgToast('推播失敗：' + ((r && r.error) || '未知錯誤'), true);
+  }
+};
 
 window.resetMilestone = async (stage)=>{
   const w = bossMilestoneWinner(stage);
@@ -2836,6 +2941,7 @@ function renderCtl(force){
   ctlSafe('功能開放', 'featList', renderFeatures);
   ctlSafe('地下城', 'dunStatus', renderDungeon);
   ctlSafe('持有總覽', 'invBody', renderInv);
+  ctlSafe('推播公告', 'pnInfo', renderPushNotice);
 
   ctlSafe('全體刷商店', 'shopAllBtns', ()=>{
     const sig = 'sa|' + shopAllTierPick;
@@ -2906,6 +3012,7 @@ let raf = null;
 /* 分頁按鈕綁定與初始化。放在這裡是因為 goStatsTab 會呼叫 renderInv / renderDebug，
    要等它們宣告完才安全 */
 document.querySelectorAll('.tb').forEach(b=>{ b.onclick = ()=> goStatsTab(b.dataset.t); });
+if($('pnSend')) $('pnSend').onclick = ()=> sendPushNotice();
 goStatsTab(curTab);
 
 function renderAll(){
