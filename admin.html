@@ -197,6 +197,13 @@
     padding:7px 10px; border-radius:8px; background:#0d0f17;
     border:1px solid var(--line-soft); margin-bottom:6px; }
 
+  .rndBox{ padding:12px 13px; border-radius:11px; margin-bottom:12px;
+    border:1px solid rgba(233,196,106,.35); background:#0d0f17;
+    font-family:var(--mono); font-size:11.5px; color:var(--muted); line-height:1.9; }
+  .rndBox b{ color:var(--gold); }
+  .rndRow{ display:flex; justify-content:space-between; gap:8px; }
+  .rndRow span:last-child{ color:var(--text); font-weight:800; }
+
   .exWrap{ display:flex; align-items:center; gap:6px; background:#0d0f17;
     border:1px solid var(--line); border-radius:9px; padding:4px 6px; }
   .exWrap.on{ border-color:#ff8c42; background:rgba(255,140,66,.10); }
@@ -444,7 +451,9 @@
       <div class="segRow">
         <button class="on" id="typeFine">💸 罰款</button>
         <button id="typeLock">🔒 禁閉</button>
+        <button id="typeRnd">🎲 隨機</button>
       </div>
+      <div id="rndInfo" class="rndBox" style="display:none"></div>
       <input id="fReason" placeholder="事由（例：沒洗碗）">
       <input id="fAmount" type="number" min="1" placeholder="罰款金額（金幣）">
       <input id="fTask" placeholder="贖罪任務內容（例：把廁所洗乾淨）" style="display:none">
@@ -486,13 +495,13 @@
 
 <div id="toast"></div>
 
-<script src="./shared.js?v=10"></script>
+<script src="./shared.js?v=12"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 10;
+  var NEED = 12;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -546,7 +555,8 @@ const {
   TALENT_ICON, TALENT_NAME, TALENT_MAX_LV, TALENT_TREES,
   talentLv, talentSpent, talentEarned, talentAvail, talentAdd,
   equippedTitle, xpThreshold, levelFromXp, PITY_MAX,
-  EVENTS, setRuntime, eventOn, eventUntil, activeEvents, eventAdd,
+  EVENTS, setRuntime, eventOn, eventUntil, activeEvents, eventAdd, eventLabel, eventEffect,
+  ROULETTES, rouletteById, spinRoulette, rouletteOutcome, halfCoinLeft, inDebt,
   r3, achAdd, titleCoinAdd, titleLuckAdd, coinMultOf, xpMultOf, luckOf,
   todayKey, prevKey,
   COOP_ASSIGNEE, isCoop, coopMembers, coopDoneBy, coopProgress,
@@ -796,10 +806,11 @@ let pushBusy = false;
    舊的那筆會變成收不到的殭屍訂閱，所以面板上可以手動刪 */
 function deviceId(){
   let id = null;
-  try { id = localStorage.getItem('tb_device_id'); } catch(e){}
+  // localStorage 在無痕模式會丟例外；讀不到就當成新裝置，不影響其他功能
+  try { id = localStorage.getItem('tb_device_id'); } catch(e){ id = null; }
   if(!id){
     id = 'd' + Math.random().toString(36).slice(2, 10);
-    try { localStorage.setItem('tb_device_id', id); } catch(e){}
+    try { localStorage.setItem('tb_device_id', id); } catch(e){ /* 存不了 → 每次都是新裝置，可接受 */ }
   }
   return id;
 }
@@ -1055,7 +1066,9 @@ window.approveTask = async (id)=>{
     const extra = cmP > 1 ? `（${t.reward} × ${cmP}${potNote}${evtNote}）` : '';
     const xpLine = xm !== cm ? `\nXP +${xpGain}（× ${xm}）` : '';
     const exTxt = extrasTotal(t.extras) ? `\n附贈：${extrasText(t.extras)}` : '';
-    if(!confirm(`確定通過「${t.title}」？\n將發給 ${who} 🪙 ${payout}${extra}${xpLine}${exTxt}`)) return;
+    const hL = halfCoinLeft(players[t.assignee] || {});
+    const hTxt = hL > 0 ? `\n🎲 金幣砍半中（還剩 ${hL} 次）→ 實發 🪙 ${Math.floor(payout / 2)}` : '';
+    if(!confirm(`確定通過「${t.title}」？\n將發給 ${who} 🪙 ${payout}${extra}${xpLine}${exTxt}${hTxt}`)) return;
   }
   let pushTo = [], pushTitle = '';      // 交易成功後才拿來發推播
   try {
@@ -1115,9 +1128,16 @@ window.approveTask = async (id)=>{
         // 金幣藥水：單次型，這次審核用掉就消失（走加法池，不做乘法）
         const potion = potionAdd(d, 'coin');
         const cm = r3(coinMultOf(d) + potion), xm = xpMultOf(d);
-        const pay = Math.round(t.reward * cm), xg = Math.round(t.reward * xm);
+        /* 🎲 隨機罰單的「金幣砍半」debuff。
+           在所有加成之後才砍，所以連藥水和活動加成也一起砍掉 —— 這是刻意的，
+           不然玩家只要等雙倍日再回報就能規避懲罰 */
+        const hLeft = halfCoinLeft(d);
+        const rawPay = Math.round(t.reward * cm);
+        const pay = hLeft > 0 ? Math.floor(rawPay / 2) : rawPay;
+        const xg = Math.round(t.reward * xm);
         tx.update(pRefs[i], {
           ...(potion > 0 ? { 'activePotion.coin': null } : {}),
+          ...(hLeft > 0 ? { 'debuff.halfCoin': increment(-1) } : {}),
           coins:       increment(pay),
           totalEarned: increment(pay),      // 用發放後金額累加
           xp:          increment(xg),       // XP 走自己的倍率
@@ -1133,6 +1153,7 @@ window.approveTask = async (id)=>{
         tx.set(ledgerRef(), ledgerData(payees[i],
           coop ? 'coop' : (t.isDaily ? 'daily' : 'task'), pay, t.title,
           { mult: cm, xpMult: xm, xpGain: xg, base: t.reward,
+            ...(hLeft > 0 ? { halved:true, before: rawPay } : {}),
             ...(coop ? { coop:true } : {}), ...(boost ? { tokenBoost:true } : {}),
             ...(Object.keys(extras).length ? { extras } : {}) }));
       });
@@ -1515,16 +1536,32 @@ function renderShop(){
    罰單系統
 ================================================================== */
 let penType = 'fine';
-$('typeFine').onclick = ()=>{
-  penType = 'fine';
-  $('typeFine').classList.add('on'); $('typeLock').classList.remove('on');
-  $('fAmount').style.display = ''; $('fTask').style.display = 'none';
-};
-$('typeLock').onclick = ()=>{
-  penType = 'lock';
-  $('typeLock').classList.add('on'); $('typeFine').classList.remove('on');
-  $('fAmount').style.display = 'none'; $('fTask').style.display = '';
-};
+/* 三種罰單共用同一組欄位，切換時要顯示／隱藏對應的輸入框。
+   隨機罰單不用填金額，由轉盤決定 */
+function setPenType(t){
+  penType = t;
+  [['fine','typeFine'],['lock','typeLock'],['rnd','typeRnd']].forEach(([k,id])=>{
+    $(id).classList.toggle('on', k === t);
+  });
+  $('fAmount').style.display = (t === 'fine') ? '' : 'none';
+  $('fTask').style.display   = (t === 'lock') ? '' : 'none';
+  $('rndInfo').style.display = (t === 'rnd')  ? '' : 'none';
+  if(t === 'rnd') renderRndInfo();
+}
+/* 把轉盤內容攤開給媽媽看，她才知道自己在開什麼 */
+function renderRndInfo(){
+  const r = rouletteById('main');
+  $('rndInfo').innerHTML =
+    `<div style="color:var(--gold);font-weight:800;margin-bottom:6px">🎲 由轉盤決定罰什麼</div>`
+    + r.slots.map(s=>`<div class="rndRow"><span>${s.icon} ${esc(s.label)}</span><span>${s.prob}%</span></div>`).join('')
+    + `<div style="margin-top:8px;color:var(--dim)">
+        🍀 幸運轉盤：-50（75%）／倖免（25%）<br>
+        😈 惡魔轉盤：-500（50%）／-1000（25%）／倖免（25%）<br>
+        送出後，對方下次打開任務板會被強制轉盤，轉完才能進去。</div>`;
+}
+$('typeRnd').onclick  = ()=> setPenType('rnd');
+$('typeFine').onclick = ()=> setPenType('fine');
+$('typeLock').onclick = ()=> setPenType('lock');
 
 function renderPenaltySelect(){
   const sel = $('fPlayer');
@@ -1565,6 +1602,31 @@ $('addPenBtn').onclick = async ()=>{
       });
       $('fReason').value=''; $('fAmount').value='';
       toast('已開罰單並扣款 💸');
+    } catch(e){ toast(e.message); }
+  } else if(penType === 'rnd'){
+    /* 隨機罰單：這裡不決定結果，只是「掛一張待轉的單」。
+       實際結果由玩家端轉盤決定 —— 那個過程才是這個功能的重點，
+       在後台先抽好再告訴他，就失去「運氣不好」的感覺了 */
+    if(players[pid] && players[pid].pendingRoulette)
+      return toast('這個人已經有一張待轉的隨機罰單了');
+    if(!confirm(`確定給「${players[pid]?.name}」一張隨機罰單？\n事由：${reason}\n\n`
+      + `結果由轉盤決定，對方下次打開任務板會被強制轉盤。`)) return;
+    try {
+      const path = spinRoulette('main');          // 先抽好存起來，避免玩家重整刷結果
+      await runTransaction(db, async tx=>{
+        const pRef = doc(db,'players',pid);
+        const s = await tx.get(pRef);
+        if(!s.exists()) throw new Error('玩家不存在');
+        if((s.data() || {}).pendingRoulette) throw new Error('這個人已經有一張待轉的隨機罰單了');
+        const ref = doc(collection(db,'penalties'));
+        tx.update(pRef, { pendingRoulette: { path, reason, penaltyId: ref.id, at: Date.now() } });
+        tx.set(ref, {
+          playerId:pid, type:'random', reason,
+          status:'pending', createdAt: serverTimestamp(),
+        });
+      });
+      $('fReason').value = '';
+      toast('已送出隨機罰單 🎲');
     } catch(e){ toast(e.message); }
   } else {
     const taskTitle = $('fTask').value.trim();
@@ -1651,7 +1713,7 @@ function renderEventBar(){
     const u = eventUntil(e.key);
     const d = u ? new Date(u) : null;
     const till = d && !isNaN(d) ? `（至 ${d.getMonth()+1}/${d.getDate()}）` : '';
-    return `⚡ 活動中：${esc(e.name)}${till}　<span style="color:var(--muted)">${esc(e.ef)}</span>`;
+    return `⚡ 活動中：${esc(eventLabel(e))}${till}　<span style="color:var(--muted)">${esc(eventEffect(e))}</span>`;
   }).join('<br>');
 }
 setInterval(renderEventBar, 30000);
