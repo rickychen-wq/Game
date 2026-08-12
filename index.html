@@ -725,6 +725,20 @@
   .cfCost .bad{ color:var(--pink); font-weight:800; }
   .cfCost .ok{ color:var(--cyan); font-weight:800; }
 
+  /* ===== ♻️ 重生 ===== */
+  .rbBar{ padding:13px 15px; border-radius:13px; margin:12px 0 4px;
+    border:1px solid var(--line); background:var(--panel-2); }
+  .rbBar.ready{ border-color:var(--gold);
+    background:linear-gradient(160deg,#1c1a12,#0b0d14);
+    box-shadow:0 0 24px rgba(233,196,106,.14); }
+  .rbBar.warn{ border-color:rgba(255,107,129,.45);
+    background:linear-gradient(160deg,#241016,#0b0d14); }
+  .rbBar.done{ border-color:rgba(95,240,220,.45);
+    background:linear-gradient(160deg,#12222a,#0b0d14); }
+  .rbBar .rbT{ font-size:15px; font-weight:900; margin-bottom:6px; }
+  .rbBar .rbS{ font-family:var(--mono); font-size:11.5px; color:var(--muted); line-height:1.9; }
+  .rbBar .rbS b{ color:var(--text); }
+
   /* ===== ⚜️ 神器 ===== */
   .rlcOn, .rlcEmpty{ display:flex; align-items:center; gap:8px; margin-top:9px;
     padding:9px 11px; border-radius:10px; font-size:12px;
@@ -1430,6 +1444,7 @@
   <div class="page" id="page-log">
     <h2 id="achTitle">成就牆</h2>
     <div class="achGrid" id="achWall"></div>
+    <div id="rebirthBox"></div>
     <h2>已完成的任務</h2>
     <div id="doneTasks"></div>
   </div>
@@ -1557,13 +1572,13 @@
   </div>
 </div>
 
-<script src="./shared.js?v=14"></script>
+<script src="./shared.js?v=15"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 14;
+  var NEED = 15;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -1619,6 +1634,8 @@ const {
   FULL_RAR, rarColorOf, everOwned, DEX_XFULL_BONUS,
   eventLabel, eventEffect,
   ROULETTES, rouletteById, rouletteOutcome, pendingRoulette, halfCoinLeft, inDebt,
+  REBIRTHS, REBIRTH_MAX, rebirthOf, rebirthStage, rebirthCur, rebirthNext,
+  rebirthDone, rebirthProgress, canRebirth,
   dunRunOf, dunKey,
   RELICS, RELIC_TIERS, relicById, relicTierById, relicsOf, relicCount, relicTotal,
   relicOnCard, canEquipRelic, relicDmgAdd, relicsOfPack,
@@ -1757,6 +1774,11 @@ function myStats(){
     lotteryCount: p.lotteryCount ?? 0,
     level: levelFromXp(p.xp ?? 0),
     cleanDays: cleanDays(),
+    // 重生關卡用的統計
+    relicTotal: relicTotal(p),
+    craftCount: p.craftCount ?? 0,
+    bossStage:  (p.boss && p.boss.stage) ?? 1,
+    dunClears:  p.dunClears || {},
   };
 }
 
@@ -1777,6 +1799,30 @@ function checkAchievements(){
     }
   }
   renderAchWall();
+  checkRebirth();
+}
+
+/* 重生關卡的完成判定。跟成就同一套做法：本地先記，再寫回 Firestore，
+   避免同一個條件重複觸發通知 */
+let localRebirth = null;
+function checkRebirth(){
+  if(!me || !players[me]) return;
+  const p = players[me];
+  const cur = rebirthCur(p);
+  if(!cur) return;                       // 還沒重生過 → 用原本的成就系統
+  const done = rebirthDone(p);
+  if(localRebirth === null) localRebirth = new Set(Object.keys(done).filter(k => done[k]));
+  else Object.keys(done).forEach(k => { if(done[k]) localRebirth.add(k); });
+
+  const stats = myStats();
+  for(const x of cur.list){
+    if(localRebirth.has(x.id)) continue;
+    if(x.check(stats)){
+      localRebirth.add(x.id);
+      updateDoc(doc(db,'players',me), { ['rebirthDone.' + x.id]: true }).catch(()=>{});
+      announceAchievement({ icon:x.icon, name:x.name, desc:x.desc });
+    }
+  }
 }
 
 /* ==================================================================
@@ -4446,6 +4492,7 @@ window.doCraft = async ()=>{
       upd.cards = curCards;
       if(eqChanged) upd.equipped = eq;
 
+      upd.craftCount = increment(1);       // 重生關卡「使用合成 2 次」要用
       const tierId = rollCraftTier(craftPick);
       // 產出全圖卡：沿用既有的加卡邏輯（含「只有更好才覆蓋 tier」與 dex 紀錄）
       const g = applyCardGain({ ...cur, cards: curCards }, upd, target.id, tierId);
@@ -4975,16 +5022,116 @@ function renderRank(){
 }
 
 function renderAchWall(){
-  const got = localUnlocked || new Set();
-  $('achTitle').innerHTML = `成就牆 <span style="color:var(--gold)">${got.size}/${ACHIEVEMENTS.length}</span>`;
-  $('achWall').innerHTML = ACHIEVEMENTS.map(a=>{
-    const has = got.has(a.id);
-    return `<div class="achCell ${has?'got':''}" onclick="showAch('${a.id}')">
-      <div class="aic">${has ? a.icon : '🔒'}</div>
-      <div class="aname">${has ? esc(a.name) : '???'}</div>
-    </div>`;
-  }).join('');
+  const p = players[me] || {};
+  const st = rebirthStage(p);
+  const cur = rebirthCur(p);
+
+  if(cur){
+    /* 重生後：改顯示新的關卡。原本 15 個成就的加成已經失效了，
+       所以不再顯示那面牆，避免看起來還在生效 */
+    const pg = rebirthProgress(p);
+    const done = rebirthDone(p);
+    $('achTitle').innerHTML = `${cur.icon} ${esc(cur.name)}
+      <span style="color:var(--gold)">${pg.have}/${pg.total}</span>`;
+    $('achWall').innerHTML = cur.list.map(x=>{
+      const has = !!done[x.id];
+      return `<div class="achCell ${has?'got':''}" onclick="showRb('${x.id}')">
+        <div class="aic">${has ? x.icon : '🔒'}</div>
+        <div class="aname">${has ? esc(x.name) : '???'}</div>
+      </div>`;
+    }).join('');
+  } else {
+    const got = localUnlocked || new Set();
+    $('achTitle').innerHTML = `成就牆 <span style="color:var(--gold)">${got.size}/${ACHIEVEMENTS.length}</span>`;
+    $('achWall').innerHTML = ACHIEVEMENTS.map(a=>{
+      const has = got.has(a.id);
+      return `<div class="achCell ${has?'got':''}" onclick="showAch('${a.id}')">
+        <div class="aic">${has ? a.icon : '🔒'}</div>
+        <div class="aname">${has ? esc(a.name) : '???'}</div>
+      </div>`;
+    }).join('');
+  }
+  renderRebirthBox();
 }
+
+/* 重生入口。全解之後才會出現，而且警語要寫得夠重 —— 這是不可逆的 */
+function renderRebirthBox(){
+  const box = $('rebirthBox');
+  if(!box) return;
+  const p = players[me] || {};
+  const st = rebirthStage(p);
+  const cur = rebirthCur(p);
+  const next = rebirthNext(p);
+  const pg = rebirthProgress(p);
+  const nowAdd = Math.round(achAdd(p) * 100);
+
+  if(cur && !pg.all){
+    // 重生中、還沒全解 → 提醒現在是 0 加成
+    box.innerHTML = `<div class="rbBar warn">
+      <div class="rbT">${cur.icon} ${esc(cur.name)} 進行中　${pg.have}/${pg.total}</div>
+      <div class="rbS">全部完成前，成就加成是 <b>0%</b>。
+        完成後可獲得 <b style="color:var(--gold-hi)">+${Math.round(cur.bonus*100)}%</b> 金幣加成。</div>
+    </div>`;
+    return;
+  }
+  if(cur && pg.all){
+    box.innerHTML = `<div class="rbBar done">
+      <div class="rbT">${cur.icon} ${esc(cur.name)} 已完成</div>
+      <div class="rbS">金幣加成 <b style="color:var(--gold-hi)">+${nowAdd}%</b> 生效中${
+        next ? '　下一階還在準備中' : ''}</div>
+    </div>`;
+    return;
+  }
+  // 還沒重生過
+  if(!canRebirth(p)){
+    const got = (localUnlocked || new Set()).size;
+    box.innerHTML = got >= ACHIEVEMENTS.length ? '' : `<div class="rbBar">
+      <div class="rbS">15 個成就全部解開後，會出現 <b>♻️ 重生</b></div></div>`;
+    return;
+  }
+  box.innerHTML = `<div class="rbBar ready">
+    <div class="rbT">♻️ 可以重生了</div>
+    <div class="rbS">
+      放棄現在的 <b>+${nowAdd}%</b> 金幣加成，換一組更難的關卡。<br>
+      全部完成可獲得 <b style="color:var(--gold-hi)">+${Math.round(next.bonus*100)}%</b>。<br>
+      <span style="color:var(--pink)">按下去就不能反悔，而且完成前加成是 0%。</span>
+    </div>
+    <button class="btn gold" style="width:100%;margin-top:11px" onclick="doRebirth()">
+      ♻️ 重生（不可逆）</button>
+  </div>`;
+}
+
+window.showRb = (id)=>{
+  const cur = rebirthCur(players[me] || {});
+  const x = cur && cur.list.find(y=>y.id===id);
+  if(!x) return;
+  const has = !!rebirthDone(players[me] || {})[id];
+  toast(has ? `${x.icon} ${x.name}：${x.desc} ✅` : `🔒 ${x.desc}`);
+};
+
+window.doRebirth = async ()=>{
+  if(lockGuard() || !me) return;
+  const p = players[me] || {};
+  if(!canRebirth(p)) return;
+  const next = rebirthNext(p);
+  const nowAdd = Math.round(achAdd(p) * 100);
+  // 不可逆的操作要問兩次，而且第二次得手動打字 —— 誤觸的代價太高
+  if(!confirm(`♻️ 確定要重生嗎？\n\n`
+    + `• 現在的 +${nowAdd}% 金幣加成會「立刻失效」\n`
+    + `• 會換成 5 個更難的關卡\n`
+    + `• 全部完成才能拿到 +${Math.round(next.bonus*100)}%\n`
+    + `• 完成前加成是 0%\n\n這個動作不能反悔。`)) return;
+  if(prompt('確定的話，請輸入「重生」兩個字：') !== '重生') return toast('已取消');
+  try {
+    await updateDoc(doc(db,'players',me), {
+      rebirth: rebirthStage(p) + 1,
+      rebirthDone: {},
+    });
+    localRebirth = null;
+    sfxLevelUp(); toast('♻️ 重生完成，新的關卡開始了');
+  } catch(e){ sfxError(); toast(e.message); }
+};
+
 window.showAch = (id)=>{
   const a = ACHIEVEMENTS.find(x=>x.id===id);
   if(!a) return;
