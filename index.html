@@ -725,6 +725,20 @@
   .cfCost .bad{ color:var(--pink); font-weight:800; }
   .cfCost .ok{ color:var(--cyan); font-weight:800; }
 
+  /* ===== ⚜️ 神器 ===== */
+  .rlcOn, .rlcEmpty{ display:flex; align-items:center; gap:8px; margin-top:9px;
+    padding:9px 11px; border-radius:10px; font-size:12px;
+    border:1px solid var(--line-soft); background:#0f111a; }
+  .rlcEmpty{ justify-content:center; color:var(--dim); font-family:var(--mono);
+    font-size:11px; border-style:dashed; cursor:pointer; }
+  .rlcOn .rIc, .rlcOpt .rIc{ font-size:18px; flex-shrink:0; }
+  .rlcOn .rNm, .rlcOpt .rNm{ font-weight:800; flex-shrink:0; }
+  .rlcOn .rEf, .rlcOpt .rEf{ font-family:var(--mono); font-size:10.5px;
+    color:var(--cyan); margin-left:auto; text-align:right; }
+  .rlcPick{ display:flex; flex-direction:column; gap:6px; margin-top:7px; }
+  .rlcOpt{ display:flex; align-items:center; gap:8px; padding:9px 11px; border-radius:10px;
+    border:1px solid var(--line-soft); background:#12141d; cursor:pointer; font-size:12px; }
+
   /* ===== 🎲 隨機罰單轉盤 ===== */
   #rlBox{ position:fixed; inset:0; z-index:120; display:none;
     align-items:center; justify-content:center; padding:20px;
@@ -1543,13 +1557,13 @@
   </div>
 </div>
 
-<script src="./shared.js?v=12"></script>
+<script src="./shared.js?v=14"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 12;
+  var NEED = 14;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -1605,6 +1619,9 @@ const {
   FULL_RAR, rarColorOf, everOwned, DEX_XFULL_BONUS,
   eventLabel, eventEffect,
   ROULETTES, rouletteById, rouletteOutcome, pendingRoulette, halfCoinLeft, inDebt,
+  dunRunOf, dunKey,
+  RELICS, RELIC_TIERS, relicById, relicTierById, relicsOf, relicCount, relicTotal,
+  relicOnCard, canEquipRelic, relicDmgAdd, relicsOfPack,
   PUSH_KINDS, pushKindsFor, pushPrefs, pushOn, pushSubOf, pushReady,
   pushSupport, pushPermission, pushSubscribe, pushUnsubscribe, pushSend, pushTargets, pushOpen,
   adminPushTargets,
@@ -2165,8 +2182,12 @@ onSnapshot(doc(db,'config','adminPush'), d=>{
   adminPushCfg = d.exists() ? (d.data() || {}) : null;
 });
 
+let dunCfg = null;
 onSnapshot(doc(db,'dungeons','active'), d=>{
-  const on = d.exists() && (d.data() || {}).status === 'open';
+  dunCfg = d.exists() ? (d.data() || {}) : null;
+  // 自己這一份還沒通關才亮紅點 —— 每個人打自己的，別人打完不影響你
+  const myRun = (me && players[me]) ? dunRunOf(players[me], dunCfg) : null;
+  const on = !!dunCfg && dunCfg.status === 'open' && !(myRun && myRun.status === 'cleared');
   const b = $('drawerDunBadge');
   if(b){ b.textContent = on ? '!' : '0'; b.style.display = on ? '' : 'none'; }
   const it = $('drawerDungeon');
@@ -3238,7 +3259,8 @@ function renderCards(){
           </div></div>`;
       }
       const skills = c.skills.map(k=>{
-        const real = skillDamage(k.dmg, own.tier, { dexAdd: dexBonusFor(p, c.id) });
+        const real = skillDamage(k.dmg, own.tier, { dexAdd: dexBonusFor(p, c.id),
+          relicAdd: relicDmgAdd(p, c.id) });
         const tag = k.sp === 'DOT' ? `<span class="sTag">持續 ${DOT_HOURS} 小時・最多 ${DOT_MAX_STACK} 層</span>`
                   : k.sp === 'BUFF' ? '<span class="sTag">下次傷害 +35%</span>'
                   : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>'
@@ -3264,6 +3286,7 @@ function renderCards(){
             return rows ? `<div class="skRow" style="margin-top:6px">持有：${rows}</div>` : '';
           })()}
           ${skills}
+          ${relicSlotHtml(p, c)}
           <div style="margin-top:9px">
             ${isEq
               ? `<button class="btn no" onclick="unequipCard('${c.id}')">卸下</button>`
@@ -3484,7 +3507,8 @@ window.useSkill = async (cardId, skillId, ev)=>{
         if(dots.length >= DOT_MAX_STACK)
           throw new Error(`持續傷害已達上限 ${DOT_MAX_STACK} 層`);
         const total = skillDamage(k.dmg, tierId, { buff, zone: zoneOn,
-          dexAdd: dexBonusFor(cur, cardId), potionAdd: potionAdd(cur, 'dmg') });
+          dexAdd: dexBonusFor(cur, cardId), potionAdd: potionAdd(cur, 'dmg'),
+          relicAdd: relicDmgAdd(cur, cardId) });
         dots = [...dots, { dmgPerHour: total / DOT_HOURS, startAt: now, endAt: now + DOT_HOURS*3600000 }];
         if(buff) buff = false;
         dealt = total;                                      // 只用於顯示，血是之後每小時扣
@@ -3492,7 +3516,8 @@ window.useSkill = async (cardId, skillId, ev)=>{
         // DMGZONE 也走這裡：傷害照算。zoneOn 是「施放前」的狀態，
         // 所以這一招不會被自己開的 ZONE 加成，只有下一招起才吃得到
         dealt = skillDamage(k.dmg, tierId, { buff, zone: zoneOn,
-          dexAdd: dexBonusFor(cur, cardId), potionAdd: potionAdd(cur, 'dmg') });
+          dexAdd: dexBonusFor(cur, cardId), potionAdd: potionAdd(cur, 'dmg'),
+          relicAdd: relicDmgAdd(cur, cardId) });
         if(buff) buff = false;
         hp = Math.max(0, hp - dealt);
         if(k.sp === 'DMGZONE') zoneUntil = now + ZONE_MS;    // 傷害 + 開 ZONE
@@ -3709,7 +3734,8 @@ function renderBoss(){
       ${c.skills.map(k=>{
         const used = castUsed(b, id, k.id, now);
         const real = skillDamage(k.dmg, own.tier, { buff: b.buff, zone: zoneOn,
-          dexAdd: dexBonusFor(p, id), potionAdd: potionAdd(p, 'dmg') });
+          dexAdd: dexBonusFor(p, id), potionAdd: potionAdd(p, 'dmg'),
+          relicAdd: relicDmgAdd(p, id) });
         const noEp = ep < k.ep;
         const tag = k.sp === 'DOT' ? '<span class="sTag">10 小時持續</span>'
                   : k.sp === 'BUFF' ? '<span class="sTag">下次 +35%</span>'
@@ -3791,6 +3817,88 @@ function renderBoss(){
 /* ==================================================================
    卡片合成（開發中）
 ================================================================== */
+
+/* ==================================================================
+   ⚜️ 神器
+   一張卡裝一件，而且只能裝同動漫的 ——
+   血繼限界是火影的東西，裝在魯夫身上說不通
+================================================================== */
+let relicPickFor = null;   // 目前正在選神器的卡片 id
+
+window.openRelicPick = (cardId)=>{
+  relicPickFor = (relicPickFor === cardId) ? null : cardId;
+  renderCards();
+};
+window.equipRelic = async (cardId, relicId, tier)=>{
+  if(lockGuard() || !me) return;
+  if(!canEquipRelic(cardId, relicId)) return toast('這件神器不能裝在這張卡上');
+  if(relicCount(players[me] || {}, relicId, tier) <= 0) return toast('你沒有這件神器');
+  relicPickFor = null;
+  try {
+    await updateDoc(doc(db,'players',me), { ['relicEquip.' + cardId]: { id:relicId, tier } });
+    sfxBuy(); toast('⚜️ 已裝備');
+  } catch(e){ sfxError(); toast(e.message); }
+};
+window.unequipRelic = async (cardId)=>{
+  if(lockGuard() || !me) return;
+  try {
+    await updateDoc(doc(db,'players',me), { ['relicEquip.' + cardId]: null });
+    toast('已卸下');
+  } catch(e){ toast(e.message); }
+};
+
+function relicSlotHtml(p, c){
+  const on = relicOnCard(p, c.id);
+  const mine = relicsOf(p);
+  // 只列得出同動漫、而且真的持有的神器
+  const usable = [];
+  relicsOfPack(c.pack).forEach(r=>{
+    Object.keys(mine[r.id] || {}).forEach(t=>{
+      usable.push({ r, t, n: mine[r.id][t] });
+    });
+  });
+  const open = relicPickFor === c.id;
+
+  const cur = on
+    ? `<div class="rlcOn" style="border-color:${on.tierDef.color}">
+        <span class="rIc">${on.def.icon}</span>
+        <span class="rNm">${esc(on.def.name)}
+          <span style="color:${on.tierDef.color}">${on.tierDef.name}</span></span>
+        <span class="rEf">${esc(effTxt(on.def, on.tierDef))}</span>
+        <button class="btn no" style="padding:4px 9px;font-size:11px"
+          onclick="unequipRelic('${c.id}')">卸下</button>
+      </div>`
+    : `<div class="rlcEmpty" ${usable.length ? `onclick="openRelicPick('${c.id}')"` : ''}>
+        ${usable.length ? '⚜️ 點一下裝備神器' : '⚜️ 還沒有可裝備的神器'}
+      </div>`;
+
+  const picker = (open && usable.length)
+    ? `<div class="rlcPick">${usable.map(u=>{
+        const td = relicTierById(u.t);
+        return `<div class="rlcOpt" style="border-color:${td.color}"
+            onclick="equipRelic('${c.id}','${u.r.id}','${u.t}')">
+          <span class="rIc">${u.r.icon}</span>
+          <span class="rNm">${esc(u.r.name)}
+            <span style="color:${td.color}">${td.name}</span>
+            ${u.n > 1 ? `<span style="color:var(--dim)">×${u.n}</span>` : ''}</span>
+          <span class="rEf">${esc(effTxt(u.r, td))}</span>
+        </div>`;
+      }).join('')}</div>`
+    : '';
+
+  return cur + picker;
+}
+
+/* 效果文字。等級倍率要乘進去，不然玩家看不出 S 級到底差在哪 */
+function effTxt(def, tierDef){
+  const m = tierDef.mult;
+  if(def.effect === 'dmg')   return `傷害 +${Math.round(def.value * m * 100)}%`;
+  if(def.effect === 'ep')    return `EP −${Math.round(Math.min(0.9, def.value * m) * 100)}%`;
+  if(def.effect === 'split') return `地下城一次打 ${Math.max(2, Math.round(def.value * m))} 隻`;
+  if(def.effect === 'drop')  return `掉落率 ×${Math.round(def.value * m)}`;
+  return def.desc;
+}
+
 /* ==================================================================
    🎲 隨機罰單轉盤
    有待執行的罰單時蓋住整個畫面，轉完才能進去。
@@ -3798,6 +3906,10 @@ function renderBoss(){
       這裡只負責「演出來」—— 不然玩家重整就能一直重抽到滿意為止
 ================================================================== */
 let rlBusy = false, rlStep = 0, rlSpinning = false, rlTimer = null;
+/* 已經執行完的罰單 id。
+   ⚠️ 不能只靠 Firestore 回寫來收遮罩 —— 網路慢的時候玩家會看到「轉！」還在，
+      等於又給了一次重轉的機會 */
+let rlDoneId = null;
 
 function rlSlotOf(step){
   const r = pendingRoulette(players[me] || {});
@@ -3852,14 +3964,18 @@ function rlReveal(){
   const isLast = rlStep >= r.path.length - 1;
   try { if(cur.sl.kind === 'none') sfxLevelUp(); else sfxError(); }
   catch(e){ /* 音效壞掉不影響結果顯示 */ }
-  if(isLast) renderRoulette('done');
-  else { rlStep++; renderRoulette('next'); }
+  if(isLast){
+    /* ⚠️ 轉到就直接執行，不能有「接受」這一步。
+       中間留任何按鈕，玩家就能在看到結果後滑掉重整、一直重刷到滿意為止 */
+    renderRoulette('done');
+    rlAccept();
+  } else { rlStep++; renderRoulette('next'); }
 }
 
 window.rlNext = ()=>{ renderRoulette(); };
 
 /* 領罰：把結果真的寫進資料庫 */
-window.rlAccept = async ()=>{
+async function rlAccept(){
   if(rlBusy || !me) return;
   const r = pendingRoulette(players[me] || {});
   if(!r) return;
@@ -3891,21 +4007,32 @@ window.rlAccept = async ()=>{
         { roulette:true, path: pend.path, half: o.half }));
     });
     rlStep = 0;
+    rlDoneId = r.penaltyId || String(r.at || '') || 'done';   // 本地立刻標記完成
+    const o = rouletteOutcome(r.path);
+    setTimeout(()=>{
+      if(o.coin) toast(`🎲 扣了 ${o.coin.toLocaleString()} 金幣`);
+      else if(o.half) toast(`🎲 接下來 ${o.half} 個任務金幣減半`);
+      else toast('🎲 這次倖免，運氣不錯 ✨');
+    }, 900);
   } catch(e){ toast(e.message); }
   rlBusy = false;
   renderRoulette();
-};
+}
+window.rlAccept = rlAccept;   // inline onclick 也要用得到
 
 function renderRoulette(phase){
   const box = $('rlBox');
   if(!box) return;
-  const r = me && players[me] ? pendingRoulette(players[me]) : null;
+  let r = me && players[me] ? pendingRoulette(players[me]) : null;
+  // 本地已執行完就當作沒有了，不等 Firestore 回寫
+  if(r && rlDoneId && (r.penaltyId || String(r.at || '') || 'done') === rlDoneId) r = null;
   if(!r){
     box.classList.remove('show');
     rlStep = 0; rlSpinning = false;
     if(rlTimer){ clearTimeout(rlTimer); rlTimer = null; }
     return;
   }
+  rlDoneId = null;      // 換了一張新罰單 → 解除本地標記
   box.classList.add('show');
 
   const cur = rlSlotOf(rlStep);
@@ -3930,8 +4057,7 @@ function renderRoulette(phase){
         ${o.half ? `<div class="rrS">接下來 <b>${o.half}</b> 個任務的金幣減半</div>` : ''}
         ${safe ? '<div class="rrS">這次什麼都沒扣，運氣不錯 ✨</div>' : ''}
       </div>
-      <button class="btn gold" style="width:100%" onclick="rlAccept()" ${rlBusy ? 'disabled' : ''}>
-        ${rlBusy ? '處理中⋯' : '接受'}</button>`;
+      <div class="rlNote" style="margin:0 0 12px">${rlBusy ? '結算中⋯' : '已經執行了'}</div>`;
   } else if(phase === 'next'){
     foot = `<div class="rlResult">
         <div class="rrIc">${cur.rt.icon}</div>
