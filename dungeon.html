@@ -273,13 +273,13 @@
 <div id="dmgPop"></div>
 <div id="clearBox"><div class="clearIn" id="clearIn"></div></div>
 
-<script src="./shared.js?v=15"></script>
+<script src="./shared.js?v=16"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 15;
+  var NEED = 16;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -889,7 +889,9 @@ function skillHtml(expired, run){
     if(!c || !own) return '';
     const tier = tierById(own.tier || 'normal');
     return c.skills.map(k=>{
-      const cost = dungeonEpCost(k.ep);
+      const rawCost = dungeonEpCost(k.ep);
+      const cut  = relicEpCut(P, cid);
+      const cost = Math.max(1, Math.round(rawCost * (1 - cut)));
       const real = k.dmg > 0
         ? skillDamage(k.dmg, own.tier || 'normal', { buff: st.buff, zone: zoneOn,
             dexAdd: dexBonusFor(P, cid), potionAdd: potionAdd(P, 'dmg') })
@@ -906,7 +908,9 @@ function skillHtml(expired, run){
           <div class="skNm">${esc(k.name)}${tag}</div>
         </div>
         <div class="skR">
-          <div class="skEp">EP ${cost}</div>
+          <div class="skEp">${cut > 0
+            ? `EP <span style="text-decoration:line-through;opacity:.5">${rawCost}</span> ${cost}`
+            : `EP ${cost}`}</div>
           <div class="skDmg">${real ? real.toLocaleString() : '—'}</div>
         </div>
       </button>`;
