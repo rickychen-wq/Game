@@ -273,13 +273,13 @@
 <div id="dmgPop"></div>
 <div id="clearBox"><div class="clearIn" id="clearIn"></div></div>
 
-<script src="./shared.js?v=14"></script>
+<script src="./shared.js?v=15"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 14;
+  var NEED = 15;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -613,6 +613,8 @@ window.dunCast = async (cardId, skillId, ev)=>{
         totalDmg: (run.totalDmg || 0) + dealt,
         ...(allDone ? { status:'cleared', clearedAt: now } : {}),
       };
+      // 通關次數按等級累計，重生關卡「通關 S 級 3 次」要用
+      if(allDone) upd[`dunClears.${d.tier}`] = increment(1);
       tx.update(pRef, upd);
       fx = { dealt, sp, marks: marks.join(' '), name: k.name, ti, overkill,
              hits: targets.length, drops };
