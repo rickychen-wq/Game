@@ -11,7 +11,7 @@
 (function (global) {
   /* ⚠️ 改動 shared.js 之後，這個數字和四個 HTML 的 ?v= 都要一起 +1。
      不然瀏覽器會沿用舊的 shared.js，新函式全部 undefined，畫面直接變白。 */
-  const SHARED_VERSION = 14;
+  const SHARED_VERSION = 15;
   'use strict';
 
   /* ==============================================================
@@ -1202,9 +1202,71 @@
   ============================================================== */
   const r3 = n => Math.round(n * 1000) / 1000;
 
+  /* ==============================================================
+     ♻️ 重生
+     15 個成就全解 → 出現「重生」按鈕。按下去會放棄現有的成就加成，
+     換來一組新的、更難的關卡，全解之後給更高的加成。
+     ⚠️ 不可逆、中途沒有退路 —— 那才有份量。
+        而且只要有一個人按了，另一個一定會想追，社交壓力比獎勵本身更有推力
+     要加重生 2、3 只要在這個陣列後面加一組就好
+  ============================================================== */
+  const REBIRTHS = [
+    {
+      stage: 1, name:'重生 Ⅰ', icon:'♻️', bonus: 0.15,
+      list: [
+        { id:'rb1_dun_s',   icon:'🌌', name:'穿越天穹',   desc:'通關 S 級地下城 3 次',
+          check: s => (s.dunClears && s.dunClears.S || 0) >= 3 },
+        { id:'rb1_relic',   icon:'⚜️', name:'初獲神器',   desc:'獲得任意一件神器',
+          check: s => s.relicTotal >= 1 },
+        { id:'rb1_craft',   icon:'🃏', name:'雙重合成',   desc:'使用卡片合成 2 次',
+          check: s => s.craftCount >= 2 },
+        { id:'rb1_boss20',  icon:'👹', name:'終焉討伐',   desc:'Boss 通關到第 20 關',
+          check: s => s.bossStage >= 20 },
+        { id:'rb1_lv50',    icon:'⭐', name:'半百之境',   desc:'等級達到 Lv.50',
+          check: s => s.level >= 50 },
+      ],
+    },
+  ];
+  const rebirthOf   = stage => REBIRTHS.find(r => r.stage === stage) || null;
+  const REBIRTH_MAX = REBIRTHS.length;
+
+  /* 玩家目前在第幾階。0 = 還沒重生過 */
+  const rebirthStage = p => Math.max(0, Math.min(REBIRTH_MAX, Math.floor(Number((p && p.rebirth)) || 0)));
+  /* 目前這一階的關卡定義（沒重生過就是 null，用原本的 ACHIEVEMENTS） */
+  const rebirthCur  = p => rebirthOf(rebirthStage(p));
+  /* 下一階（拿來判斷「還能不能再重生」） */
+  const rebirthNext = p => rebirthOf(rebirthStage(p) + 1);
+
+  /* 這一階解了哪些。存在 players.rebirthDone = { rb1_relic:true, ... } */
+  const rebirthDone = p => (p && p.rebirthDone) || {};
+  function rebirthProgress(p){
+    const cur = rebirthCur(p);
+    if(!cur) return { has:false, have:0, total:0, all:false };
+    const done = rebirthDone(p);
+    const have = cur.list.filter(x => done[x.id]).length;
+    return { has:true, have, total: cur.list.length, all: have >= cur.list.length, def: cur };
+  }
+
+  /* 成就加成：重生過就改吃重生那一階的數字。
+     ⚠️ 按下重生的當下，舊的 +10% 會立刻失效 —— 新關卡全解之前是 0，
+        這正是「博弈」的部分 */
   function achAdd(p){
+    const st = rebirthStage(p);
+    if(st > 0){
+      const pg = rebirthProgress(p);
+      return pg.all ? (rebirthCur(p).bonus || 0) : 0;
+    }
     return (((p && p.achievements) || []).length >= ACHIEVEMENTS.length) ? 0.1 : 0;
   }
+
+  /* 能不能按重生：現階段全解、而且還有下一階 */
+  function canRebirth(p){
+    const st = rebirthStage(p);
+    if(!rebirthOf(st + 1)) return false;                      // 沒有下一階了
+    if(st === 0) return ((p && p.achievements) || []).length >= ACHIEVEMENTS.length;
+    return rebirthProgress(p).all;
+  }
+
 
   function titleCoinAdd(p){ return r3((equippedTitle(p)?.mult || 1) - 1); }
   function titleLuckAdd(p){ return r3((equippedTitle(p)?.luck || 1) - 1); }
@@ -1611,6 +1673,9 @@
     talentLv, talentSpent, talentEarned, talentAvail, talentAdd,
     // 成就
     ACHIEVEMENTS,
+    // 重生
+    REBIRTHS, REBIRTH_MAX, rebirthOf, rebirthStage, rebirthCur, rebirthNext,
+    rebirthDone, rebirthProgress, canRebirth,
     // EP
     EP_START_LV, epTotal, epAvail,
     // 卡牌
