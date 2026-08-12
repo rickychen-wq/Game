@@ -11,7 +11,7 @@
 (function (global) {
   /* ⚠️ 改動 shared.js 之後，這個數字和四個 HTML 的 ?v= 都要一起 +1。
      不然瀏覽器會沿用舊的 shared.js，新函式全部 undefined，畫面直接變白。 */
-  const SHARED_VERSION = 15;
+  const SHARED_VERSION = 16;
   'use strict';
 
   /* ==============================================================
@@ -1580,14 +1580,20 @@
       effect:'dmg',   value:1.0,  desc:'傷害 +100%' },
     { id:'dmgscroll',  pack:'onepiece', icon:'📜', name:'傷害附魔捲軸',
       effect:'dmg',   value:1.5,  desc:'傷害 +150%' },
+    /* ⚠️ 效果型（split / ep / drop）不能用「value × 等級倍率」——
+       ×10 之後會變成「一次打 20 隻」而一層最多才 5 隻，等於整層秒清。
+       所以這三件改用 byTier 明確列出每一級的值 */
     { id:'darkwing',   pack:'haikyu',   icon:'🖤', name:'暗黑翅膀',
-      effect:'split', value:2,    desc:'地下城一次打 2 隻（各自吃滿傷害）' },
+      effect:'split', value:2, byTier:{ C:2, B:3, A:4, S:5, X:5 },
+      desc:'地下城一次打多隻（各自吃滿傷害）' },
     { id:'kekkei',     pack:'naruto',   icon:'🩸', name:'血繼限界',
       effect:'dmg',   value:1.6,  desc:'傷害 +160%' },
     { id:'headband',   pack:'naruto',   icon:'🥷', name:'忍者護額',
-      effect:'ep',    value:0.5,  desc:'EP 消耗 −50%' },
+      effect:'ep',    value:0.25, byTier:{ C:0.25, B:0.4, A:0.55, S:0.7, X:0.85 },
+      desc:'EP 消耗減少' },
     { id:'eyeofgod',   pack:'kuroko',   icon:'👁️', name:'天地之眼',
-      effect:'drop',  value:2,    desc:'用這張卡擊殺，掉落率 ×2' },
+      effect:'drop',  value:2, byTier:{ C:2, B:3, A:4, S:6, X:10 },
+      desc:'用這張卡擊殺，掉落率倍增' },
     { id:'zoneRelic',  pack:'kuroko',   icon:'🔵', name:'ZONE',
       effect:'dmg',   value:1.3,  desc:'傷害 +130%' },
   ];
@@ -1644,13 +1650,19 @@
   }
 
   /* 這張卡身上的神器提供多少加成。等級倍率在這裡乘進去 */
+  /* byTier 的直接查表；沒有 byTier（傷害型）才用 value × 等級倍率 */
+  const relicValueAt = (def, tierId) =>
+    (def && def.byTier && def.byTier[tierId] !== undefined)
+      ? def.byTier[tierId]
+      : (def ? def.value * relicTierById(tierId).mult : 0);
+
   function relicBonus(p, cardId, effect){
     const on = relicOnCard(p, cardId);
     if(!on || on.def.effect !== effect) return 0;
-    return on.def.value * on.tierDef.mult;
+    return relicValueAt(on.def, on.tier);
   }
   const relicDmgAdd  = (p, cardId) => relicBonus(p, cardId, 'dmg');
-  const relicEpCut   = (p, cardId) => Math.min(0.9, relicBonus(p, cardId, 'ep'));   // 最多省 90%
+  const relicEpCut   = (p, cardId) => Math.min(0.9, relicBonus(p, cardId, 'ep'));   // 硬上限 90%，防呆用
   const relicSplit   = (p, cardId) => {
     const n = relicBonus(p, cardId, 'split');
     return n > 0 ? Math.max(2, Math.round(n)) : 1;
@@ -1684,7 +1696,7 @@
     RELIC_TIERS, relicTierById, RELIC_DROP, relicDropOf, RELICS, relicById, relicsOfPack,
     rollRelicDrop, relicsOf, relicCount, relicTotal,
     relicEquipOf, relicOnCard, canEquipRelic, relicBonus,
-    relicDmgAdd, relicEpCut, relicSplit, relicDropMult,
+    relicDmgAdd, relicEpCut, relicSplit, relicDropMult, relicValueAt,
     // 隨機罰單
     ROULETTES, rouletteById, spinRoulette, rouletteOutcome,
     pendingRoulette, halfCoinLeft, inDebt,
