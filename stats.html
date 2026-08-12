@@ -690,6 +690,7 @@ const {
   EVENT_TUNABLE, eventAddOf, eventLabel, eventEffect, dunPotionPct, DUN_POTION_DEFAULT,
   halfCoinLeft, inDebt, rouletteById, dunRunsOf, dunRunOf, dunKey,
   REBIRTHS, rebirthStage, rebirthCur, rebirthDone, rebirthProgress, canRebirth,
+  canEquipRelic,
   RELICS, RELIC_TIERS, relicById, relicTierById, relicsOf, relicTotal,
   relicEquipOf, relicOnCard, RELIC_DROP, relicsOfPack,
   adminPushDevices, adminPushTargets,
@@ -2139,6 +2140,21 @@ function renderDebug(force){
         `${m.icon} ${m.name} craftMats.${m.id}`, 'craftMats.'+m.id,
         craftMatsOf(p)[m.id], 'dbg_cm_'+m.id, 1)).join('')}
 
+    <h3>⚜️ 神器（可直接增減與裝備）</h3>
+    <div class="dbgRow">
+      <span class="dk">給神器</span>
+      <div id="rlcGiveBtns" class="dbgPickBtns"></div>
+    </div>
+    <div class="dbgRow">
+      <span class="dk">等級</span>
+      <div id="rlcTierBtns" class="dbgPickBtns"></div>
+      <button class="dbgBtn" onclick="rlcGive(1)">+1</button>
+      <button class="dbgBtn mini" onclick="rlcGive(5)">+5</button>
+      <button class="dbgBtn mini" onclick="rlcGive(-1)">−1</button>
+    </div>
+    <div id="rlcOwned"></div>
+    <div id="rlcEquip"></div>
+
     <h3>♻️ 重生</h3>
     ${(()=>{ const cur = rebirthCur(p), pg = rebirthProgress(p);
       if(!cur) return `<div class="dbgRow"><span class="dk">階段</span>
@@ -2385,6 +2401,7 @@ function renderDebug(force){
     samePlayer);        // 換玩家時不還原舊值，避免把 A 的輸入帶到 B 身上
 
   dbgXpPreview();
+  renderRelicEditor(p);
 }
 
 function dbgFilterTitles(){
@@ -2773,6 +2790,93 @@ function renderDungeon(force){
       <div class="hRow">每 12 小時，還活著的小兵回復最大血量的 ${Math.round(DUN_REGEN_PCT*100)}%
         （死掉的不復活、滿血的不變、補到滿為止）。</div>
     </div>`;
+}
+
+
+/* ==================================================================
+   ⚜️ 神器編輯器（管理端）
+   要能自己測試，所以「給／收／裝備／卸下」全部要能直接操作
+================================================================== */
+let rlcPick = RELICS[0].id, rlcTier = 'C';
+window.rlcPickRelic = id=>{ rlcPick = id; renderDebug(true); };
+window.rlcPickTier  = t =>{ rlcTier = t;  renderDebug(true); };
+
+window.rlcGive = async (n)=>{
+  const p = dbgP(); if(!p) return;
+  const r = relicById(rlcPick), t = relicTierById(rlcTier);
+  const have = (relicsOf(p)[rlcPick] || {})[rlcTier] || 0;
+  const to = Math.max(0, have + n);
+  if(to === have) return dbgToast('已經是 0 了', true);
+  if(!confirm(`${n > 0 ? '給' : '收回'}「${p.name}」${r.icon} ${t.name} 級 ${r.name} ×${Math.abs(n)}？\n${have} → ${to}`)) return;
+  await dbgWrite({ [`relics.${rlcPick}.${rlcTier}`]: to },
+    `${n > 0 ? '給予' : '收回'} ${r.name}（${t.name}）×${Math.abs(n)}`,
+    { relic: rlcPick, tier: rlcTier, from: have, to });
+};
+
+/* 直接指定裝在哪張卡上。只有同動漫的卡會列出來 */
+window.rlcEquip = async (cardId)=>{
+  const p = dbgP(); if(!p) return;
+  if(!canEquipRelic(cardId, rlcPick)) return dbgToast('這件神器不能裝在這張卡上', true);
+  if(((relicsOf(p)[rlcPick] || {})[rlcTier] || 0) <= 0) return dbgToast('他沒有這件神器', true);
+  const c = cardById(cardId), r = relicById(rlcPick), t = relicTierById(rlcTier);
+  if(!confirm(`把 ${r.icon} ${t.name} 級 ${r.name} 裝到「${c.name}」上？`)) return;
+  await dbgWrite({ [`relicEquip.${cardId}`]: { id: rlcPick, tier: rlcTier } },
+    `${c.name} 裝備 ${r.name}（${t.name}）`, { card: cardId, relic: rlcPick, tier: rlcTier });
+};
+window.rlcUnequip = async (cardId)=>{
+  const p = dbgP(); if(!p) return;
+  const c = cardById(cardId);
+  if(!confirm(`卸下「${c ? c.name : cardId}」身上的神器？`)) return;
+  await dbgWrite({ [`relicEquip.${cardId}`]: null }, `${c ? c.name : cardId} 卸下神器`, { card: cardId });
+};
+window.rlcClearAll = async ()=>{
+  const p = dbgP(); if(!p) return;
+  if(!confirm(`清空「${p.name}」的所有神器與裝備？這無法復原。`)) return;
+  await dbgWrite({ relics:{}, relicEquip:{} }, '清空所有神器', { action:'clearRelics' });
+};
+
+function renderRelicEditor(p){
+  if(!$('rlcGiveBtns')) return;
+  // 神器與等級的選擇鈕
+  $('rlcGiveBtns').innerHTML = RELICS.map(r=>
+    `<button class="dbgPick ${r.id === rlcPick ? 'on' : ''}" onclick="rlcPickRelic('${r.id}')">
+      ${r.icon} ${esc(r.name)}</button>`).join('');
+  $('rlcTierBtns').innerHTML = RELIC_TIERS.map(t=>
+    `<button class="dbgPick ${t.id === rlcTier ? 'on' : ''}" onclick="rlcPickTier('${t.id}')"
+      style="${t.id === rlcTier ? `border-color:${t.color};color:${t.color}` : ''}">
+      ${t.name} ×${t.mult}</button>`).join('');
+
+  // 目前持有
+  const mine = relicsOf(p);
+  const owned = [];
+  RELICS.forEach(r=> Object.keys(mine[r.id] || {}).forEach(t=>
+    owned.push(`<span class="invChip">${r.icon} ${esc(r.name)}
+      <span style="color:${relicTierById(t).color}">${relicTierById(t).name}</span> ×${mine[r.id][t]}</span>`)));
+  $('rlcOwned').innerHTML = `<div class="dbgRow">
+      <span class="dk">目前持有</span>
+      <span class="dv">共 ${relicTotal(p)} 件</span>
+      ${relicTotal(p) ? '<button class="dbgBtn danger" onclick="rlcClearAll()">清空</button>' : ''}
+    </div>`
+    + (owned.length ? `<div class="invChips">${owned.join('')}</div>`
+                    : '<div class="invEmpty">還沒有神器</div>');
+
+  // 裝備狀態：只列出「有這張卡」而且「動漫對得上」的
+  const r = relicById(rlcPick);
+  const eq = relicEquipOf(p);
+  const rows = CARDS.filter(c => c.pack === r.pack && ownedCard(p, c.id)).map(c=>{
+    const on = relicOnCard(p, c.id);
+    return `<div class="dbgRow">
+      <span class="dk">${esc(c.name)}</span>
+      <span class="dv" style="color:${on ? on.tierDef.color : 'var(--dim)'}">${
+        on ? `${on.def.icon} ${esc(on.def.name)} ${on.tierDef.name}` : '未裝備'}</span>
+      <button class="dbgBtn mini" onclick="rlcEquip('${c.id}')">裝 ${r.icon}</button>
+      ${on ? `<button class="dbgBtn mini" onclick="rlcUnequip('${c.id}')">卸下</button>` : ''}
+    </div>`;
+  }).join('');
+  $('rlcEquip').innerHTML = `<div class="dbgRow" style="color:var(--dim)">
+      <span class="dk">裝備到</span>
+      <span class="dv">${esc(r.name)} 只能裝在「${esc(packById(r.pack).name)}」的卡上</span></div>`
+    + (rows || '<div class="invEmpty">他沒有這個動漫的卡片</div>');
 }
 
 /* ⚜️ 神器一覽：哪些神器、什麼效果、各地下城掉多少。
