@@ -132,6 +132,19 @@
   .mob.boss .mBar{ height:7px; }
   .mob.boss .mBarIn{ background:linear-gradient(90deg,#8a1226,var(--pink)); }
 
+  /* ===== 其他人的進度 ===== */
+  .othGrid{ display:flex; flex-direction:column; gap:7px; }
+  .othRow{ display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:11px;
+    border:1px solid var(--line-soft); background:var(--panel-2); }
+  .othRow.done{ border-color:rgba(95,240,220,.4); background:rgba(95,240,220,.06); }
+  .othRow .oNm{ font-size:13px; font-weight:800; min-width:56px; flex-shrink:0; }
+  .othRow .oBar{ flex:1; height:7px; border-radius:99px; background:#12141d;
+    border:1px solid var(--line-soft); overflow:hidden; }
+  .othRow .oIn{ display:block; height:100%; background:var(--gold-deep); transition:width .5s ease; }
+  .othRow.done .oIn{ background:var(--cyan); }
+  .othRow .oPct{ font-family:var(--mono); font-size:11px; font-weight:800; color:var(--muted);
+    min-width:58px; text-align:right; flex-shrink:0; }
+
   /* ===== 區塊 ===== */
   h2{ font-family:var(--mono); font-size:11px; font-weight:800; letter-spacing:2px;
     color:var(--gold-dim); margin:18px 0 9px; }
@@ -260,13 +273,13 @@
 <div id="dmgPop"></div>
 <div id="clearBox"><div class="clearIn" id="clearIn"></div></div>
 
-<script src="./shared.js?v=12"></script>
+<script src="./shared.js?v=14"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 12;
+  var NEED = 14;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -313,6 +326,9 @@ const {
   dungeonDef, dungeonHp, dungeonMobs, dungeonApplyRegen, dungeonEpCost,
   dungeonFloorHp, dungeonFloorDone, dungeonLeftHp, dungeonProgress,
   dungeonExpired, dunEquipOf, dunEquipLocked, dunStateOf,
+  dunKey, dunNewRun, dunRunOf, dunRunsOf,
+  RELICS, RELIC_TIERS, relicById, relicTierById, relicsOf, relicOnCard, canEquipRelic,
+  relicDmgAdd, relicEpCut, relicSplit, relicDropMult, rollRelicDrop, relicsOfPack,
   dunSlotsOf, dunSlotCds, dunSlotReady,
   DUNGEON_REWARDS, dunRewardsOf, dunPotionPct, setRuntime, dmgMult,
 } = window.GAME;
@@ -330,12 +346,36 @@ let DUN  = null;      // dungeons/active
 let busy = false;
 
 /* UI 狀態一律存 JS 變數，不放 DOM —— snapshot 隨時會重繪（§7.1） */
+let players = {};     // 所有人的資料，只用來顯示彼此的進度
 let penalties = [];   // 禁閉是從 penalties 即時算的，player 上沒有 locked 欄位
 const isLocked = () => penalties.some(x => x.playerId === me && x.type === 'lock' && x.status !== 'cleared');
 
 let selMob   = 0;     // 當前層選中的小兵 index
 let selSlot  = null;  // 目前要放卡的格子 index（null = 沒在選）
 let rollTimer = null; // 獎勵數字滾動
+
+/* 音效。dungeon.html 原本沒有音效系統，但神器掉落是最稀有的時刻，
+   值得有個聲音 —— 只在有掉落時才會用到，不會吵 */
+let audioCtx = null;
+function tone(freq, dur, type, vol, when){
+  try {
+    if(!audioCtx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return;
+      audioCtx = new AC();
+    }
+    const t0 = audioCtx.currentTime + (when || 0);
+    const osc = audioCtx.createOscillator(), g = audioCtx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(vol || 0.18, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g); g.connect(audioCtx.destination);
+    osc.start(t0); osc.stop(t0 + dur + 0.03);
+  } catch(e){ /* 音效失敗絕不能影響遊戲流程 */ }
+}
+const sfxRare = ()=> [523, 659, 784, 1047, 1319].forEach((f, i)=> tone(f, 0.3, 'triangle', 0.2, i * 0.1));
 
 function toast(msg){
   const t = $('toast'); t.textContent = msg; t.classList.add('show');
@@ -367,6 +407,12 @@ if(!me){
 } else {
   onSnapshot(doc(db,'players',me), d=>{
     P = d.exists() ? (d.data() || {}) : null;
+    render();
+  });
+  // 其他人的進度：只拿來顯示「打到幾 %」，不顯示傷害數字
+  onSnapshot(collection(db,'players'), snap=>{
+    players = {};
+    snap.forEach(x => players[x.id] = x.data());
     render();
   });
   onSnapshot(collection(db,'penalties'), snap=>{
@@ -437,13 +483,17 @@ window.dunCast = async (cardId, skillId, ev)=>{
   if(!k || !P || !DUN || DUN.status !== 'open') return;
   if(isLocked())            return toast('🔒 禁閉中，先完成贖罪任務');
   if(dungeonExpired(DUN))   return toast('這座地下城已經過期了');
-  const cost = dungeonEpCost(k.ep);
+  const cost = Math.max(1, Math.round(dungeonEpCost(k.ep) * (1 - relicEpCut(P, cardId))));
   if(epAvail(P) < cost)     return toast(`EP 不夠，還差 ${cost - epAvail(P)}`);
 
   const def = dungeonDef(DUN.tier);
-  const fi  = DUN.cur || 0;
-  const fl  = (DUN.floors || [])[fi];
-  if(!def || !fl) return;
+  // ⚠️ 血條在自己的 dunRun 裡，不在 DUN 上。讀錯地方會拿到 undefined 而靜默 return
+  const myRun = dunRunOf(P, DUN) || dunNewRun(DUN.tier, dunKey(DUN));
+  if(!def || !myRun) return;
+  if(myRun.status === 'cleared') return toast('你已經通關了');
+  const fi = myRun.cur || 0;
+  const fl = (myRun.floors || [])[fi];
+  if(!fl) return;
   if((fl.hp[selMob] ?? 0) <= 0) return toast('先選一隻還活著的小兵');
 
   if(btn && !REDUCED){ btn.classList.remove('fire'); void btn.offsetWidth; btn.classList.add('fire'); }
@@ -461,22 +511,30 @@ window.dunCast = async (cardId, skillId, ev)=>{
       const d   = dS.data();
       if(!d || d.status !== 'open') throw new Error('地下城已經關閉了');
       if(d.endsAt && Date.now() > d.endsAt) throw new Error('這座地下城已經過期了');
-      if(epAvail(cur) < cost) throw new Error(`EP 不夠，還差 ${cost - epAvail(cur)}`);
+      // 交易內重算一次，避免前端讀到的裝備狀態已經過期
+      const realCost = Math.max(1, Math.round(dungeonEpCost(k.ep) * (1 - relicEpCut(cur, cardId))));
+      if(epAvail(cur) < realCost) throw new Error(`EP 不夠，還差 ${realCost - epAvail(cur)}`);
 
       const now = Date.now();
       const dd  = dungeonDef(d.tier);
       if(!dd) throw new Error('地下城資料異常');
 
+      /* 每個人打自己的一份。第一次出手時才建立戰況 —— 沒進去過的人
+         不會佔資料，後台也看得出來「誰還沒開始」 */
+      let run = dunRunOf(cur, d) || dunNewRun(d.tier, dunKey(d));
+      if(!run) throw new Error('地下城資料異常');
+      if(run.status !== 'open') throw new Error('你已經通關了');
+
       // 先結算離線期間的回血（死掉的不復活、滿血的不變）
-      let floors = (d.floors || []).map(f=>({ hp:[...(f.hp || [])] }));
-      let lastRegenAt = d.lastRegenAt || d.openedAt || now;
-      const reg = dungeonApplyRegen({ ...d, floors, lastRegenAt }, now);
+      let floors = (run.floors || []).map(f=>({ hp:[...(f.hp || [])] }));
+      let lastRegenAt = run.lastRegenAt || run.startedAt || now;
+      const reg = dungeonApplyRegen({ ...run, floors, lastRegenAt }, now);
       if(reg){ floors = reg.floors; lastRegenAt = reg.lastRegenAt; }
 
-      let ci = d.cur || 0;
+      let ci = run.cur || 0;
       let flr = floors[ci];
       if(!flr) throw new Error('地下城資料異常');
-      // 目標可能在別人打的時候死了 → 自動改打同層第一隻還活著的
+      // 選中的那隻若已經死了（自己上一招打死的）→ 改打同層第一隻活的
       let ti = selMob;
       if((flr.hp[ti] ?? 0) <= 0) ti = flr.hp.findIndex(h => h > 0);
       if(ti < 0) throw new Error('這一層已經清空了，重新整理看看');
@@ -487,7 +545,7 @@ window.dunCast = async (cardId, skillId, ev)=>{
       if(!dunEquipOf(cur).includes(cardId)) throw new Error('這張卡沒有裝在地下城');
       const st = dunStateOf(cur);
       const zoneOn = st.zoneUntil > now;
-      const upd = { epSpent: increment(cost) };
+      const upd = { epSpent: increment(realCost) };
       if(activePotion(cur,'dmg') > 0 && k.dmg > 0) upd['activePotion.dmg'] = null;
 
       let dealt = 0, sp = k.sp;
@@ -498,7 +556,8 @@ window.dunCast = async (cardId, skillId, ev)=>{
       } else {
         // DOT 在地下城「立即打滿」，總傷害相同、只是不分 10 小時
         dealt = skillDamage(k.dmg, own.tier || 'normal', { buff: st.buff, zone: zoneOn,
-          dexAdd: dexBonusFor(cur, cardId), potionAdd: potionAdd(cur, 'dmg') });
+          dexAdd: dexBonusFor(cur, cardId), potionAdd: potionAdd(cur, 'dmg'),
+          relicAdd: relicDmgAdd(cur, cardId) });
         if(st.buff) upd['dun.buff'] = false;
         if(k.sp === 'DMGZONE') upd['dun.zoneUntil'] = now + ZONE_MS;
       }
@@ -511,29 +570,52 @@ window.dunCast = async (cardId, skillId, ev)=>{
         if(dmgMult() > 1) marks.push('×' + (Math.round(dmgMult() * 100) / 100));
       }
 
-      /* ── 扣血：單體傷害，只打選中的那一隻 ──
-         ⚠️ 不可以把溢出的傷害接著打下一隻。那樣等於每個技能都變成群傷，
-            2000 傷害會一口氣清掉三隻 600 血的小兵，關卡難度整個崩掉。
-            打死一隻就停，超出的部分直接消失 */
-      const cut = Math.min(flr.hp[ti], dealt);
-      flr.hp[ti] -= cut;
-      const overkill = dealt - cut;      // 只拿來顯示，不再造成任何傷害
+      /* ── 扣血 ──
+         預設是單體：打死一隻就停，溢出的傷害直接消失。
+         ⚠️ 不可以讓溢出接著打下一隻，那樣每個技能都變群傷、關卡難度會崩掉。
+         例外是「🖤 暗黑翅膀」——它讓你同時打 N 隻，但每一隻各自吃滿傷害，
+         不是把傷害拆開分攤 */
+      const splitN = relicSplit(cur, cardId);
+      const targets = [ti];
+      if(splitN > 1){
+        for(let j = 0; j < flr.hp.length && targets.length < splitN; j++){
+          if(j !== ti && flr.hp[j] > 0) targets.push(j);
+        }
+      }
+      let killed = 0;
+      targets.forEach(idx=>{
+        const before = flr.hp[idx];
+        flr.hp[idx] = Math.max(0, before - dealt);
+        if(before > 0 && flr.hp[idx] === 0) killed++;
+      });
+      const overkill = Math.max(0, dealt - flr.hp[ti] - (targets.length === 1 ? 0 : 0));
+
+      /* ── 神器掉落 ──
+         每擊殺一隻就判定一次。鎮守那層機率高很多 */
+      const isBossFloor = !!dd.floors[ci].boss;
+      const dropMult = relicDropMult(cur, cardId);
+      let drops = [];
+      for(let n = 0; n < killed; n++){
+        const got = rollRelicDrop(d.tier, isBossFloor, dropMult);
+        if(got) drops.push(got);
+      }
+      drops.forEach(g=>{ upd[`relics.${g.id}.${g.tier}`] = increment(1); });
 
       // ── 推進樓層 ──
       while(ci < floors.length && dungeonFloorDone(floors[ci])) ci++;
       const allDone = ci >= floors.length;
 
-      const dPatch = {
-        floors, lastRegenAt,
+      /* 戰況整包寫回自己的 players 文件。
+         各寫各的 → 不會有併發衝突，也不會有搶怪的問題 */
+      upd.dunRun = {
+        ...run, floors, lastRegenAt,
         cur: Math.min(ci, floors.length - 1),
-        totalDmg: increment(dealt),          // ⚠️ 只記合計，永遠不存個人傷害
-        [`joined.${me}`]: true,              // 只存布林：有沒有出手過
+        totalDmg: (run.totalDmg || 0) + dealt,
+        ...(allDone ? { status:'cleared', clearedAt: now } : {}),
       };
-      if(allDone){ dPatch.status = 'cleared'; dPatch.clearedAt = now; }
-
       tx.update(pRef, upd);
-      tx.update(dRef, dPatch);
-      fx = { dealt, sp, marks: marks.join(' '), name: k.name, ti, overkill };
+      fx = { dealt, sp, marks: marks.join(' '), name: k.name, ti, overkill,
+             hits: targets.length, drops };
       cleared = allDone;
     });
   } catch(e){ toast(e.message); busy = false; render(); return; }
@@ -543,7 +625,13 @@ window.dunCast = async (cardId, skillId, ev)=>{
     if(fx.sp === 'BUFF')      toast('✨ 下一招 +35%');
     else if(fx.sp === 'ZONE') toast('🔵 ZONE 啟動・8 小時內 +35%');
     else {
-      dmgPop(fx.dealt, fx.marks);
+      dmgPop(fx.dealt, fx.marks + (fx.hits > 1 ? `　🖤×${fx.hits}` : ''));
+      // 神器掉落：稀有的東西要有存在感，晚一點跳才不會被傷害數字蓋掉
+      (fx.drops || []).forEach((g, i)=>{
+        const def = relicById(g.id), t = relicTierById(g.tier);
+        setTimeout(()=>{ sfxRare();
+          toast(`⚜️ 掉落！${def.icon} ${t.name} 級 ${def.name}`); }, 900 + i * 1200);
+      });
       // 超出目標血量的部分不會轉移到別隻，提醒一下免得以為系統吃掉傷害
       if(fx.overkill > 0) setTimeout(()=> toast(`溢出 ${fx.overkill.toLocaleString()} 傷害・單體技能不會打到其他小兵`), 620);
       if(fx.sp === 'DOT')     setTimeout(()=> toast('☠️ 持續傷害在地下城會一次打滿'), 500);
@@ -558,9 +646,9 @@ window.dunCast = async (cardId, skillId, ev)=>{
    領獎
 ================================================================== */
 window.dunClaim = async ()=>{
-  if(busy || !DUN || DUN.status !== 'cleared') return;
-  if((DUN.claimed || {})[me]) return toast('你已經領過了');
-  if(!(DUN.joined || {})[me]) return toast('這座地下城你沒有出手過，領不到獎勵');
+  const myRun = P ? dunRunOf(P, DUN) : null;
+  if(busy || !myRun || myRun.status !== 'cleared') return;
+  if(myRun.claimed) return toast('你已經領過了');
   busy = true; render();
   try {
     await runTransaction(db, async tx=>{
@@ -570,9 +658,10 @@ window.dunClaim = async ()=>{
       const dS = await tx.get(dRef);
       const cur = pS.data() || {};
       const d = dS.data();
-      if(!d || d.status !== 'cleared') throw new Error('還沒通關');
-      if((d.claimed || {})[me])  throw new Error('你已經領過了');
-      if(!(d.joined || {})[me])  throw new Error('這座地下城你沒有出手過');
+      if(!d) throw new Error('地下城已經關閉了');
+      const run = dunRunOf(cur, d);
+      if(!run || run.status !== 'cleared') throw new Error('還沒通關');
+      if(run.claimed) throw new Error('你已經領過了');
 
       const rw = dunRewardsOf(d);
       const upd = {};
@@ -597,16 +686,16 @@ window.dunClaim = async ()=>{
           upd[r.path] = increment(n);
         }
       });
-      if(Object.keys(upd).length) tx.update(pRef, upd);
+      upd.dunRun = { ...run, claimed:true, claimedAt: Date.now() };
+      tx.update(pRef, upd);
       tickets.forEach(()=> tx.set(doc(collection(db,'purchases')), {
         playerId: me, itemName: '抽獎券', price: 0,
         status: 'owned', isTicket: true, createdAt: serverTimestamp(),
       }));
-      tx.update(dRef, { [`claimed.${me}`]: true });
       tx.set(doc(collection(db,'ledger')), {
         playerId: me, kind:'dungeon', delta: rw.coins || 0,
         label: `地下城 ${(dungeonDef(d.tier)||{}).name || d.tier} 通關`,
-        meta: { tier: d.tier, rewards: rw, totalDmg: d.totalDmg || 0 },
+        meta: { tier: d.tier, rewards: rw, totalDmg: run.totalDmg || 0 },
         createdAt: serverTimestamp(),
       });
     });
@@ -634,10 +723,7 @@ function render(){
       <div class="s">回主頁重新登入試試</div></div>`;
     return;
   }
-  // 通關後也回到「沒有地下城」，但先讓還沒領獎的人領
-  const cleared = DUN && DUN.status === 'cleared';
-  const canClaim = cleared && (DUN.joined || {})[me] && !(DUN.claimed || {})[me];
-  if(!DUN || (cleared && !canClaim)){
+  if(!DUN || DUN.status !== 'open'){
     stopRoll();
     $('root').innerHTML = `<div class="empty"><div class="ic">🏰</div>
       <div class="t">地下城未開啟</div></div>`;
@@ -650,30 +736,59 @@ function render(){
     return;
   }
 
-  if(cleared){ $('root').innerHTML = clearedHtml(def); startRoll(); return; }
+  // 每個人打自己的一份。還沒出手過的人先給一份乾淨的預覽
+  const run = dunRunOf(P, DUN) || dunNewRun(DUN.tier, dunKey(DUN));
+  const myCleared = run.status === 'cleared';
 
-  const pg      = dungeonProgress(DUN);
-  const fi      = DUN.cur || 0;
-  const floors  = DUN.floors || [];
+  // 通關且已領獎 → 回到「未開啟」，但還看得到別人的進度
+  if(myCleared && run.claimed){
+    stopRoll();
+    $('root').innerHTML = `<div class="empty"><div class="ic">🎉</div>
+        <div class="t">你已經通關了</div>
+        <div class="s">合計傷害 ${(run.totalDmg || 0).toLocaleString()}</div></div>`
+      + othersHtml(true);
+    return;
+  }
+  if(myCleared){ $('root').innerHTML = clearedHtml(def, run) + othersHtml(); startRoll(); return; }
+
+  const pg      = dungeonProgress(run);
+  const fi      = run.cur || 0;
+  const floors  = run.floors || [];
   const expired = dungeonExpired(DUN);
-  const pending = dungeonApplyRegen(DUN, Date.now());
+  const pending = dungeonApplyRegen(run, Date.now());
 
   $('root').innerHTML =
-    headHtml(def, pg, expired, pending)
+    headHtml(def, pg, expired, pending, run)
     + mapHtml(def, floors, fi)
     + mobHtml(def, floors, fi)
-    + skillHtml(expired)
+    + skillHtml(expired, run)
     + equipHtml()
     + rewardHtml()
+    + othersHtml()
     + `<div class="hint" style="margin-top:14px">
-        地下城的 EP 消耗是打 Boss 的 <b>一半</b>，而且<b>沒有時段限制</b>，有 EP 隨時能打。<br>
-        獎勵是<b>每個出手過的人都拿全額</b>，不看打了多少傷害 —— 打一下跟打一千下拿一樣多。<br>
-        沒出手過的人領不到。每 12 小時，還活著的小兵會回復最大血量的 ${Math.round(DUN_REGEN_PCT*100)}%。
+        <b>每個人打自己的一份</b> —— 血量、進度、獎勵都是獨立的，不會互相影響。<br>
+        EP 消耗是打 Boss 的 <b>一半</b>，而且<b>沒有時段限制</b>，有 EP 隨時能打。<br>
+        每 12 小時，你這邊還活著的小兵會回復最大血量的 ${Math.round(DUN_REGEN_PCT*100)}%。<br>
+        期限內沒打完就算失敗，什麼都拿不到。
       </div>`;
   startRoll();
 }
 
-function headHtml(def, pg, expired, pending){
+/* 其他人的進度。只顯示「打到幾 %」，不顯示傷害數字 ——
+   看得到彼此在拚，但沒有可以拿來比較的數值 */
+function othersHtml(soloOnly){
+  const list = dunRunsOf(players, DUN).filter(x => x.id !== me);
+  if(!list.length) return '';
+  return `<h2>其他人的進度</h2>
+    <div class="othGrid">${list.map(x=>`
+      <div class="othRow ${x.cleared ? 'done' : ''}">
+        <span class="oNm">${esc(x.name)}</span>
+        <span class="oBar"><span class="oIn" style="width:${x.pct}%"></span></span>
+        <span class="oPct">${x.cleared ? '🎉 通關' : (x.started ? x.pct + '%' : '還沒開始')}</span>
+      </div>`).join('')}</div>`;
+}
+
+function headHtml(def, pg, expired, pending, run){
   return `<div class="dHead ${def.red ? 'red' : ''}">
     <div class="dTop">
       <span class="dRank" style="color:${def.color}">${def.id}</span>
@@ -685,7 +800,7 @@ function headHtml(def, pg, expired, pending){
     <div class="dBarWrap"><span class="dBar" style="width:${pg.pct}%"></span></div>
     <div class="dMeta">
       進度 ${pg.pct}%　剩餘 ${pg.left.toLocaleString()} / ${pg.max.toLocaleString()}<br>
-      我們一起打了 <b style="color:var(--cyan)">${(DUN.totalDmg || 0).toLocaleString()}</b> 傷害
+      你已經打了 <b style="color:var(--cyan)">${((run && run.totalDmg) || 0).toLocaleString()}</b> 傷害
       　${DUN.endsAt ? `剩 ${leftTxt(DUN.endsAt - Date.now())}` : '不限時'}
       ${pending && pending.healed > 0
         ? `<br><span class="warn">⚠️ 太久沒人來，小兵回復了 ${pending.healed.toLocaleString()} 點血量</span>` : ''}
@@ -757,7 +872,7 @@ function mobHtml(def, floors, fi){
     <div class="mobGrid">${cells}</div>`;
 }
 
-function skillHtml(expired){
+function skillHtml(expired, run){
   const eq = dunEquipOf(P);
   if(!eq.length){
     return `<h2>技能</h2><div class="panel">
@@ -886,16 +1001,16 @@ function startRoll(){
 }
 function stopRoll(){ if(rollTimer){ clearInterval(rollTimer); rollTimer = null; } }
 
-function clearedHtml(def){
+function clearedHtml(def, run){
   const rw = dunRewardsOf(DUN);
   const list = DUNGEON_REWARDS.filter(r => rw[r.id]);
-  const claimed = !!(DUN.claimed || {})[me];
-  const joined  = !!(DUN.joined  || {})[me];
+  const claimed = !!(run && run.claimed);
+  const joined  = true;                      // 能看到這畫面就代表打完了
   return `<div class="dHead ${def.red ? 'red' : ''}" style="text-align:center">
       <div style="font-size:46px;margin-bottom:6px">🎉</div>
       <div class="dNm" style="font-size:20px">${def.icon} ${esc(def.name)}　通關！</div>
-      <div class="dMeta" style="margin-top:10px">我們一起打穿了</div>
-      <div class="bigNum">${(DUN.totalDmg || 0).toLocaleString()}</div>
+      <div class="dMeta" style="margin-top:10px">你打穿了</div>
+      <div class="bigNum">${((run && run.totalDmg) || 0).toLocaleString()}</div>
       <div class="dMeta">點傷害</div>
     </div>
     <h2>獎勵</h2>
@@ -907,18 +1022,19 @@ function clearedHtml(def){
       onclick="dunClaim()" ${(claimed || !joined || busy) ? 'disabled' : ''}>
       ${claimed ? '已領取' : !joined ? '你沒有出手過，領不到' : '🎁 領取獎勵'}</button>
     <div class="hint" style="margin-top:12px">
-      每個出手過的人都拿全額，不看傷害多少。<br>
-      領完之後這裡會回到「目前沒有地下城」。
+      每個人的獎勵都是全額，跟別人打多少無關。<br>
+      領完之後就完成這一座了。
     </div>`;
 }
 
 function showClear(){
   const def = dungeonDef(DUN && DUN.tier);
   if(!def) return;
+  const run = dunRunOf(P, DUN);
   $('clearIn').innerHTML = `<div class="ci">🎉</div>
     <div class="ct">${esc(def.name)} 通關！</div>
-    <div class="cs">我們一起打穿了</div>
-    <div class="bigNum">${(DUN.totalDmg || 0).toLocaleString()}</div>
+    <div class="cs">你打穿了</div>
+    <div class="bigNum">${((run && run.totalDmg) || 0).toLocaleString()}</div>
     <div class="cs">點傷害</div>
     <button class="btn gold" style="width:100%" onclick="document.getElementById('clearBox').classList.remove('show')">
       去領獎勵</button>`;
