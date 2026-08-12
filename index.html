@@ -1572,13 +1572,13 @@
   </div>
 </div>
 
-<script src="./shared.js?v=15"></script>
+<script src="./shared.js?v=16"></script>
 <script>
 /* ⚠️ 版本守門員：瀏覽器如果沿用了舊的 shared.js，新函式會全部 undefined，
    render 到一半拋錯，畫面就只剩頂欄變成一片黑。與其讓人猜，不如直接講清楚。
    ?v= 有帶版本號，正常情況不會觸發；使用者用了離線快取才會走到這 */
 (function(){
-  var NEED = 15;
+  var NEED = 16;
   var G = window.GAME;
   if(G && G.SHARED_VERSION === NEED) return;
   var have = G ? (G.SHARED_VERSION || '舊版') : '沒載入';
@@ -1638,7 +1638,7 @@ const {
   rebirthDone, rebirthProgress, canRebirth,
   dunRunOf, dunKey,
   RELICS, RELIC_TIERS, relicById, relicTierById, relicsOf, relicCount, relicTotal,
-  relicOnCard, canEquipRelic, relicDmgAdd, relicsOfPack,
+  relicOnCard, canEquipRelic, relicDmgAdd, relicsOfPack, relicEpCut, relicValueAt,
   PUSH_KINDS, pushKindsFor, pushPrefs, pushOn, pushSubOf, pushReady,
   pushSupport, pushPermission, pushSubscribe, pushUnsubscribe, pushSend, pushTargets, pushOpen,
   adminPushTargets,
@@ -3312,8 +3312,13 @@ function renderCards(){
                   : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>'
                   : k.sp === 'DMGZONE' ? '<span class="sTag">傷害 + 8 小時 +35%</span>' : '';
         const usedNow = castUsed(bossOf(p), c.id, k.id);
+        // 神器的 EP 折扣要直接反映在數字上，不然玩家看不出裝了有沒有用
+        const epCut = relicEpCut(p, c.id);
+        const epNow = Math.max(1, Math.round(k.ep * (1 - epCut)));
         return `<div class="skRow"><b>${esc(k.name)}</b> ${tag}<br>
-          EP ${k.ep}　傷害 <span class="dmgv">${k.dmg > 0 ? real : '—'}</span>　
+          EP ${epCut > 0
+            ? `<span style="text-decoration:line-through;color:var(--dim)">${k.ep}</span> <b style="color:var(--cyan)">${epNow}</b>`
+            : k.ep}　傷害 <span class="dmgv">${k.dmg > 0 ? real : '—'}</span>　
           ${usedNow ? '<span style="color:var(--pink)">本時段已使用</span>' : '<span style="color:var(--muted)">每時段可用一次</span>'}</div>`;
       }).join('');
       return `<div class="cardTile ${isEq?'eq':''}" style="border-color:${isEq?'var(--gold)':tier.color}">
@@ -3498,7 +3503,9 @@ window.useSkill = async (cardId, skillId, ev)=>{
   if(!inAttackWindow() && !hasFreePass) return skillNope(btn,
     `⏰ 攻擊時段已結束，下次開放還有 ${msLeftTxt(windowEdge() - Date.now())}`);
   if(castUsed(bossOf(p), cardId, skillId)) return skillNope(btn, '這招本時段已經用過了');
-  if(epAvail(p) < k.ep)  return skillNope(btn, `EP 不夠，還差 ${k.ep - epAvail(p)}`);
+  // 神器的 EP 折扣，Boss 也吃
+  const epCost = Math.max(1, Math.round(k.ep * (1 - relicEpCut(p, cardId))));
+  if(epAvail(p) < epCost) return skillNope(btn, `EP 不夠，還差 ${epCost - epAvail(p)}`);
   // DOT 滿層：擋在這裡，不會消耗 EP 也不會用掉本時段的使用次數
   if(k.sp === 'DOT'){
     const live = dotDamage(bossOf(p), Date.now()).dots.length;
@@ -3516,7 +3523,9 @@ window.useSkill = async (cardId, skillId, ev)=>{
       const cur = s.data() || {};
       const now = Date.now();
 
-      if(epAvail(cur) < k.ep) throw new Error(`EP 不夠，還差 ${k.ep - epAvail(cur)}`);
+      // 交易內重算，避免前端讀到的裝備已經過期
+      const realEp = Math.max(1, Math.round(k.ep * (1 - relicEpCut(cur, cardId))));
+      if(epAvail(cur) < realEp) throw new Error(`EP 不夠，還差 ${realEp - epAvail(cur)}`);
       // 時段外：需要免時段券，且成功放招才扣（時段內不消耗）
       let useFreePass = false;
       if(!inAttackWindow(now)){
@@ -3537,7 +3546,7 @@ window.useSkill = async (cardId, skillId, ev)=>{
 
       const tierId = own.tier || 'normal';
       const zoneOn = zoneUntil > now;
-      const upd = { epSpent: increment(k.ep) };   // 舊的 skillReady 不再讀寫
+      const upd = { epSpent: increment(realEp) };   // 舊的 skillReady 不再讀寫
       // 傷害藥水是單次型：這一招用掉就消失
       if(activePotion(cur, 'dmg') > 0 && k.dmg > 0) upd['activePotion.dmg'] = null;
       if(useFreePass) upd.bossFreePass = increment(-1);
@@ -3782,7 +3791,9 @@ function renderBoss(){
         const real = skillDamage(k.dmg, own.tier, { buff: b.buff, zone: zoneOn,
           dexAdd: dexBonusFor(p, id), potionAdd: potionAdd(p, 'dmg'),
           relicAdd: relicDmgAdd(p, id) });
-        const noEp = ep < k.ep;
+        const epCut2 = relicEpCut(p, id);
+        const epNow2 = Math.max(1, Math.round(k.ep * (1 - epCut2)));
+        const noEp = ep < epNow2;
         const tag = k.sp === 'DOT' ? '<span class="sTag">10 小時持續</span>'
                   : k.sp === 'BUFF' ? '<span class="sTag">下次 +35%</span>'
                   : k.sp === 'ZONE' ? '<span class="sTag">8 小時 +35%</span>'
@@ -3792,7 +3803,9 @@ function renderBoss(){
         return `<button class="skillBtn ${unusable ? 'dis' : ''}" onclick="useSkill('${id}','${k.id}', event)">
           <div class="sTop2"><span class="sN">${esc(k.name)}</span>${tag}</div>
           <div class="sInfo">
-            ⚡ ${k.ep}　${k.dmg > 0
+            ⚡ ${epCut2 > 0
+              ? `<span style="text-decoration:line-through;opacity:.5">${k.ep}</span> ${epNow2}`
+              : k.ep}　${k.dmg > 0
               ? `傷害 <span class="dm ${dmgX > 1 ? 'evt' : ''}">${real}${
                   dmgX > 1 ? ` ⚔️×${Math.round(dmgX * 100) / 100}` : ''}</span>`
               : '無傷害'}
@@ -3937,11 +3950,11 @@ function relicSlotHtml(p, c){
 
 /* 效果文字。等級倍率要乘進去，不然玩家看不出 S 級到底差在哪 */
 function effTxt(def, tierDef){
-  const m = tierDef.mult;
-  if(def.effect === 'dmg')   return `傷害 +${Math.round(def.value * m * 100)}%`;
-  if(def.effect === 'ep')    return `EP −${Math.round(Math.min(0.9, def.value * m) * 100)}%`;
-  if(def.effect === 'split') return `地下城一次打 ${Math.max(2, Math.round(def.value * m))} 隻`;
-  if(def.effect === 'drop')  return `掉落率 ×${Math.round(def.value * m)}`;
+  const v = relicValueAt(def, tierDef.id);
+  if(def.effect === 'dmg')   return `傷害 +${Math.round(v * 100)}%`;
+  if(def.effect === 'ep')    return `EP −${Math.round(v * 100)}%`;
+  if(def.effect === 'split') return `地下城一次打 ${v} 隻`;
+  if(def.effect === 'drop')  return `掉落率 ×${v}`;
   return def.desc;
 }
 
