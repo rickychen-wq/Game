@@ -11,7 +11,7 @@
 (function (global) {
   /* ⚠️ 改動 shared.js 之後，這個數字和四個 HTML 的 ?v= 都要一起 +1。
      不然瀏覽器會沿用舊的 shared.js，新函式全部 undefined，畫面直接變白。 */
-  const SHARED_VERSION = 12;
+  const SHARED_VERSION = 14;
   'use strict';
 
   /* ==============================================================
@@ -734,8 +734,9 @@
     let d = base * tierById(tierId).mult;
     if(o.buff) d *= BUFF_MULT;
     if(o.zone) d *= ZONE_MULT;
-    // 圖鑑完成度 + 傷害藥水：走加法池（1 + 0.1 + 0.5 + 藥水），不做乘法避免爆炸
-    const pool = 1 + (o.dexAdd || 0) + (o.potionAdd || 0);
+    // 圖鑑完成度 + 傷害藥水 + 神器：走加法池（1 + 0.1 + 0.5 + 藥水 + 神器），
+    // 不做乘法避免爆炸。神器的等級倍率已經在 relicDmgAdd 裡乘進去了
+    const pool = 1 + (o.dexAdd || 0) + (o.potionAdd || 0) + (o.relicAdd || 0);
     if(pool !== 1) d *= pool;
     d *= (o.dmgMult ?? dmgMult());
     return Math.round(d);
@@ -999,39 +1000,76 @@
 
   /* 建立一份新的地下城戰況（存進 Firestore 的 dungeons/active）
      ⚠️ Firestore 的陣列不能直接包陣列，所以是 floors:[{hp:[...]}, ...]（陣列→物件→陣列，合法） */
+  /* dungeons/active 現在只放「這次開了什麼」，不放戰況。
+     ⚠️ 每個人的血條、進度、領獎狀態都存在自己的 players/{id}.dunRun ——
+        共用血條會製造搶怪與推諉，而那不是數值能解的。
+        存在玩家自己身上還有兩個附帶好處：
+        併發衝突完全消失（各寫各的文件），進度互看也免費取得 */
   function dungeonInit(tierId, opts){
     const def = dungeonDef(tierId);
     if(!def) return null;
-    const now = Date.now();
     return {
       tier: tierId,
       status: 'open',
-      openedAt: now,
+      openedAt: Date.now(),                       // 同時是這次開啟的識別碼
       endsAt: (opts && opts.endsAt) || null,      // null = 不限時
-      lastRegenAt: now,
-      cur: 0,                                     // 目前在第幾層（index）
-      floors: def.floors.map(f=>({ hp: Array(f.count).fill(f.mobHp) })),
-      totalDmg: 0,                                // 只存合計，不分人
-      joined: {},                                 // { playerId: true } 只存有沒有出手過
-      claimed: {},
       rewards: (opts && opts.rewards) || {},
     };
+  }
+  /* 每次開啟的唯一識別碼。玩家的 dunRun.dunId 對不上就代表是上一輪的舊資料 */
+  const dunKey = d => (d && d.openedAt) ? String(d.openedAt) : '';
+
+  /* 開一份新的個人戰況 */
+  function dunNewRun(tierId, dunId){
+    const def = dungeonDef(tierId);
+    if(!def) return null;
+    return {
+      dunId, tier: tierId, status:'open',
+      cur: 0,
+      floors: def.floors.map(f=>({ hp: Array(f.count).fill(f.mobHp) })),
+      totalDmg: 0,
+      lastRegenAt: Date.now(),
+      startedAt: Date.now(),
+      claimed: false,
+    };
+  }
+  /* 取出這個人在「當前這座副本」的戰況。沒開始過或是舊的就回 null */
+  function dunRunOf(p, d){
+    const r = (p && p.dunRun) || null;
+    if(!r || !d || r.dunId !== dunKey(d)) return null;
+    return r;
+  }
+  /* 進度互看用：把所有人的狀態整理成一張表 */
+  function dunRunsOf(players, d){
+    const out = [];
+    Object.keys(players || {}).forEach(id=>{
+      const p = players[id];
+      const r = dunRunOf(p, d);
+      out.push({
+        id, name: (p && p.name) || id,
+        run: r,
+        pct: r ? dungeonProgress(r, r.tier).pct : 0,
+        cleared: !!(r && r.status === 'cleared'),
+        started: !!r,
+      });
+    });
+    return out;
   }
 
   /* 每 12 小時回血：死掉的（0）不復活，滿血的不變，補到滿為止
      用「距離 lastRegenAt 過了幾個 12 小時」惰性計算，不需要排程 */
-  function dungeonRegenTicks(d, now){
-    if(!d || d.status !== 'open') return 0;
-    const base = d.lastRegenAt || d.openedAt || now;
+  function dungeonRegenTicks(run, now){
+    if(!run || run.status !== 'open') return 0;
+    const base = run.lastRegenAt || run.startedAt || now;
     return Math.max(0, Math.floor(((now || Date.now()) - base) / DUN_REGEN_MS));
   }
-  function dungeonApplyRegen(d, now){
-    const ticks = dungeonRegenTicks(d, now);
+  function dungeonApplyRegen(run, now){
+    const ticks = dungeonRegenTicks(run, now);
     if(ticks <= 0) return null;
-    const def = dungeonDef(d.tier);
+    const def = dungeonDef(run && run.tier);
     if(!def) return null;
     let healed = 0;
-    const floors = (d.floors || []).map((fl, i)=>{
+    const floors = (run.floors || []).map((fl, i)=>{
       const max = def.floors[i] ? def.floors[i].mobHp : 0;
       return { hp: (fl.hp || []).map(h=>{
         if(h <= 0 || h >= max) return h;             // 死掉的不復活、滿血的不變
@@ -1040,24 +1078,24 @@
         return next;
       }) };
     });
-    if(!healed) return { floors, lastRegenAt: (d.lastRegenAt || d.openedAt) + ticks * DUN_REGEN_MS, healed: 0 };
-    return { floors, lastRegenAt: (d.lastRegenAt || d.openedAt) + ticks * DUN_REGEN_MS, healed };
+    const base = (run.lastRegenAt || run.startedAt || Date.now()) + ticks * DUN_REGEN_MS;
+    return { floors, lastRegenAt: base, healed };
   }
 
   const dungeonEpCost   = ep => Math.max(1, Math.round((ep || 0) * DUN_EP_MULT));
   const dungeonFloorHp  = fl => (fl && fl.hp ? fl.hp.reduce((a,b)=>a+b, 0) : 0);
   const dungeonFloorDone= fl => dungeonFloorHp(fl) <= 0;
-  const dungeonLeftHp   = d  => (d && d.floors ? d.floors.reduce((a,f)=> a + dungeonFloorHp(f), 0) : 0);
-  function dungeonProgress(d){
-    const def = dungeonDef(d && d.tier);
+  const dungeonLeftHp   = run => (run && run.floors ? run.floors.reduce((a,f)=> a + dungeonFloorHp(f), 0) : 0);
+  function dungeonProgress(run, tierId){
+    const def = dungeonDef((run && run.tier) || tierId);
     if(!def) return { pct:0, left:0, max:0, floor:0, floors:0 };
-    const max = dungeonHp(def), left = dungeonLeftHp(d);
+    const max = dungeonHp(def), left = dungeonLeftHp(run);
     return { pct: max ? Math.round((max - left) / max * 100) : 0,
-             left, max, floor: (d.cur || 0), floors: def.floors.length };
+             left, max, floor: (run && run.cur) || 0, floors: def.floors.length };
   }
   const dungeonOpen     = () => !!(runtime.dungeon && runtime.dungeon.status === 'open');
   const dungeonExpired  = d => !!(d && d.endsAt && Date.now() > d.endsAt);
-  const dungeonJoined   = (d, pid) => !!((d && d.joined) || {})[pid];
+  const dungeonJoined   = (d, pid) => !!((d && d.joined) || {})[pid];   // 舊資料相容，新版用 dunRunOf
 
   /* 地下城的增益狀態，存在玩家自己的 p.dun，與 Boss 的 p.boss 完全分離。
      ⚠️ DOT 在地下城改成「立即打滿全部傷害」而不是分 10 小時扣：
@@ -1438,6 +1476,128 @@
   const halfCoinLeft = p => Math.max(0, Math.floor(Number((p && p.debuff && p.debuff.halfCoin)) || 0));
   const inDebt = p => ((p && p.coins) ?? 0) < 0;
 
+  /* ==============================================================
+     ⚜️ 地下城神器
+     打地下城的每一次擊殺都有機率掉落。掉了先抽動漫、再抽等級，
+     然後隨機給該動漫的其中一件。
+     ⚠️ 一張卡只能裝一件，而且只能裝「同動漫」的 ——
+        血繼限界是火影的東西，裝在魯夫身上說不通
+  ============================================================== */
+  const RELIC_TIERS = [
+    { id:'C', name:'C', prob:70,  mult:1,  color:'#8a8f9e' },
+    { id:'B', name:'B', prob:15,  mult:2,  color:'#5aa9ff' },
+    { id:'A', name:'A', prob:4,   mult:3,  color:'#c9a0ff' },
+    { id:'S', name:'S', prob:0.9, mult:10, color:'#f7e3a1' },
+    { id:'X', name:'未知', prob:0.1, mult:25, color:'#ff8c42' },
+  ];
+  const relicTierById = id => RELIC_TIERS.find(t => t.id === id) || RELIC_TIERS[0];
+
+  /* 每座地下城的掉落率（%）。mob = 每擊殺一隻小兵，boss = 擊殺鎮守 */
+  const RELIC_DROP = {
+    E:   { mob:0.05,  boss:0.625 },
+    D:   { mob:0.125, boss:1.25 },
+    C:   { mob:0.25,  boss:2.5 },
+    B:   { mob:0.5,   boss:5 },
+    A:   { mob:0.75,  boss:7.5 },
+    S:   { mob:1.25,  boss:12.5 },
+    // 紅門刻意不砍，跟 S 拉開 3.5 倍 —— 想要神器就得去挑戰最硬的那座
+    RED: { mob:5,     boss:50 },
+  };
+  const relicDropOf = (tierId, isBoss) => {
+    const d = RELIC_DROP[tierId] || RELIC_DROP.E;
+    return isBoss ? d.boss : d.mob;
+  };
+
+  /* 神器本體。effect 的意義：
+       dmg  → 傷害加成（加進既有的加法池，跟圖鑑／藥水同一層）
+       ep   → EP 消耗折扣
+       split→ 一次打兩隻（地下城限定，Boss 只有一隻沒差）
+       drop → 掉落率倍率 */
+  const RELICS = [
+    { id:'devilfruit', pack:'onepiece', icon:'🍎', name:'惡魔果實',
+      effect:'dmg',   value:1.0,  desc:'傷害 +100%' },
+    { id:'dmgscroll',  pack:'onepiece', icon:'📜', name:'傷害附魔捲軸',
+      effect:'dmg',   value:1.5,  desc:'傷害 +150%' },
+    { id:'darkwing',   pack:'haikyu',   icon:'🖤', name:'暗黑翅膀',
+      effect:'split', value:2,    desc:'地下城一次打 2 隻（各自吃滿傷害）' },
+    { id:'kekkei',     pack:'naruto',   icon:'🩸', name:'血繼限界',
+      effect:'dmg',   value:1.6,  desc:'傷害 +160%' },
+    { id:'headband',   pack:'naruto',   icon:'🥷', name:'忍者護額',
+      effect:'ep',    value:0.5,  desc:'EP 消耗 −50%' },
+    { id:'eyeofgod',   pack:'kuroko',   icon:'👁️', name:'天地之眼',
+      effect:'drop',  value:2,    desc:'用這張卡擊殺，掉落率 ×2' },
+    { id:'zoneRelic',  pack:'kuroko',   icon:'🔵', name:'ZONE',
+      effect:'dmg',   value:1.3,  desc:'傷害 +130%' },
+  ];
+  const relicById   = id => RELICS.find(r => r.id === id) || null;
+  const relicsOfPack = pack => RELICS.filter(r => r.pack === pack);
+
+  /* 掉落判定。回傳 null 或 { id, tier }。
+     dropMult 讓「天地之眼」把掉落率翻倍 */
+  function rollRelicDrop(dunTier, isBoss, dropMult){
+    const pct = relicDropOf(dunTier, isBoss) * (dropMult || 1);
+    if(Math.random() * 100 >= pct) return null;
+    // 先抽動漫（四包等機率），再抽等級，最後在該動漫裡隨機取一件
+    const pack = PACKS[Math.floor(Math.random() * PACKS.length)];
+    const pool = relicsOfPack(pack.id);
+    if(!pool.length) return null;
+    const item = pool[Math.floor(Math.random() * pool.length)];
+    const tier = pickWeighted(RELIC_TIERS, 'prob');
+    return { id: item.id, tier: tier.id };
+  }
+
+  /* 玩家持有的神器：{ 神器id: { C:2, S:1 } } —— 跟卡片一樣分等級記數量，
+     之後要做合成才有得吃 */
+  function relicsOf(p){
+    const raw = (p && p.relics) || {};
+    const out = {};
+    Object.keys(raw).forEach(id=>{
+      if(!relicById(id)) return;
+      const byT = {};
+      RELIC_TIERS.forEach(t=>{
+        const n = Math.floor(Number(raw[id][t.id]) || 0);
+        if(n > 0) byT[t.id] = n;
+      });
+      if(Object.keys(byT).length) out[id] = byT;
+    });
+    return out;
+  }
+  const relicCount = (p, id, tier) => ((relicsOf(p)[id] || {})[tier]) || 0;
+  const relicTotal = p => Object.values(relicsOf(p))
+    .reduce((a, byT) => a + Object.values(byT).reduce((x, y) => x + y, 0), 0);
+
+  /* 裝備：{ 卡片id: { id:神器id, tier:'C' } }
+     ⚠️ 只能裝同動漫的神器 —— 血繼限界不能給魯夫用 */
+  const relicEquipOf = p => (p && p.relicEquip) || {};
+  function relicOnCard(p, cardId){
+    const e = relicEquipOf(p)[cardId];
+    if(!e || !e.id) return null;
+    const def = relicById(e.id);
+    if(!def) return null;
+    return { ...e, def, tierDef: relicTierById(e.tier) };
+  }
+  function canEquipRelic(cardId, relicId){
+    const c = cardById(cardId), r = relicById(relicId);
+    return !!(c && r && c.pack === r.pack);
+  }
+
+  /* 這張卡身上的神器提供多少加成。等級倍率在這裡乘進去 */
+  function relicBonus(p, cardId, effect){
+    const on = relicOnCard(p, cardId);
+    if(!on || on.def.effect !== effect) return 0;
+    return on.def.value * on.tierDef.mult;
+  }
+  const relicDmgAdd  = (p, cardId) => relicBonus(p, cardId, 'dmg');
+  const relicEpCut   = (p, cardId) => Math.min(0.9, relicBonus(p, cardId, 'ep'));   // 最多省 90%
+  const relicSplit   = (p, cardId) => {
+    const n = relicBonus(p, cardId, 'split');
+    return n > 0 ? Math.max(2, Math.round(n)) : 1;
+  };
+  const relicDropMult = (p, cardId) => {
+    const n = relicBonus(p, cardId, 'drop');
+    return n > 0 ? n : 1;
+  };
+
   global.GAME = {
     // 抽獎
     TICKET_PRICE, SALE_TICKET_PRICE, PRIZES, MAT_IDX, COIN_IDX, MAT_BASE, LUCK_MAX,
@@ -1455,6 +1615,11 @@
     EP_START_LV, epTotal, epAvail,
     // 卡牌
     SHARED_VERSION,
+    // 地下城神器
+    RELIC_TIERS, relicTierById, RELIC_DROP, relicDropOf, RELICS, relicById, relicsOfPack,
+    rollRelicDrop, relicsOf, relicCount, relicTotal,
+    relicEquipOf, relicOnCard, canEquipRelic, relicBonus,
+    relicDmgAdd, relicEpCut, relicSplit, relicDropMult,
     // 隨機罰單
     ROULETTES, rouletteById, spinRoulette, rouletteOutcome,
     pendingRoulette, halfCoinLeft, inDebt,
@@ -1490,6 +1655,7 @@
     DUNGEONS, DUN_REGEN_MS, DUN_REGEN_PCT, DUN_EP_MULT, DUN_EQUIP_MAX, DUN_EQUIP_CD_H,
     dungeonDef, dungeonHp, dungeonMobs, dungeonInit,
     dungeonRegenTicks, dungeonApplyRegen, dungeonEpCost,
+    dunKey, dunNewRun, dunRunOf, dunRunsOf,
     dungeonFloorHp, dungeonFloorDone, dungeonLeftHp, dungeonProgress,
     dungeonOpen, dungeonExpired, dungeonJoined,
     dunEquipOf, dunEquipLocked, dunStateOf, dunSlotsOf, dunSlotCds, dunSlotReady,
